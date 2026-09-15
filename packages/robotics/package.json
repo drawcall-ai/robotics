@@ -1,0 +1,39 @@
+{
+  "name": "@drawcall/robotics",
+  "version": "0.1.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "prepack": "pnpm build"
+  },
+  "dependencies": {
+    "roslib": "^2.1.0"
+  },
+  "peerDependencies": {
+    "@drawcall/physics": "^0.4.0",
+    "three": ">=0.185.0"
+  },
+  "devDependencies": {
+    "@drawcall/physics": "0.4.0",
+    "@drawcall/physics-rapier": "0.4.0"
+  },
+  "description": "ROS 2 devices and simulation integration for Three.js and Drawcall physics.",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

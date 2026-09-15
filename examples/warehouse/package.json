@@ -1,0 +1,23 @@
+{
+  "name": "@drawcall/example-warehouse",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@drawcall/robotics": "workspace:*",
+    "@drawcall/physics": "0.4.0",
+    "@drawcall/physics-rapier": "0.4.0",
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@types/three": "^0.185.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.0.0",
+    "vitest": "^4.0.17"
+  }
+}
