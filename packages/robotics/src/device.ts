@@ -1,5 +1,12 @@
 import { getROS2, type ROS2 } from "./runtime.js";
 
+export interface DeviceLifecycle {
+  beforeStep?(time: number, delta: number): void;
+  afterStep?(time: number, delta: number): void;
+  stop?(): void;
+  dispose(): void;
+}
+
 export interface DeviceOptions {
   ros?: ROS2;
 }
@@ -12,13 +19,7 @@ export function withDevice<Args extends unknown[], Instance extends object>(
   ...options: [] extends Args
     ? [options?: DeviceOptions & { args?: Args }]
     : [options: DeviceOptions & { args: Args }]
-) => Instance & {
-  readonly ros: ROS2;
-  beforeStep?(time: number, delta: number): void;
-  afterStep?(time: number, delta: number): void;
-  stop?(): void;
-  dispose(): void;
-};
+) => Instance & DeviceLifecycle & { readonly ros: ROS2 };
 export function withDevice(Base: new (...args: never[]) => object) {
   return class extends Base {
     readonly ros: ROS2;

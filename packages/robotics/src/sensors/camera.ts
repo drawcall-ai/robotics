@@ -1,15 +1,8 @@
-import {
-  PerspectiveCamera,
-  WebGLRenderTarget,
-  SRGBColorSpace,
-  Vector3,
-  Quaternion,
-} from "three";
-import { getROS2, type ROS2 } from "./runtime.js";
-import { withDevice } from "./device.js";
-import { Schedule } from "./time.js";
-import { header } from "./sensors.js";
-import { rosPosition, rosOpticalRotation } from "./frames.js";
+import { PerspectiveCamera, WebGLRenderTarget, SRGBColorSpace } from "three";
+import { getROS2, type ROS2 } from "../runtime.js";
+import { withDevice } from "../device.js";
+import { Schedule } from "../time.js";
+import { header } from "../messages.js";
 
 export class CameraSensor extends withDevice(PerspectiveCamera) {
   readonly preview: HTMLCanvasElement;
@@ -138,20 +131,6 @@ export class CameraSensor extends withDevice(PerspectiveCamera) {
         },
       },
     );
-    this.ros.publish("/tf", "tf2_msgs/msg/TFMessage", {
-      transforms: [
-        {
-          header: header(time, "map"),
-          child_frame_id: this.frameId,
-          transform: {
-            translation: rosPosition(this.getWorldPosition(new Vector3())),
-            rotation: rosOpticalRotation(
-              this.getWorldQuaternion(new Quaternion()),
-            ),
-          },
-        },
-      ],
-    });
   }
   dispose(): void {
     super.dispose();

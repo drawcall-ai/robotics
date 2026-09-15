@@ -1,5 +1,5 @@
 import { Device, withDevice } from "../src/device.js";
-import { LaserSensor } from "../src/laser.js";
+import { LaserSensor } from "../src/sensors/laser.js";
 import { afterEach, expect, it, vi } from "vitest";
 import { PerspectiveCamera, Scene, WebGLRenderer } from "three";
 import { JointMotor, RevoluteJoint, RigidBody } from "@drawcall/physics";
@@ -196,4 +196,41 @@ it("does not register invalid sensors or leave a duplicate motor binding behind"
   ).toThrow("already bound");
   expect(register).not.toHaveBeenCalled();
   expect(() => world.update(0.01)).not.toThrow();
+});
+
+it("keeps unchanged native motor settings and restores externally changed target components", async () => {
+  const { world, transport, motor } = await fixture();
+  vi.spyOn(performance, "now").mockReturnValue(0);
+  transport.receive("/robot/wheel/command", { data: 3 });
+  world.update(0.01);
+  const version = motor.settingsVersion;
+  world.update(0.01);
+  expect(motor.settingsVersion).toBe(version);
+  motor.setTarget({ position: 2, velocity: 3 });
+  world.update(0.01);
+  expect(motor.target).toEqual({ position: 0, velocity: 3 });
+  motor.setEnabled(false);
+  world.update(0.01);
+  expect(motor.enabled).toBe(true);
+});
+
+it("allows rebinding an application motor after subscription cleanup fails", async () => {
+  const { world, ros, transport, motor } = await fixture();
+  vi.spyOn(transport.receivers, "delete").mockImplementationOnce(() => {
+    throw new Error("Unsubscribe failed");
+  });
+  expect(() => ros.dispose()).toThrow("Failed to dispose ROS runtime");
+  expect(motor.enabled).toBe(false);
+  const nextTransport = new Transport();
+  const next = new ROS2(nextTransport, {
+    world,
+    scene: new Scene(),
+    renderer: new WebGLRenderer(),
+  });
+  cleanup.push(() => next.dispose());
+  new MotorBinding({ ros: next, motor, name: "wheel", mode: "velocity" });
+  nextTransport.receive("/robot/wheel/command", { data: 2 });
+  world.update(0.01);
+  expect(motor.enabled).toBe(true);
+  expect(motor.target?.velocity).toBe(2);
 });

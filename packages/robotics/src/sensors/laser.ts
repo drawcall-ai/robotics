@@ -1,14 +1,16 @@
 import { Object3D, Quaternion, Vector3 } from "three";
 import type { RigidBody } from "@drawcall/physics";
-import { getROS2, type ROS2 } from "./runtime.js";
-import { withDevice } from "./device.js";
-import { Schedule } from "./time.js";
-import { header, transform } from "./sensors.js";
+import { getROS2, type ROS2 } from "../runtime.js";
+import { withDevice } from "../device.js";
+import { Schedule } from "../time.js";
+import { header } from "../messages.js";
 
 export class LaserSensor extends withDevice(Object3D) {
   private readonly schedule: Schedule;
   private readonly samples: number;
   private readonly range: number;
+  private readonly angleMin: number;
+  private readonly angleMax: number;
   private readonly frameId: string;
   private readonly topic: string;
   private readonly excludeBodies: readonly RigidBody[];
@@ -18,6 +20,8 @@ export class LaserSensor extends withDevice(Object3D) {
       rate?: number;
       samples?: number;
       range?: number;
+      angleMin?: number;
+      angleMax?: number;
       frameId?: string;
       excludeBodies?: readonly RigidBody[];
       ros?: ROS2;
@@ -35,11 +39,24 @@ export class LaserSensor extends withDevice(Object3D) {
       throw new Error("Laser needs at least two samples");
     if (!Number.isFinite(range) || range <= 0)
       throw new Error("Laser range must be positive");
+    const angleMin = options.angleMin ?? -Math.PI;
+    const angleMax = options.angleMax ?? Math.PI;
+    if (
+      !Number.isFinite(angleMin) ||
+      !Number.isFinite(angleMax) ||
+      angleMax <= angleMin ||
+      angleMax - angleMin > 2 * Math.PI
+    )
+      throw new Error(
+        "Laser angles must define a positive sweep of at most 2π",
+      );
     header(0, frameId);
     super({ ros });
     this.schedule = schedule;
     this.samples = samples;
     this.range = range;
+    this.angleMin = angleMin;
+    this.angleMax = angleMax;
     this.frameId = frameId;
     this.topic = topic;
     this.excludeBodies = excludeBodies;
@@ -49,9 +66,9 @@ export class LaserSensor extends withDevice(Object3D) {
     this.updateWorldMatrix(true, false);
     const origin = this.getWorldPosition(new Vector3());
     const rotation = this.getWorldQuaternion(new Quaternion());
-    const increment = Math.PI / (this.samples - 1);
+    const increment = (this.angleMax - this.angleMin) / (this.samples - 1);
     const ranges = Array.from({ length: this.samples }, (_, i) => {
-      const angle = -Math.PI / 2 + i * increment;
+      const angle = this.angleMin + i * increment;
       const direction = new Vector3(
         -Math.sin(angle),
         0,
@@ -60,13 +77,13 @@ export class LaserSensor extends withDevice(Object3D) {
       return (
         this.ros.world.raycast(origin, direction, this.range, {
           excludeBodies: this.excludeBodies,
-        })?.distance ?? this.range
+        })?.distance ?? this.range + 1
       );
     });
     this.ros.publish(this.topic, "sensor_msgs/msg/LaserScan", {
       header: header(time, this.frameId),
-      angle_min: -Math.PI / 2,
-      angle_max: Math.PI / 2,
+      angle_min: this.angleMin,
+      angle_max: this.angleMax,
       angle_increment: increment,
       time_increment: 0,
       scan_time: this.schedule.period,
@@ -75,7 +92,6 @@ export class LaserSensor extends withDevice(Object3D) {
       ranges,
       intensities: [],
     });
-    transform(this.ros, this, this.frameId, time);
   }
   dispose(): void {
     super.dispose();

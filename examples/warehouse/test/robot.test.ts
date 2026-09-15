@@ -47,3 +47,48 @@ test("opposite native wheel commands turn the robot in place", async () => {
     Math.hypot(robot.chassis.position.x, robot.chassis.position.z),
   ).toBeLessThan(0.4);
 });
+test("keeps the lidar plane level during acceleration, braking and turning", async () => {
+  const { world, robot } = await fixture();
+  for (let i = 0; i < 120; i++) world.update(world.fixedDelta);
+  for (const [left, right] of [
+    [2, 2],
+    [0, 0],
+    [-1.3, 1.3],
+    [0, 0],
+  ]) {
+    robot.left.motor.setTarget({ velocity: left });
+    robot.right.motor.setTarget({ velocity: right });
+    let tilt = 0;
+    for (let i = 0; i < 240; i++) {
+      world.update(world.fixedDelta);
+      tilt = Math.max(
+        tilt,
+        Math.acos(
+          new Vector3(0, 1, 0).applyQuaternion(robot.chassis.quaternion).y,
+        ),
+      );
+    }
+    expect(tilt).toBeLessThan(Math.PI / 180);
+  }
+});
+test("rolling supports allow wheel travel to match chassis motion on a flat floor", async () => {
+  const { world, robot } = await fixture();
+  let lastLeft = 0,
+    lastRight = 0,
+    distance = 0;
+  robot.left.motor.setTarget({ velocity: 2 });
+  robot.right.motor.setTarget({ velocity: 2 });
+  for (let i = 0; i < 360; i++) {
+    world.update(world.fixedDelta);
+    const left = robot.left.joint.getState().position,
+      right = robot.right.joint.getState().position;
+    distance +=
+      ((Math.atan2(Math.sin(left - lastLeft), Math.cos(left - lastLeft)) +
+        Math.atan2(Math.sin(right - lastRight), Math.cos(right - lastRight))) *
+        0.22) /
+      2;
+    lastLeft = left;
+    lastRight = right;
+  }
+  expect(Math.abs(distance + robot.chassis.position.z)).toBeLessThan(0.05);
+});

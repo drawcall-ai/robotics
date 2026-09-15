@@ -136,3 +136,22 @@ it("rejects publishing after closure and rejects conflicting topic types", async
     connection.publish("/sensor", "std_msgs/msg/Float64", { data: 2 }),
   ).toThrow("disconnected");
 });
+
+it("closes the socket and releases other topics when a control message fails", async () => {
+  const { connection, socket } = await connect();
+  connection.subscribe("/command", "std_msgs/msg/Float64", () => {});
+  connection.publish("/sensor", "std_msgs/msg/Float64", { data: 1 });
+  const send = vi.spyOn(socket, "send");
+  send.mockImplementationOnce(() => {
+    throw new Error("Socket send failed");
+  });
+  expect(() => connection.dispose()).toThrow(
+    "Failed to dispose ROS connection",
+  );
+  expect(socket.readyState).toBe(WebSocketStub.CLOSED);
+  expect(socket.sent).toContainEqual(
+    expect.objectContaining({ op: "unadvertise", topic: "/sensor" }),
+  );
+  expect(connection.connected).toBe(false);
+  expect(() => connection.dispose()).not.toThrow();
+});

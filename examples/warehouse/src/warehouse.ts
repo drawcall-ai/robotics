@@ -46,8 +46,9 @@ export function createWarehouse(world: PhysicsWorld, scene: Scene) {
     scene.add(body);
   }
   box([14, 0.2, 13], [-1, -0.1, -2], concrete);
-  box([14, 0.12, 0.18], [-1, 0.06, -8.4], steel);
-  box([0.18, 0.12, 13], [-7.9, 0.06, -2], steel);
+  // Physical perimeter walls give the lidar returns around the loading area.
+  for (const z of [-8.4, 4.4]) box([14, 1.2, 0.18], [-1, 0.6, z], concrete);
+  for (const x of [-7.9, 5.9]) box([0.18, 1.2, 13], [x, 0.6, -2], concrete);
   const line = (x: number, z: number, width: number, depth: number) =>
     box([width, 0.006, depth], [x, 0.004, z], paint, false);
   for (const x of [-1.7, 1.1, -4.1]) {

@@ -1,66 +1,46 @@
 # Implemented design
 
-This document describes the current implementation. The public entry point is `@drawcall/robotics`; the ROS application is an example rather than a required custom companion protocol.
+The browser is the simulated hardware. ROS owns estimation, mapping and navigation.
 
 ## Responsibilities
 
-| Layer                     | Owns                                                                                        |
-| ------------------------- | ------------------------------------------------------------------------------------------- |
-| Three.js application      | Scene hierarchy, renderer, physical robot assembly and display loop                         |
-| `@drawcall/physics` 0.4.0 | Bodies, joints, native `JointMotor`, measured state and fixed substeps                      |
-| `@drawcall/robotics`      | ROS transport, device registration, command freshness, sensor sampling and frame conversion |
-| ROS application           | Navigation/control policy and command publication                                           |
+| Owner                 | Responsibilities                                                                   |
+| --------------------- | ---------------------------------------------------------------------------------- |
+| Three.js application  | Scene, physical robot assembly, sensor placement and display loop                  |
+| Drawcall physics      | Bodies, joints, native motors, measured joint motion and fixed substeps            |
+| Robotics package      | Transport, sensor measurement publication, command expiry and lifecycle            |
+| ROS bridge adapter    | Encoder-only wheel odometry and velocity-command conversion                        |
+| robot_state_publisher | Fixed transforms from known mounting geometry                                      |
+| SLAM Toolbox          | Laser scan matching, map construction, loop closure and map-to-odometry correction |
+| Nav2                  | Costmaps, path planning, path following and recovery behaviors                     |
+| Mission client        | Operator goal sequence and status display                                          |
 
-Physics has no dependency on robotics. Robotics uses the `PhysicsWorld` contract; the warehouse selects Rapier. A motor binding does not implement a JavaScript servo: it sets a native `JointMotor` target.
+## Sensor boundary
 
-## Setup and ownership
+Camera and lidar use scene geometry internally to synthesize measurements. They publish image/calibration or ranges with timestamps and frame identifiers. They never publish their world positions or TF. JointStateSensor reports measured joint angles/velocities, analogous to ideal encoders. No ground-truth pose device is exported.
 
-`await setupROS2(url, { world, scene, renderer, namespace })` opens rosbridge and installs the default runtime. The scene and renderer support sensor capture, while the world supplies time and substep hooks. Setup has no robot inventory or device-discovery phase. It resolves on transport connection, not on ROS application readiness.
+These sensors do not yet model noise, quantization, distortion or rolling acquisition. Ideal measurements are distinct from leaking the simulator's world pose. The example's odometry integrates encoder angle changes and cannot observe wheel slip. SLAM receives that imperfect dead reckoning and independent scans, not simulator poses.
 
-`getROS2()` throws unless the default runtime is connected. Built-in devices capture that runtime in their constructors, or accept an explicit `ros` option. `new ROS2(connection, options)` permits an alternative implementation of the exported `Connection` interface; it does not install the default.
+## Frames and timing
 
-`CameraSensor` extends `withDevice(PerspectiveCamera)`; `LaserSensor` extends `withDevice(Object3D)`. Parenting determines spatial placement. Construction registers them independently of the scene graph, so removing a node from its parent does not stop publication. Call `dispose()` to unregister it and release its resources.
+Three forward -Z, left -X, up +Y map to ROS forward +X, left +Y, up +Z. Camera optical axes are right/down/forward. ROS owns the chain `map → odom → base_footprint → base_link → laser/camera_optical`. Fixed sensor mounting offsets come from the example URDF; the first encoder sample establishes an arbitrary odometry origin.
 
-`MotorBinding` binds an existing physics motor, with one binding per motor. Construction disables that motor until a fresh command arrives. Binding disposal disables actuation and unsubscribes without disposing the motor or joint. Runtime disposal disposes its registered devices and closes transport; the application retains the physics world and rendering resources.
+Before each fixed physics step, fresh ROS commands update native motors. After each step, `/clock` and due sensors use completed simulation time. This is asynchronous ROS transport, not a lockstep simulation. Outgoing publications drop above 4 MiB of websocket buffering.
 
-## Update sequence
+`MotorBinding` checks simulation and wall-clock command age. Expiry/disconnection disables actuation and permits coasting. The ROS bridge separately checks fresh velocity commands and encoders. Nav2 consumes `/odom` and `/robot/scan`, publishing `/cmd_vel`; the adapter converts that to wheel topics.
 
-The application calls `world.update(frameDelta)` and renders at display rate. Every executed fixed substep has this sequence:
+## Ownership and failures
 
-1. The world invokes its before-step observers at the starting simulation time.
-2. Robotics applies the latest fresh command to each bound motor, or disables stale actuation.
-3. The physics backend evaluates native drives and constraints and advances the world.
-4. The world exposes synchronized transforms, measured joint state and completed simulation time.
-5. Robotics publishes `/clock`, then calls registered after-step devices to sample at their individual rates.
+`setupROS2` establishes the default runtime; devices can receive an explicit `ros`. Device/withDevice handles registration and native Three.js inheritance. DeviceLifecycle defines optional step/stop hooks and required disposal. Removing a scene parent does not unregister a sensor.
 
-The synchronous device hooks do not wait for ROS. `/clock` and sensor stamps share simulation time, but a ROS timer may run before newly published sensors have arrived. Consumers use the latest available measurements. Dropped catch-up time is not simulated time.
+Runtime disposal owns device, subscription, physics-hook and transport cleanup. Cleanup attempts every release before surfacing aggregated errors. Motors, joints, world, scene and renderer remain application-owned. The transport does not reconnect automatically.
 
-`MotorBinding` receives unstamped `Float64` commands, replacing its previous value. It checks age against simulation time and monotonic wall time before a substep. Position commands use radians or meters; velocity commands use radians/second or meters/second. Velocity bindings require zero motor stiffness. Expiry disables the drive rather than applying brakes or holding a pose.
+A new browser simulation requires restarting the ROS stack: resetting only odometry while retaining an old SLAM graph is invalid. Backwards encoder timestamps terminate the service visibly. Disconnection without a clock reset may reconnect to the existing session.
 
-The physics backend's angular position restrictions still apply. ROS position controllers must respect its supported native-motor target domain; robotics does not supply trajectory interpolation or bypass backend errors.
+## Example scope
 
-## Extension contract
+The example uses upstream SLAM Toolbox and Nav2 with application-specific YAML configuration. It starts without a preloaded warehouse map. Four mission goals are coordinates in the initially established map frame. The camera is available for other perception work but is not used by the lidar navigation pipeline.
 
-A device extends `Device`, or uses `withDevice(Base)` when it already needs a superclass. Both provide registration and disposal. The structural contract has optional `beforeStep(time, delta)`, `afterStep(time, delta)` and `stop()`, plus required `dispose()`. The shared lifecycle registers through `ros.register(device)` and owns the unregister function. Manual structural implementations may use the same registration API. Built-in and external devices use the same mechanism; runtime dispatch has no device-type branches.
+The Python hardware adapter is a minimal ROS interface, not a ros2_control hardware plugin. Wheel geometry and mounting transforms must agree with the physical assembly, as on a real robot. Odometry covariance is uncalibrated. The planar lidar sees only its scan plane. There is no claim of calibrated localization accuracy or a full hardware sensor model.
 
-Extensions use `ros.publish` and `ros.subscribe`, `Schedule`, `stamp`, and frame-conversion helpers. They own command validation and their sampling/actuation behavior. Actuator extensions should implement `stop()` to remove their actuation when the runtime fails or disconnects. See the [package guide](packages/robotics/README.md#custom-devices) for an example.
-
-## Transport and failure
-
-`RosbridgeConnection` uses roslib over a websocket transport. Topic types are checked for conflicts. Subscriptions and publishers use queue length/size one. If the socket has more than 4 MiB buffered, new publications are dropped and counted. This bounds ordinary sustained publishing pressure; it is not a reliable delivery or acknowledgement protocol.
-
-Transport/protocol errors become runtime errors. A malformed motor message faults the runtime and stops actuators. Disconnection stops actuators when physics next invokes its hook. Device update failures are surfaced rather than silently converted into valid measurements. A failed runtime must be disposed and recreated; there is no automatic reconnect or session negotiation.
-
-## Data and coordinates
-
-Relative device topics use `/robot` by default. Camera `name` selects a topic prefix; laser `name` selects its scan topic. Callers must choose unique topic and frame IDs where needed. `/clock` and `/tf` are global. The implementation does not negotiate device IDs or exclusive ROS graph ownership.
-
-World positions map as `(x_ros, y_ros, z_ros) = (-z_three, -x_three, y_three)`. Body/laser rotations convert between corresponding forward-left-up bases. Camera TF uses an optical basis: right, down, forward. Pose, laser and camera TF are direct children of `map`; this is ground-truth simulation TF rather than a URDF-derived articulated frame tree.
-
-Joint feedback reports measured position/velocity; the effort array is empty because measured reaction effort is unavailable. Camera output is JPEG `CompressedImage` plus ideal pinhole `CameraInfo`, sharing the capture timestamp. Lidar uses backend raycasts, configurable body exclusion, a front 180° sweep and `range_max` for a miss.
-
-## Deliberate boundaries
-
-There is no `ros2_control` adapter, command timestamp scheduler, service/action layer, robot-description loader, registration handshake, lockstep, electrical motor model or coordinated reset. These are separate integrations to add when a concrete application needs them. Reset the demo by reloading the browser. Its controller detects backwards sensor timestamps and resets the patrol and sensor cache. Other ROS nodes remain responsible for handling clock jumps or restarting.
-
-The warehouse demonstrates a ROS-owned controller with camera and lidar inputs. Its lightweight obstacle avoidance is not a general navigation planner. Synchronous camera readback/JPEG and per-ray physics queries suit a small example; many high-resolution sensors need separate performance work.
+Validation includes physics behavior, no-pose-leak sensor tests, encoder integration tests, package/type checks and a live SLAM/Nav2 smoke check. The ROS guide documents full mission validation and reset procedures.

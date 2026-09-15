@@ -1,9 +1,14 @@
-export * from "./device.js";
-export * from "./runtime.js";
+export {
+  Device,
+  withDevice,
+  type DeviceOptions,
+  type DeviceLifecycle,
+} from "./device.js";
+export { ROS2, setupROS2, getROS2, type ROS2Options } from "./runtime.js";
 export type { Connection } from "./connection.js";
-export * from "./motor.js";
-export * from "./sensors.js";
-export * from "./camera.js";
-export * from "./laser.js";
-export * from "./frames.js";
-export * from "./time.js";
+export { MotorBinding, type MotorBindingOptions } from "./motor.js";
+export { CameraSensor } from "./sensors/camera.js";
+export { LaserSensor } from "./sensors/laser.js";
+export { JointStateSensor } from "./sensors/joint-state.js";
+export { rosPosition, rosRotation, rosOpticalRotation } from "./coordinates.js";
+export { Schedule, stamp } from "./time.js";

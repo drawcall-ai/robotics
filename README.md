@@ -28,7 +28,7 @@ pnpm dev
 
 Open the URL printed by Vite; if its preferred port is occupied, Vite chooses another. Click **Connect to ROS 2** with `ws://localhost:9090`. Compose exposes the websocket only on host `127.0.0.1`.
 
-The browser simulates the robot and publishes sensor data. The Python ROS node owns waypoint navigation and wheel commands. It patrols four goals, uses lidar for obstacle avoidance, and slows near the origin docking bay when its camera sees the orange sign. The dashboard displays ROS status and the captured camera image.
+The browser simulates the robot and publishes sensor data. SLAM Toolbox estimates position and builds an occupancy map from lidar and wheel encoders. Nav2 plans and follows four goals using that map. The dashboard shows the ROS map, estimated position and camera image. See the [ROS guide](examples/warehouse/ros/README.md) for architecture, reset and validation.
 
 Stop the Docker service when finished:
 
@@ -70,21 +70,23 @@ See the [package guide](packages/robotics/README.md) for imports, complete setup
 
 Defaults under namespace `/robot`:
 
-| Topic                                                     | Type                                  | Direction                 |
-| --------------------------------------------------------- | ------------------------------------- | ------------------------- |
-| `/robot/left_wheel/command`, `/robot/right_wheel/command` | `std_msgs/msg/Float64`                | ROS → browser             |
-| `/robot/joint_states`                                     | `sensor_msgs/msg/JointState`          | Browser → ROS             |
-| `/robot/pose`                                             | `geometry_msgs/msg/PoseStamped`       | Browser → ROS             |
-| `/robot/scan`                                             | `sensor_msgs/msg/LaserScan`           | Browser → ROS             |
-| `/robot/camera/image/compressed`                          | `sensor_msgs/msg/CompressedImage`     | Browser → ROS             |
-| `/robot/camera/camera_info`                               | `sensor_msgs/msg/CameraInfo`          | Browser → ROS             |
-| `/clock`                                                  | `rosgraph_msgs/msg/Clock`             | Browser → ROS             |
-| `/tf`                                                     | `tf2_msgs/msg/TFMessage`              | Browser → ROS             |
-| `/robot/status`                                           | `std_msgs/msg/String` containing JSON | Demo controller → browser |
+| Topic                                                     | Type                                  | Direction                      |
+| --------------------------------------------------------- | ------------------------------------- | ------------------------------ |
+| `/robot/left_wheel/command`, `/robot/right_wheel/command` | `std_msgs/msg/Float64`                | ROS → browser                  |
+| `/robot/joint_states`                                     | `sensor_msgs/msg/JointState`          | Browser → ROS                  |
+| `/robot/scan`                                             | `sensor_msgs/msg/LaserScan`           | Browser → ROS                  |
+| `/robot/camera/image/compressed`                          | `sensor_msgs/msg/CompressedImage`     | Browser → ROS                  |
+| `/robot/camera/camera_info`                               | `sensor_msgs/msg/CameraInfo`          | Browser → ROS                  |
+| `/odom`                                                   | `nav_msgs/msg/Odometry`               | Encoder adapter → ROS          |
+| `/map`                                                    | `nav_msgs/msg/OccupancyGrid`          | SLAM Toolbox → ROS/browser     |
+| `/cmd_vel`                                                | `geometry_msgs/msg/Twist`             | Nav2 → motor adapter           |
+| `/tf`, `/tf_static`                                       | `tf2_msgs/msg/TFMessage`              | ROS estimation and robot model |
+| `/clock`                                                  | `rosgraph_msgs/msg/Clock`             | Browser → ROS                  |
+| `/robot/status`                                           | `std_msgs/msg/String` containing JSON | Mission client → browser       |
 
 Relative topic names use the runtime namespace. Absolute names such as `/clock` and `/tf` bypass it. Use one clock publisher per ROS graph. Frame IDs are independent of topic namespaces; choose distinct frame IDs for multiple robots or sensors.
 
-Three.js forward `-Z`, left `-X`, up `+Y` map to ROS map axes `+X`, `+Y`, `+Z`. Camera optical frames use `+Z` forward, `+X` right and `+Y` down. Published TF locates body, laser and camera optical frames directly beneath `map`.
+Three.js forward `-Z`, left `-X`, up `+Y` map to ROS map axes `+X`, `+Y`, `+Z`. Camera optical frames use `+Z` forward, `+X` right and `+Y` down. The browser publishes no TF. ROS provides `map → odom → base_footprint → base_link → sensors` from SLAM, encoder odometry and known mounting offsets.
 
 ## Timing and limits
 
@@ -95,11 +97,11 @@ Motor commands are unstamped `Float64` values. Each binding keeps the latest rec
 Current scope:
 
 - Direct per-motor topics, not a `ros2_control` hardware plugin or trajectory action server.
-- Ground-truth map pose, not estimated odometry or localization.
-- A 180° planar lidar; no-hit rays use `range_max`, not infinity. All rays in a scan represent one simulation instant.
+- Wheel encoder odometry, SLAM Toolbox mapping/localization, and Nav2 navigation; no ground-truth pose API.
+- A configurable planar lidar, 360° by default; no-hit rays use `range_max + 1`, marking them outside the valid measurement range. All rays in a scan represent one simulation instant.
 - Synchronous WebGL readback and JPEG encoding, with 320×180 at 5 Hz as the camera default. Large images or many cameras can stall the browser. Outgoing publications are dropped when websocket buffering exceeds 4 MiB; `ros.dropped` counts them.
 - Ordinary perspective capture without lens distortion. Render-target capture bypasses application postprocessing.
-- Reset means reloading the application. The demo controller detects backwards sensor timestamps and restarts its patrol; other ROS nodes must handle clock jumps or be restarted. `world.reset()` alone is not a coordinated ROS reset.
+- Reset means reloading the application. Restart the ROS service before reloading the browser to reset SLAM and odometry together. Backwards encoder timestamps stop the service visibly. `world.reset()` alone is not a coordinated ROS reset.
 
 ## Validation
 
@@ -115,9 +117,9 @@ docker compose -f examples/warehouse/compose.yaml exec ros bash -lc \
   'source /opt/ros/jazzy/setup.bash && python3 /app/smoke.py --timeout 60'
 ```
 
-The smoke check requires live pose, scan, JPEG, joint-state and status messages, an advancing clock, nonzero commands on both wheels and resulting pose movement. A timeout fails visibly and reports which observations are missing.
+The smoke check requires live odometry, scan, JPEG, joint-state and status messages, an occupancy map and the expected TF chain, an advancing clock, nonzero commands on both wheels and resulting encoder-estimated motion. A timeout fails visibly and reports which observations are missing.
 
-For a complete circuit, including camera-assisted docking:
+For a complete circuit, through Nav2:
 
 ```sh
 docker compose -f examples/warehouse/compose.yaml exec ros bash -lc \

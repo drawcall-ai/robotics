@@ -7,7 +7,129 @@
     <title>Warehouse / Drawcall Robotics</title>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <header>
+        <div class="brand">
+          <div class="mark">d.</div>
+          <div>
+            <h1>drawcall <span style="color: #82999d">/ robotics</span></h1>
+            <small>Simulation workspace</small>
+          </div>
+        </div>
+        <div class="header-right">
+          <span>THREE.JS × ROS 2</span>
+          <div class="badge" id="connection"><i></i>DISCONNECTED</div>
+        </div>
+      </header>
+      <main>
+        <section class="viewport" aria-label="Interactive warehouse simulation">
+          <div class="scene-heading">
+            <div class="eyebrow">Environment / 001</div>
+            <h2>The warehouse</h2>
+            <p>A browser world. A real ROS 2 control loop.</p>
+          </div>
+          <div class="view-tools">
+            <button id="overview">Overview</button
+            ><button id="follow">Follow robot</button>
+          </div>
+          <div class="scene-footer">
+            <span><strong>DRAG</strong> orbit</span
+            ><span><strong>SCROLL</strong> zoom</span
+            ><span><strong>RIGHT DRAG</strong> pan</span>
+          </div>
+        </section>
+        <aside class="aside">
+          <section class="panel">
+            <div class="eyebrow">ROS bridge</div>
+            <h3>Connect the controller</h3>
+            <label class="eyebrow" for="endpoint">WebSocket endpoint</label
+            ><input
+              id="endpoint"
+              class="endpoint"
+              value="ws://localhost:9090"
+              spellcheck="false"
+            /><button id="connect" class="connect">Connect to ROS 2 ↗</button>
+            <p class="hint">
+              Start the Docker stack, then connect. ROS publishes wheel
+              commands; native physics moves the robot.
+            </p>
+            <p id="error" class="error" role="alert"></p>
+          </section>
+          <section class="panel">
+            <div class="eyebrow">Robot / DC–01</div>
+            <h3>Differential drive</h3>
+            <p id="status" class="status">Standing by for a ROS controller.</p>
+            <div class="metrics">
+              <div class="metric">
+                <span class="value" id="speed">0.00</span
+                ><span class="unit">m/s</span><label>Encoder speed</label>
+              </div>
+              <div class="metric">
+                <span class="value" id="time">0.0</span
+                ><span class="unit">s</span><label>Simulation time</label>
+              </div>
+              <div class="metric">
+                <span class="value" id="pos-x">0.00</span
+                ><span class="unit">m</span><label>SLAM position X</label>
+              </div>
+              <div class="metric">
+                <span class="value" id="pos-y">0.00</span
+                ><span class="unit">m</span><label>SLAM position Y</label>
+              </div>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="eyebrow">Sensor / RGB</div>
+            <h3>Onboard camera</h3>
+            <div class="camera" id="camera">
+              Camera available after connection
+            </div>
+            <div class="legend">
+              <span>320 × 180 · 5 Hz</span><b id="camera-frames">No frames</b>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="eyebrow">SLAM / occupancy map</div>
+            <h3>Built from lidar</h3>
+            <canvas
+              id="map"
+              width="1"
+              height="1"
+              style="
+                width: 100%;
+                image-rendering: pixelated;
+                background: #6e6e6e;
+              "
+              aria-label="Live SLAM occupancy map"
+            ></canvas>
+            <p class="hint">
+              White: free · black: occupied · gray: unknown. No preloaded
+              warehouse map.
+            </p>
+          </section>
+          <section class="panel">
+            <div class="eyebrow">Mission / patrol</div>
+            <h3>Four-point circuit</h3>
+            <div class="route">
+              <span>01</span><span>02</span><span>03</span><span>04</span>
+            </div>
+            <p class="hint">
+              Lidar + encoders → SLAM Toolbox → Nav2 → wheel commands.
+            </p>
+            <p class="hint" id="mission-target">
+              Waiting for mission telemetry.
+            </p>
+            <div class="legend">
+              <span>Laser scan</span><b id="scan-frames">361 rays · 10 Hz</b>
+            </div>
+          </section>
+        </aside>
+      </main>
+      <footer>
+        <span><b>Native physics</b> · fixed substeps · simulation clock</span
+        ><span>ROS 2 / Docker</span>
+      </footer>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

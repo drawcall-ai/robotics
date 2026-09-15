@@ -5,6 +5,7 @@ import {
   RevoluteJoint,
   RigidBody,
   SphereCollider,
+  SphericalJoint,
 } from "@drawcall/physics";
 import type { PhysicsWorld } from "@drawcall/physics";
 import {
@@ -39,11 +40,8 @@ export function createRobot(world: PhysicsWorld, scene: Scene) {
   const lid = new Mesh(new BoxGeometry(0.54, 0.07, 0.62), dark);
   lid.position.y = 0.145;
   chassis.add(lid);
-  const mast = new Mesh(new CylinderGeometry(0.035, 0.035, 0.3, 12), metal);
-  mast.position.set(0, 0.28, 0.06);
-  chassis.add(mast);
   const lidar = new Mesh(new CylinderGeometry(0.09, 0.09, 0.06, 24), dark);
-  lidar.position.set(0, 0.46, 0.06);
+  lidar.position.set(0, 0.21, -0.32);
   chassis.add(lidar);
   for (const x of [-0.22, 0.22]) {
     const light = new Mesh(
@@ -57,15 +55,20 @@ export function createRobot(world: PhysicsWorld, scene: Scene) {
     light.position.set(x, 0.01, -0.422);
     chassis.add(light);
   }
-  // Low-friction ball supports stabilize the chassis without constraining wheel yaw.
+  const casters: RigidBody[] = [];
   for (const z of [-0.31, 0.31]) {
-    const caster = new SphereCollider({ radius: 0.09 });
-    caster.position.set(0, -0.27, z);
-    caster.setMaterial({ staticFriction: 0.001, dynamicFriction: 0.001 });
-    chassis.add(caster);
-    const ball = new Mesh(new SphereGeometry(0.09, 16, 12), metal);
-    ball.position.copy(caster.position);
-    chassis.add(ball);
+    const caster = new RigidBody({ world, mass: 0.2, canSleep: false });
+    caster.position.set(0, 0.09, z);
+    caster.add(new SphereCollider({ radius: 0.09 }));
+    caster.add(new Mesh(new SphereGeometry(0.09, 16, 12), metal));
+    const joint = new SphericalJoint({
+      body0: chassis,
+      body1: caster,
+      frame0: new Matrix4().makeTranslation(0, -0.27, z),
+      frame1: new Matrix4(),
+    });
+    scene.add(caster, joint);
+    casters.push(caster);
   }
   scene.add(chassis);
   function wheel(name: string, x: number) {
@@ -107,5 +110,10 @@ export function createRobot(world: PhysicsWorld, scene: Scene) {
   }
   const left = wheel("left_wheel", -0.45);
   const right = wheel("right_wheel", 0.45);
-  return { chassis, left, right, bodies: [chassis, left.body, right.body] };
+  return {
+    chassis,
+    left,
+    right,
+    bodies: [chassis, left.body, right.body, ...casters],
+  };
 }

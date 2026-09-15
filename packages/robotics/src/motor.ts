@@ -1,3 +1,4 @@
+import { disposeAll } from "./cleanup.js";
 import type { JointMotor } from "@drawcall/physics";
 import { getROS2, type ROS2 } from "./runtime.js";
 import { Device } from "./device.js";
@@ -15,7 +16,6 @@ export class MotorBinding extends Device {
   private readonly mode: "position" | "velocity";
   private readonly timeout: number;
   private command?: { value: number; time: number; wall: number };
-  private applied?: number;
   private readonly unsubscribe: () => void;
   private disposed = false;
   constructor(options: MotorBindingOptions) {
@@ -72,27 +72,33 @@ export class MotorBinding extends Device {
       this.stop();
       return;
     }
-    if (this.applied === command.value && this.motor.enabled) return;
-    this.motor.setTarget(
-      this.mode === "position"
-        ? { position: command.value }
-        : { velocity: command.value },
-    );
-    this.motor.setEnabled(true);
-    this.applied = command.value;
+    const position = this.mode === "position" ? command.value : 0;
+    const velocity = this.mode === "velocity" ? command.value : 0;
+    if (
+      this.motor.target?.position !== position ||
+      this.motor.target.velocity !== velocity
+    )
+      this.motor.setTarget({ position, velocity });
+    if (!this.motor.enabled) this.motor.setEnabled(true);
   }
   stop(): void {
     this.command = undefined;
-    this.applied = undefined;
     if (!this.motor.disposed && this.motor.enabled)
       this.motor.setEnabled(false);
   }
   dispose(): void {
     if (this.disposed) return;
-    this.stop();
-    this.unsubscribe();
-    super.dispose();
-    bindings.delete(this.motor);
     this.disposed = true;
+    disposeAll(
+      [
+        () => this.stop(),
+        this.unsubscribe,
+        () => super.dispose(),
+        () => {
+          bindings.delete(this.motor);
+        },
+      ],
+      "Failed to dispose motor binding",
+    );
   }
 }

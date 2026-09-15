@@ -72,13 +72,12 @@ Publish repeated `std_msgs/msg/Float64` messages to `/robot/rotor/command` to dr
 
 `setupROS2` connects and captures `world`, `scene` and `renderer`. `getROS2()` retrieves the default connected runtime or throws. Device constructors register automatically with that runtime; `{ ros }` selects an explicit one. There is no scene auto-discovery and no upfront device array.
 
-| Device             | Configuration and output                                                                                                                      |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `MotorBinding`     | Existing `motor`, `name`, `mode`, optional `timeout`; subscribes to `<name>/command`                                                          |
-| `CameraSensor`     | PerspectiveCamera with `name`, dimensions, `fov`, `rate`, `frameId`; publishes `<name>/image/compressed`, `<name>/camera_info` and optical TF |
-| `LaserSensor`      | Object3D with `name`, `samples`, `range`, `rate`, `frameId`, `excludeBodies`; publishes scan and TF                                           |
-| `JointStateSensor` | `joints` record mapping names to axis joints, optional `rate`; publishes `joint_states`                                                       |
-| `PoseSensor`       | `object`, optional `rate`, `childFrameId`; publishes ground-truth `pose` and TF beneath `map`                                                 |
+| Device             | Configuration and output                                                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `MotorBinding`     | Existing `motor`, `name`, `mode`, optional `timeout`; subscribes to `<name>/command`                                           |
+| `CameraSensor`     | PerspectiveCamera with `name`, dimensions, `fov`, `rate`, `frameId`; publishes `<name>/image/compressed`, `<name>/camera_info` |
+| `LaserSensor`      | Object3D with `name`, `samples`, `range`, `rate`, `frameId`, `excludeBodies`; publishes scan                                   |
+| `JointStateSensor` | `joints` record mapping names to axis joints, optional `rate`; publishes `joint_states`                                        |
 
 For multiple spatial sensors, choose distinct names and frame IDs:
 
@@ -88,9 +87,11 @@ rear.rotation.y = Math.PI;
 rotor.add(rear);
 ```
 
+These are ideal simulated measurements, without a hardware noise model. Reading world geometry internally to generate images/ranges does not expose it to ROS.
+
 Removing a sensor from its Three.js parent does not unregister it. Call `sensor.dispose()` to stop publication and release its resources. Runtime disposal disposes all registered devices and subscriptions, removes hooks and closes the connection; application-owned motors, joints, bodies, scene and renderer remain intact.
 
-Relative topics use the default namespace `/robot`; `{ namespace: "/other_robot" }` changes it. Absolute topics bypass the namespace. Frame IDs do not automatically inherit the topic namespace. `/clock` and `/tf` remain global.
+Relative topics use the default namespace `/robot`; `{ namespace: "/other_robot" }` changes it. Absolute topics bypass the namespace. Frame IDs do not automatically inherit the topic namespace. `/clock` remains global. Sensors never publish TF or world poses; the ROS robot model owns mounting transforms and localization owns estimated world transforms.
 
 ## Custom devices
 
@@ -135,7 +136,7 @@ scene.add(camera);
 
 `new Diagnostic()` uses the default runtime; `new Diagnostic({ ros })` selects one explicitly. `args` preserves the base constructor’s tuple types and is optional when that constructor accepts no arguments. Native Three.js methods and `instanceof PerspectiveCamera` still work. If a device owns resources, override `dispose()` to release them and call `super.dispose()` to unregister. The mixin handles ROS registration only.
 
-Registration happens in `super()`. Validate constructor inputs before it; if later initialization throws, call `super.dispose()` in the error path before rethrowing. The runtime accepts structurally compatible devices too, so inheritance is optional.
+Registration happens in `super()`. Validate constructor inputs before it; if later initialization throws, call `super.dispose()` in the error path before rethrowing. The runtime accepts the `DeviceLifecycle` structural interface too: hooks and `dispose()` suffice, without inheritance or a `ros` field. Runtime cleanup attempts all devices, subscriptions, hooks and transport even if a release throws, then reports an `AggregateError`.
 
 ## Runtime semantics
 
@@ -145,4 +146,4 @@ Body frames map Three.js forward `-Z`, left `-X`, up `+Y` to ROS forward `+X`, l
 
 The initial transport uses roslib/rosbridge, per-topic queues of one and a 4 MiB websocket publication threshold. Inspect `ros.connected`, `ros.error` and `ros.dropped`. Reconnection requires disposing the runtime and calling setup again. HTTPS applications need a compatible WSS endpoint.
 
-This package currently provides direct `Float64` motor commands, not `ros2_control`. Pose is ground truth. Lidar is a simultaneous front 180° scan with maximum range for misses. Camera capture uses synchronous WebGL readback and JPEG encoding; defaults are 320×180 at 5 Hz. Reload for a fresh simulation clock. The demo controller resets on backwards sensor timestamps; other ROS nodes must handle clock jumps or restart. Physics reset alone is not coordinated with ROS.
+This package currently provides direct `Float64` motor commands, not `ros2_control`. There is no ground-truth pose publisher. Lidar is a simultaneous 360° scan by default, configurable with `angleMin`/`angleMax`, with `range_max + 1` for misses. Camera capture uses synchronous WebGL readback and JPEG encoding; defaults are 320×180 at 5 Hz. Reload for a fresh simulation clock. Restart the example ROS stack before reloading the browser; backwards encoder timestamps fail visibly rather than mixing SLAM sessions. Physics reset alone is not coordinated with ROS.

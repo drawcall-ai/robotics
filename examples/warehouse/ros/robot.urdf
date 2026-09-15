@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<robot name="warehouse">
+  <link name="base_footprint"/>
+  <link name="base_link"/>
+  <joint name="chassis_mount" type="fixed">
+    <parent link="base_footprint"/><child link="base_link"/>
+    <origin xyz="0 0 0.36"/>
+  </joint>
+  <link name="laser"/>
+  <joint name="laser_mount" type="fixed">
+    <parent link="base_link"/><child link="laser"/>
+    <origin xyz="0.32 0 0.24"/>
+  </joint>
+  <link name="camera_optical"/>
+  <joint name="camera_mount" type="fixed">
+    <parent link="base_link"/><child link="camera_optical"/>
+    <origin xyz="0.38 0 0.28" rpy="-1.5707963267948966 0 -1.5707963267948966"/>
+  </joint>
+</robot>

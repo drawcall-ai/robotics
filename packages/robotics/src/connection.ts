@@ -1,3 +1,4 @@
+import { disposeAll } from "./cleanup.js";
 import { AbstractTransport, Ros, Topic, type RosbridgeMessage } from "roslib";
 
 export interface Connection {
@@ -145,12 +146,14 @@ export class RosbridgeConnection implements Connection {
     return () => topic.unsubscribe(receive);
   }
   dispose(): void {
-    if (this.ros.isConnected)
-      for (const topic of this.topics.values()) {
-        topic.unsubscribe();
-        topic.unadvertise();
-      }
+    const releases = this.ros.isConnected
+      ? [...this.topics.values()].flatMap((topic) => [
+          () => topic.unsubscribe(),
+          () => topic.unadvertise(),
+        ])
+      : [];
+    releases.push(() => this.ros.close());
     this.topics.clear();
-    this.ros.close();
+    disposeAll(releases, "Failed to dispose ROS connection");
   }
 }

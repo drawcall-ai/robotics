@@ -39,7 +39,23 @@ export function readStatus(message: unknown) {
     goal: goal.join(", "),
     images: number("images"),
     scans: number("scans"),
-    orange: number("orange_fraction"),
-    distance: number("front_distance"),
+    maps: number("maps"),
+    speed: number("speed"),
+    pose: readPose(Reflect.get(value, "pose")),
   };
+}
+
+function readPose(value: unknown): [number, number] | null {
+  if (value === null) return null;
+  if (!Array.isArray(value) || value.length !== 2)
+    throw new Error("Invalid SLAM position");
+  const [x, y]: unknown[] = value;
+  if (
+    typeof x !== "number" ||
+    typeof y !== "number" ||
+    !Number.isFinite(x) ||
+    !Number.isFinite(y)
+  )
+    throw new Error("Invalid SLAM position");
+  return [x, y];
 }

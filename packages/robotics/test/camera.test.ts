@@ -1,3 +1,5 @@
+import { Quaternion } from "three";
+import { rosPosition, rosOpticalRotation } from "../src/coordinates.js";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   Scene,
@@ -10,7 +12,7 @@ import {
 import type { Connection } from "../src/connection.js";
 import { setupWorld } from "@drawcall/physics-rapier";
 import { ROS2 } from "../src/runtime.js";
-import { CameraSensor } from "../src/camera.js";
+import { CameraSensor } from "../src/sensors/camera.js";
 
 vi.mock("three", async (importOriginal) => {
   const three = await importOriginal<typeof import("three")>();
@@ -179,4 +181,15 @@ it("restores the previous render target, face, mip, viewport, scissor and XR aft
   expect(renderer.getScissorTest()).toBe(true);
   expect(renderer.xr.enabled).toBe(true);
   expect(messages).toHaveLength(0);
+});
+
+it("publishes only image and calibration, never a camera world pose", async () => {
+  const { camera, messages } = await fixture();
+  camera.position.set(3, 4, 5);
+  camera.rotation.set(0.2, 0.7, -0.1);
+  camera.afterStep(0.25);
+  expect(messages.map(({ name }) => name)).toEqual([
+    "/robot/camera/image/compressed",
+    "/robot/camera/camera_info",
+  ]);
 });

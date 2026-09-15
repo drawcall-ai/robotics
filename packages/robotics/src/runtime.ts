@@ -1,4 +1,5 @@
-import type { Device } from "./device.js";
+import { disposeAll } from "./cleanup.js";
+import type { DeviceLifecycle } from "./device.js";
 import type { PhysicsWorld } from "@drawcall/physics";
 import type { Scene, WebGLRenderer } from "three";
 import { RosbridgeConnection, type Connection } from "./connection.js";
@@ -18,7 +19,7 @@ export class ROS2 {
   readonly scene: Scene;
   readonly renderer: WebGLRenderer;
   readonly namespace: string;
-  private readonly devices = new Set<Device>();
+  private readonly devices = new Set<DeviceLifecycle>();
   private readonly subscriptions = new Set<() => void>();
   private readonly hooks: (() => void)[];
   private fault?: Error;
@@ -56,7 +57,7 @@ export class ROS2 {
       throw new Error(`Invalid ROS topic: ${topic}`);
     return topic;
   }
-  register(device: Device): () => void {
+  register(device: DeviceLifecycle): () => void {
     if (!this.connected) throw new Error("ROS runtime is disconnected");
     if (this.devices.has(device))
       throw new Error("Device is already registered");
@@ -85,19 +86,37 @@ export class ROS2 {
       },
     );
     const release = () => {
-      unsubscribe();
-      this.subscriptions.delete(release);
+      if (this.subscriptions.delete(release)) unsubscribe();
     };
     this.subscriptions.add(release);
     return release;
   }
   fail(error: unknown): void {
-    this.fault = error instanceof Error ? error : new Error(String(error));
-    for (const device of this.devices) device.stop?.();
+    const cause = error instanceof Error ? error : new Error(String(error));
+    this.fault = cause;
+    const errors = this.stop();
+    this.fault = errors.length
+      ? new AggregateError([cause, ...errors], cause.message, { cause })
+      : cause;
+  }
+  private stop(): unknown[] {
+    const errors: unknown[] = [];
+    for (const device of this.devices) {
+      try {
+        device.stop?.();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    return errors;
   }
   private update(phase: "beforeStep" | "afterStep", dt: number): void {
     if (!this.connected) {
-      for (const device of this.devices) device.stop?.();
+      const errors = this.stop();
+      if (errors.length) {
+        this.fault = new AggregateError(errors, "Failed to stop ROS devices");
+        throw this.fault;
+      }
       return;
     }
     try {
@@ -108,17 +127,21 @@ export class ROS2 {
       for (const device of this.devices) device[phase]?.(this.world.time, dt);
     } catch (error) {
       this.fail(error);
-      throw error;
+      throw this.fault;
     }
   }
   dispose(): void {
     if (this.disposed) return;
-    for (const device of [...this.devices]) device.dispose();
-    for (const release of [...this.subscriptions]) release();
-    for (const release of this.hooks) release();
-    this.connection.dispose();
     this.disposed = true;
     if (current === this) current = undefined;
+    const releases = [
+      ...[...this.devices].map((device) => () => device.dispose()),
+      ...this.subscriptions,
+      ...this.hooks,
+      () => this.connection.dispose(),
+    ];
+    this.devices.clear();
+    disposeAll(releases, "Failed to dispose ROS runtime");
   }
 }
 
