@@ -34,14 +34,13 @@ class Socket extends AbstractTransport {
 
 export class RosbridgeConnection implements Connection {
   private readonly ros: Ros;
-  private socket?: Socket;
   private readonly topics = new Map<string, Topic<unknown>>();
   error?: Error;
   constructor() {
     this.ros = new Ros({
       transportFactory: async (url) => {
-        this.socket = new Socket(url);
-        this.socket.on("message", (message) => {
+        const socket = new Socket(url);
+        socket.on("message", (message) => {
           if (
             message.op === "status" &&
             "level" in message &&
@@ -51,7 +50,7 @@ export class RosbridgeConnection implements Connection {
               `ROS bridge: ${"msg" in message ? String(message.msg) : "protocol error"}`,
             );
         });
-        return this.socket;
+        return socket;
       },
     });
     this.ros.on("error", () => {
@@ -68,10 +67,8 @@ export class RosbridgeConnection implements Connection {
         this.ros.off("connection", opened);
         this.ros.off("error", failed);
         this.ros.off("close", failed);
-        if (error) {
-          this.dispose();
-          reject(error);
-        } else resolve();
+        if (error) reject(error);
+        else resolve();
       };
       const opened = () => finish();
       const failed = () =>
@@ -88,6 +85,17 @@ export class RosbridgeConnection implements Connection {
         .catch((error: unknown) =>
           finish(error instanceof Error ? error : new Error(String(error))),
         );
+    }).catch((cause: unknown) => {
+      try {
+        this.dispose();
+      } catch (error) {
+        throw new AggregateError(
+          [cause, error],
+          "ROS bridge connection and cleanup failed",
+          { cause },
+        );
+      }
+      throw cause;
     });
   }
   private topic(name: string, type: string): Topic<unknown> {

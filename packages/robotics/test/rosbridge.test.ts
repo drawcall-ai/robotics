@@ -147,3 +147,24 @@ it("encodes byte arrays as base64 for the rosbridge wire format", async () => {
     }),
   );
 });
+
+it("rejects a failed connection with both errors when closing also fails", async () => {
+  const connection = new RosbridgeConnection();
+  connections.push(connection);
+  const opening = connection.connect("ws://localhost:9090", 1000);
+  await Promise.resolve();
+  const socket = WebSocketStub.instances[0];
+  if (!socket) throw new Error("WebSocket was not created");
+  const failure = new Error("Socket close failed");
+  vi.spyOn(socket, "close").mockImplementationOnce(() => {
+    throw failure;
+  });
+  const rejected = expect(opening).rejects.toMatchObject({
+    cause: expect.objectContaining({
+      message: "Unable to connect to ROS bridge at ws://localhost:9090",
+    }),
+    errors: [expect.any(Error), expect.objectContaining({ errors: [failure] })],
+  });
+  socket.onerror?.(new Event("error"));
+  await rejected;
+});

@@ -36,7 +36,7 @@ export interface LinkJoint {
  * The kinematic tree in link frames: the base and every body an axis joint hangs from, parents before
  * children. Every pose is read relative to its own body; only `restPose` composes across bodies.
  */
-export function resolveLinks(
+export function buildLinkTree(
   root: RigidBody,
   axes: ReadonlyMap<string, AxisJoint>,
 ): { base: Link; links: Map<RigidBody, Link>; joints: LinkJoint[] } {

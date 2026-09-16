@@ -11,7 +11,7 @@ import { getROS2, type ROS2 } from "../runtime.js";
 import {
   inLinkFrame,
   lowestPoint,
-  resolveLinks,
+  buildLinkTree,
   type Link,
   type LinkJoint,
 } from "./links.js";
@@ -30,7 +30,7 @@ export function exportURDF({
 }: { ros?: ROS2; name?: string } = {}): string {
   const robot = findRobot(ros, name);
   robot.updateWorldMatrix(true, true);
-  const { base, links, joints } = resolveLinks(robot.base, robot.joints);
+  const { base, links, joints } = buildLinkTree(robot.base, robot.joints);
   const frames = [...robot.frames];
   unique("link", [
     ...[...links.values()].map((link) => link.name),

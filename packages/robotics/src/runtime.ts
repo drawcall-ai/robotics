@@ -164,6 +164,7 @@ export class ROS2 {
       throw this.fault;
     }
   }
+  /** Disconnects synchronously. The renderer owner must await camera disposal before releasing GPU resources. */
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;

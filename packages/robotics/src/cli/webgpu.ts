@@ -26,26 +26,38 @@ export async function createRenderer(): Promise<WebGPURenderer> {
   gpu.adapter = adapter;
   const device = await adapter.requestDevice();
   gpu.device = device;
-  // Dawn has no canvas or swapchain. Sensors only render into targets, so the renderer gets inert stand-ins.
-  const context = {
-    configure() {},
-    getCurrentTexture(): GPUTexture {
-      throw new Error("Headless rendering has no canvas to present to");
-    },
-  } as unknown as GPUCanvasContext;
-  const canvas = {
-    width: 1,
-    height: 1,
-    clientWidth: 1,
-    clientHeight: 1,
-    style: {},
-    addEventListener() {},
-    removeEventListener() {},
-    setAttribute() {},
-    getContext: () => context,
-  } as unknown as HTMLCanvasElement;
-  const renderer = new WebGPURenderer({ device, canvas, context });
+  const renderer = new WebGPURenderer({ device, canvas: new HeadlessCanvas() });
+  using cleanup = new DisposableStack();
+  cleanup.defer(() => renderer.dispose());
   await renderer.init();
   renderer.setSize(1, 1, false);
+  cleanup.move();
   return renderer;
+}
+
+// Three requires canvas dimensions even when all rendering uses offscreen targets.
+// Dawn supplies no presentation surface, so attempts to use one fail explicitly.
+class HeadlessCanvas extends EventTarget implements OffscreenCanvas {
+  width = 1;
+  height = 1;
+  oncontextlost = null;
+  oncontextrestored = null;
+
+  getContext(): never {
+    throw new Error(
+      "Headless rendering has no canvas context; use a render target",
+    );
+  }
+
+  async convertToBlob(): Promise<never> {
+    throw new Error(
+      "Headless rendering has no canvas image; read a render target",
+    );
+  }
+
+  transferToImageBitmap(): never {
+    throw new Error(
+      "Headless rendering has no canvas image; read a render target",
+    );
+  }
 }

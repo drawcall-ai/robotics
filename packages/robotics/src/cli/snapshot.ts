@@ -11,22 +11,20 @@ export const snapshot = new Command("snapshot")
 
 async function run(topic: string, file: string): Promise<void> {
   const connection = await RclConnection.create("snapshot");
-  const message = await new Promise<unknown>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      release();
-      reject(new Error(`No image on ${topic} within 10 s`));
-    }, 10_000);
-    const release = connection.subscribe(
-      topic,
-      "sensor_msgs/msg/CompressedImage",
-      (received) => {
-        clearTimeout(timer);
-        release();
-        resolve(received);
-      },
-    );
-  });
-  connection.dispose();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let message: unknown;
+  {
+    using resources = new DisposableStack();
+    resources.defer(() => connection.dispose());
+    resources.defer(() => clearTimeout(timer));
+    message = await new Promise<unknown>((resolve, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`No image on ${topic} within 10 s`)),
+        10_000,
+      );
+      connection.subscribe(topic, "sensor_msgs/msg/CompressedImage", resolve);
+    });
+  }
   if (typeof message !== "object" || message === null || !("data" in message))
     throw new Error("Malformed CompressedImage");
   const data = message.data;

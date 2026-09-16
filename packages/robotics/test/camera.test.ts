@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { decode } from "jpeg-js";
 import { RenderTarget, Scene, Vector3 } from "three";
 import { CameraSensor } from "../src/devices/camera.js";
@@ -117,4 +117,44 @@ it("drops a frame whose readback completes after disposal", async () => {
   ros.dispose();
   await renderer.flush();
   expect(messages).toHaveLength(0);
+});
+
+it("finishes an individual camera's readback before releasing its target and drops the frame", async () => {
+  const { ros, camera, renderer, messages } = await fixture();
+  const dispose = vi.spyOn(RenderTarget.prototype, "dispose");
+  camera.afterStep(0.2);
+  const disposed = camera.dispose();
+  expect(camera.dispose()).toBe(disposed);
+  const finished = vi.fn();
+  disposed?.then(finished);
+  expect(ros.find(CameraSensor)).toEqual([]);
+  expect(dispose).not.toHaveBeenCalled();
+  await Promise.resolve();
+  expect(finished).not.toHaveBeenCalled();
+  await renderer.flush();
+  await disposed;
+  expect(finished).toHaveBeenCalledOnce();
+  expect(dispose).toHaveBeenCalledOnce();
+  expect(messages).toHaveLength(0);
+  expect(ros.connected).toBe(true);
+  camera.afterStep(0.4);
+  expect(renderer.readbacks).toHaveLength(0);
+});
+
+it("reports a disposed camera's failed readback to its owner without faulting the runtime", async () => {
+  const { ros, camera, renderer, messages } = await fixture();
+  const dispose = vi.spyOn(RenderTarget.prototype, "dispose");
+  vi.spyOn(renderer, "readRenderTargetPixelsAsync").mockRejectedValue(
+    new Error("GPU readback failed"),
+  );
+  camera.afterStep(0.2);
+  const failure = expect(camera.dispose()).rejects.toThrow(
+    "GPU readback failed",
+  );
+  await renderer.flush();
+  await failure;
+  expect(dispose).toHaveBeenCalledOnce();
+  expect(messages).toHaveLength(0);
+  expect(ros.connected).toBe(true);
+  expect(ros.error).toBeUndefined();
 });

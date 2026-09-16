@@ -66,11 +66,13 @@ import { ROS2, RosbridgeConnection } from "@drawcall/robotics";
 
 const connection = new RosbridgeConnection();
 await connection.connect("ws://localhost:9090", 10_000);
-new ROS2(connection, { renderer, namespace: "/robot" }); // in the default physics world
+const ros = new ROS2(connection, { renderer, namespace: "/robot" }); // in the default physics world
 await import("./scene.ts"); // the same script the CLI runs
 ```
 
 `renderer` is a `CaptureRenderer`: a Three.js `WebGPURenderer`, or anything with `render`, `getRenderTarget`, `setRenderTarget` and `readRenderTargetPixelsAsync`. Byte arrays are `Uint8Array` everywhere; the rosbridge transport encodes them as base64 on the wire.
+
+The page owns renderer cleanup. Before shutting down, capture `const cameras = ros.find(CameraSensor)`, then call `ros.dispose()` to disconnect and detach every device. Await `Promise.allSettled(cameras.map(async (camera) => camera.dispose()))` before disposing the renderer, and report any rejected results: every pending GPU readback must finish before its target can be released. Register the camera joins in the page's cleanup scope before calling `ros.dispose()`, so they run even when synchronous runtime disposal throws. Register renderer and world disposal outside those joins so both still run if a readback rejects. Disposing one camera follows the same rule: `await camera.dispose()` detaches it immediately and waits for its GPU cleanup; a readback failure rejects that promise without faulting the remaining runtime.
 
 ## Devices
 
@@ -88,4 +90,4 @@ Devices register with the runtime they are given, by default the current runtime
 
 ## Custom devices
 
-Implement the `Device` interface: `beforeStep(time, delta)` for commands, `afterStep(time, delta)` for measurements, `stop()` for faults and `dispose()` as needed, then call `ros.register(this)`, which returns the unregister function; `dispose()` calls it. `ros.publish` and `ros.subscribe` are the building blocks. Runtime disposal releases every device, hook and the transport, and reports an `AggregateError` if any release throws.
+Implement the `Device` interface: `beforeStep(time, delta)` for commands, `afterStep(time, delta)` for measurements, `stop()` for faults and `dispose()` as needed, then call `ros.register(this)`, which returns the unregister function; `dispose()` calls it. `ros.publish` and `ros.subscribe` are the building blocks. Runtime disposal synchronously calls every device's disposal, releases hooks and the transport, and reports an `AggregateError` if any synchronous release throws. Devices with asynchronous work, such as cameras, expose completion to the owner of the resources that work uses; runtime disposal does not await it.

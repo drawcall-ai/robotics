@@ -14,10 +14,14 @@ export const urdf = new Command("urdf")
   .option("--robot <name>", "the robot, if the scene has several")
   .action(
     async (scene: string, options: { namespace: string; robot?: string }) => {
-      setDefaultWorld(new AuthoringWorld());
+      const world = new AuthoringWorld();
+      setDefaultWorld(world);
+      using resources = new DisposableStack();
+      resources.defer(() => world.dispose());
       const ros = new ROS2(new OfflineConnection(), {
         namespace: options.namespace,
       });
+      resources.defer(() => ros.dispose());
       await import(pathToFileURL(resolve(scene)).href);
       process.stdout.write(exportURDF({ ros, name: options.robot }));
     },

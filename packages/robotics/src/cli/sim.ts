@@ -9,7 +9,7 @@ import { LaserSensor } from "../devices/laser.js";
 import { findRobot } from "../devices/robot.js";
 import { ROS2 } from "../runtime.js";
 import { defaultLayout } from "./layout.js";
-import { openLichtblick } from "./lichtblick.js";
+import { serveLichtblick } from "./lichtblick.js";
 
 /** The simulator process: a ROS node that runs a scene until the launch stops it. */
 export const sim = new Command("sim")
@@ -25,7 +25,16 @@ export const sim = new Command("sim")
     "serve Lichtblick with a layout for the scene's topics and open it (BROWSER=none: serve only)",
   )
   .option("--no-viewer", "run without a viewer (default)")
-  .action(run);
+  .action(
+    async (
+      scene: string,
+      options: { namespace: string; robot?: string; viewer?: boolean },
+    ) => {
+      await run(scene, options);
+      // Dawn keeps process-lifetime native handles; exit only after scoped cleanup.
+      process.exit(0);
+    },
+  );
 
 async function run(
   scene: string,
@@ -35,19 +44,39 @@ async function run(
   // Physics first: instantiating Rapier's wasm after the Dawn renderer exists crashes the process.
   const { setupWorld } = await import("@drawcall/physics-rapier");
   const { createRenderer } = await import("./webgpu.js");
-  await setupWorld({
+  const world = await setupWorld({
     gravity: [0, -9.81, 0],
     fixedDelta: 1 / 120,
     maxSubsteps: 16,
     solverIterations: 12,
   });
+  await using resources = new AsyncDisposableStack();
+  resources.defer(() => world.dispose());
   const renderer = await createRenderer();
+  resources.defer(() => renderer.dispose());
   const connection = await RclConnection.create("sim");
-  const ros = new ROS2(connection, { renderer, namespace: options.namespace });
+  resources.defer(() => connection.dispose());
+  const ros = new ROS2(connection, {
+    renderer,
+    namespace: options.namespace,
+  });
+  resources.defer(async () => {
+    const captures = Promise.allSettled(
+      ros.find(CameraSensor).map(async (camera) => camera.dispose()),
+    );
+    await using cameras = new AsyncDisposableStack();
+    cameras.defer(async () => {
+      const errors = (await captures)
+        .filter((result) => result.status === "rejected")
+        .map((result) => result.reason);
+      if (errors.length)
+        throw new AggregateError(errors, "Failed to stop cameras");
+    });
+    ros.dispose();
+  });
   // The scene builds against the current runtime and registers its devices there.
   await import(pathToFileURL(resolve(scene)).href);
   const base = findRobot(ros, options.robot).base;
-  const world = ros.world;
   console.error(`Simulating ${scene} under ${ros.namespace}`);
 
   // Pause, resume, step and reset plus a ground-truth state topic, the way other simulators expose them.
@@ -93,52 +122,72 @@ async function run(
     });
   }
 
-  let viewer: { close(): void } | undefined;
-  let last = performance.now();
-  let reported = last;
-  /** Advances the world by the wall time passed unless paused, when only single steps run; state reports on wall time so a paused world still reports. */
-  function tick(): void {
-    const now = performance.now();
-    const delta = (now - last) / 1000;
-    last = now;
-    try {
-      if (!paused) world.update(delta);
-      while (paused && pendingSteps > 0) {
-        pendingSteps--;
-        world.update(world.fixedDelta);
+  using activity = new DisposableStack();
+  const stopped = new Promise<void>((resolve, reject) => {
+    const stop = () => resolve();
+    process.once("SIGINT", stop);
+    process.once("SIGTERM", stop);
+    activity.defer(() => {
+      process.off("SIGINT", stop);
+      process.off("SIGTERM", stop);
+    });
+    let last = performance.now();
+    let reported = last;
+    /** Advances the world by the wall time passed unless paused, when only single steps run; state reports on wall time so a paused world still reports. */
+    function tick(): void {
+      const now = performance.now();
+      const delta = (now - last) / 1000;
+      last = now;
+      try {
+        if (!paused) world.update(delta);
+        while (paused && pendingSteps > 0) {
+          pendingSteps--;
+          world.update(world.fixedDelta);
+        }
+        if (now - reported >= 100) {
+          publishState();
+          reported = now;
+        }
+      } catch (error) {
+        reject(ros.error ?? error);
+        return;
       }
-      if (now - reported >= 100) {
-        publishState();
-        reported = now;
-      }
-    } catch (error) {
-      stop(ros.error ?? error);
-      return;
+      if (!ros.connected) reject(ros.error ?? new Error("ROS connection lost"));
     }
-    if (!ros.connected) stop(ros.error ?? new Error("ROS connection lost"));
-  }
-  const timer = setInterval(tick, 1000 / 60);
-  function stop(error?: unknown): void {
-    clearInterval(timer);
-    viewer?.close();
-    if (error !== undefined) console.error(error);
-    try {
-      ros.dispose();
-    } catch (failure) {
-      console.error(failure);
-      process.exit(1);
-    }
-    process.exit(error === undefined ? 0 : 1);
-  }
-  process.once("SIGINT", () => stop());
-  process.once("SIGTERM", () => stop());
+    const timer = setInterval(tick, 1000 / 60);
+    activity.defer(() => clearInterval(timer));
+  });
 
-  if (options.viewer !== true) return;
-  // After the clock runs: the stack waits for the clock, nobody waits for the viewer's first download.
-  viewer = await openLichtblick(
+  if (!options.viewer) {
+    await stopped;
+    return;
+  }
+  const viewer = new AbortController();
+  const startup = serveLichtblick(
     defaultLayout(
       ros.find(LaserSensor).map((laser) => laser.topic),
       ros.find(CameraSensor).map((camera) => camera.imageTopic),
     ),
+    undefined,
+    viewer.signal,
   );
+  let failure: { error: unknown } | undefined;
+  resources.defer(async () => {
+    viewer.abort();
+    try {
+      await startup;
+    } catch (error) {
+      if (failure && error === failure.error) return;
+      if (error === viewer.signal.reason) return;
+      if (error instanceof Error && error.cause === viewer.signal.reason)
+        return;
+      throw error;
+    }
+  });
+  try {
+    await Promise.race([startup.then(() => stopped), stopped]);
+  } catch (error) {
+    failure = { error };
+    throw error;
+  }
 }

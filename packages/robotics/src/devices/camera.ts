@@ -6,7 +6,7 @@ import {
   type Object3D,
 } from "three";
 import { header, identifier } from "../messages.js";
-import { getROS2, type ROS2 } from "../runtime.js";
+import { getROS2, type CaptureRenderer, type ROS2 } from "../runtime.js";
 import { Schedule } from "./schedule.js";
 
 export class CameraSensor extends PerspectiveCamera {
@@ -18,7 +18,8 @@ export class CameraSensor extends PerspectiveCamera {
   private readonly quality: number;
   private readonly target: RenderTarget;
   private readonly unregister: () => void;
-  private pending = false;
+  private pending?: Promise<void>;
+  private disposed = false;
   constructor(
     options: {
       name?: string;
@@ -61,7 +62,7 @@ export class CameraSensor extends PerspectiveCamera {
   }
   afterStep(time: number): void {
     // A capture still being read back means the GPU is behind; this sample is skipped rather than queued.
-    if (!this.schedule.due(time) || this.pending) return;
+    if (this.disposed || !this.schedule.due(time) || this.pending) return;
     const renderer = this.ros.renderer;
     if (!renderer) throw new Error(`Camera ${this.name} needs a renderer`);
     // A camera captures the scene it is part of.
@@ -76,18 +77,32 @@ export class CameraSensor extends PerspectiveCamera {
     } finally {
       renderer.setRenderTarget(previous);
     }
-    this.pending = true;
-    renderer
-      .readRenderTargetPixelsAsync(this.target, 0, 0, this.width, this.height)
-      .then((pixels) => this.publish(time, pixels))
-      .catch((error: unknown) => this.ros.fail(error))
-      .finally(() => {
-        this.pending = false;
-      });
+    this.pending = this.readback(time, renderer).finally(() => {
+      this.pending = undefined;
+      if (this.disposed) this.target.dispose();
+    });
+  }
+  private async readback(
+    time: number,
+    renderer: CaptureRenderer,
+  ): Promise<void> {
+    try {
+      const pixels = await renderer.readRenderTargetPixelsAsync(
+        this.target,
+        0,
+        0,
+        this.width,
+        this.height,
+      );
+      this.publish(time, pixels);
+    } catch (error) {
+      if (this.disposed) throw error;
+      this.ros.fail(error);
+    }
   }
   private publish(time: number, pixels: ArrayBufferView): void {
     // Disconnection during readback drops the frame; the runtime already stopped.
-    if (!this.ros.connected) return;
+    if (this.disposed || !this.ros.connected) return;
     if (!(pixels instanceof Uint8Array))
       throw new Error("Camera readback must produce 8-bit pixels");
     const { width, height } = this;
@@ -116,9 +131,13 @@ export class CameraSensor extends PerspectiveCamera {
       roi: { x_offset: 0, y_offset: 0, height: 0, width: 0, do_rectify: false },
     });
   }
-  dispose(): void {
+  /** Detaches immediately; await pending readback cleanup before disposing the renderer. */
+  dispose(): Promise<void> | undefined {
+    if (this.disposed) return this.pending;
+    this.disposed = true;
     this.unregister();
-    this.target.dispose();
+    if (!this.pending) this.target.dispose();
     this.removeFromParent();
+    return this.pending;
   }
 }

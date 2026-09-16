@@ -28,6 +28,6 @@ new Command("drawcall-robotics")
   .addCommand(snapshot)
   .parseAsync(process.argv)
   .catch((error: unknown) => {
-    console.error(error instanceof Error ? error.message : error);
+    console.error(error);
     process.exit(1);
   });
