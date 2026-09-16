@@ -1,4 +1,4 @@
-import type { Connection } from "./connection.js";
+import type { Connection } from "../runtime.js";
 
 /** A connection to nothing, for runtimes that only build a scene: URDF export and tests. Publishing on it is a fault. */
 export class OfflineConnection implements Connection {

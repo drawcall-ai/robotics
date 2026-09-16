@@ -6,7 +6,6 @@ Connect a Three.js physics scene to ROS 2. Declare a robot with cameras, lidar a
 | -------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | [packages/robotics](packages/robotics/README.md)   | `@drawcall/robotics`: devices, URDF export, the `drawcall-robotics` simulator CLI    |
 | [examples/warehouse](examples/warehouse/README.md) | A warehouse scene and differential-drive robot with its ROS Jazzy stack through pixi |
-| [DESIGN.md](DESIGN.md)                             | Implemented architecture and scope                                                   |
 
 The workspace uses `@drawcall/physics` and its Rapier backend **0.4.0**. `JointMotor` belongs to physics; robotics binds ROS commands to it.
 
@@ -22,7 +21,7 @@ pnpm dev                # ros2 launch with the simulator and Lichtblick; Ctrl+C 
 
 Install inside `pixi run` so that rclnodejs finds the ROS libraries it compiles against. That is the same rule as for any ROS client library: source the environment first.
 
-`pnpm dev` is `pixi run launch viewer:=true` in `examples/warehouse`. The XML launch file obtains the URDF from the CLI through a `Command` substitution, as xacro-based launches do, starts the simulator as a node with `--viewer`, and brings up robot_state_publisher, ros2_control, SLAM Toolbox, Nav2, foxglove_bridge and the mission. The first run downloads the Lichtblick web build into `~/.cache/drawcall-robotics`. Lichtblick opens already connected, showing the robot model, map, scan, costmap, plan, cameras and a goal tool. The mission drives four goals and exits when done, which ends the launch: a run is an episode.
+`pnpm dev` builds the package and runs `pixi run launch viewer:=true`; the `dev`, `launch`, `record` and `replay` scripts live in `examples/warehouse`. The XML launch file obtains the URDF from the CLI through a `Command` substitution, as xacro-based launches do, starts the simulator as a node with `--viewer`, and brings up robot_state_publisher, ros2_control, SLAM Toolbox, Nav2, foxglove_bridge and the mission. The first run downloads the Lichtblick web build into `~/.cache/drawcall-robotics`. Lichtblick opens already connected, showing the robot model, map, scan, costmap, plan, cameras and a goal tool. The mission drives four goals and exits when done, which ends the launch: a run is an episode.
 
 `pnpm launch` runs the same without a viewer. `pnpm record` adds `ros2 bag record` to the launch, writing every topic to a `rosbag2_*` directory in `examples/warehouse` as MCAP, and `pnpm replay rosbag2_<date>` opens that recording in Lichtblick with a layout built from the sensors it holds.
 
@@ -94,4 +93,4 @@ Current scope:
 
 ## Validation
 
-`pnpm check` builds, typechecks and runs the package's unit tests, including the URDF export. The example is verified by running it: `pnpm launch` ends after the robot has completed its circuit.
+`pnpm check` builds, typechecks, runs the package's unit tests, including the URDF export of the example, and checks formatting. The example is verified by running it: `pnpm launch` ends after the robot has completed its circuit.

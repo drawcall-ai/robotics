@@ -1,8 +1,15 @@
+import { Command } from "commander";
 import { writeFile } from "node:fs/promises";
-import { RclConnection } from "../rcl.js";
+import { RclConnection } from "../connections/rcl.js";
 
 /** Writes the next compressed image on `topic` to `file`, for anyone who needs to look at what a camera sees. */
-export async function snapshot(topic: string, file: string): Promise<void> {
+export const snapshot = new Command("snapshot")
+  .description("save the next compressed image on a topic")
+  .argument("<topic>")
+  .requiredOption("--out <file.jpg>", "where to write the image")
+  .action((topic: string, options: { out: string }) => run(topic, options.out));
+
+async function run(topic: string, file: string): Promise<void> {
   const connection = await RclConnection.create("snapshot");
   const message = await new Promise<unknown>((resolve, reject) => {
     const timer = setTimeout(() => {

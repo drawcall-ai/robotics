@@ -40,11 +40,11 @@ camera.position.set(0, 0.3, -0.4);
 base.add(camera);
 ```
 
-From that structure the robot derives everything ROS needs: the base link is the body no joint hangs from, every named axis joint is a URDF joint, a joint with a motor is commanded through ros2_control (velocity, or position when the motor has stiffness), each sensor on the robot is a fixed frame, and a `base_footprint` link sits under the lowest collider. The robot publishes `joint_states` and applies `joint_commands` itself; `robot.urdf()` serializes it.
+From that structure the robot derives everything ROS needs: the base link is the body no joint hangs from, every named axis joint is a URDF joint, a joint with a motor is commanded through ros2_control (velocity, or position when the motor has stiffness), each sensor on the robot is a fixed frame, and a `base_footprint` link sits under the lowest collider. The robot publishes `joint_states` and applies `joint_commands` itself; `exportURDF()` serializes the runtime's robot, and `exportURDF({ name })` picks one of several.
 
 ```sh
 drawcall-robotics urdf scene.ts > robot.urdf      # links, colliders, joints, mounts, ros2_control block
-drawcall-robotics sim scene.ts --viewer               # serves and opens Lichtblick with a layout for the scene's cameras
+drawcall-robotics sim scene.ts --viewer               # serves and opens Lichtblick with a layout for the scene's sensors
 drawcall-robotics view rosbag2_2026_09_16-14_50_26    # a rosbag2 directory or .mcap file, layout from its sensors
 drawcall-robotics snapshot /robot/camera/image/compressed --out frame.jpg
 ```
@@ -70,22 +70,22 @@ new ROS2(connection, { renderer, namespace: "/robot" }); // in the default physi
 await import("./scene.ts"); // the same script the CLI runs
 ```
 
-`renderer` is a Three.js `WebGPURenderer`; the runtime needs `render`, `getRenderTarget`, `setRenderTarget` and `readRenderTargetPixelsAsync`. Byte arrays are `Uint8Array` everywhere; the rosbridge transport encodes them as base64 on the wire.
+`renderer` is a `CaptureRenderer`: a Three.js `WebGPURenderer`, or anything with `render`, `getRenderTarget`, `setRenderTarget` and `readRenderTargetPixelsAsync`. Byte arrays are `Uint8Array` everywhere; the rosbridge transport encodes them as base64 on the wire.
 
 ## Devices
 
 | Device         | Configuration and output                                                                                                                                                             |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Robot`        | Group with a `name`; publishes `joint_states` for its joints, applies `joint_commands` to its motors, `urdf()` exports it                                                            |
+| `Robot`        | Group with a `name`; publishes `joint_states` for its joints, applies `joint_commands` to its motors, `exportURDF()` exports it                                                      |
 | `CameraSensor` | PerspectiveCamera with `name`, dimensions, `fov`, `rate`, `quality`, `frameId`; publishes `<name>/image/compressed` and `<name>/camera_info`                                         |
 | `LaserSensor`  | Object3D with `name`, `samples`, `range`, `minRange`, `angleMin`, `angleMax`, `rate`, `frameId`; publishes a scan of everything, its own robot included; `minRange` is the dead zone |
 
-Devices register with the runtime they are given, by default the current one from `getROS2()`, and unregister on `dispose()`. A camera captures the scene it is part of. `ros.find(CameraSensor)` lists the registered devices of a class. Sensors never publish TF or world poses: the URDF's `robot_state_publisher` owns mounting transforms and localization owns the rest. Joint commands expire after 0.5 s and expiry disables actuation without braking.
+Devices register with the runtime they are given, by default the current runtime, and unregister on `dispose()`. A camera captures the scene it is part of. `ros.find(CameraSensor)` lists the registered devices of a class. Sensors never publish TF or world poses: the URDF's `robot_state_publisher` owns mounting transforms and localization owns the rest. Joint commands expire after 0.5 s and expiry disables actuation without braking.
 
 ## URDF export
 
-`robot.urdf()` serializes the robot in ROS coordinates: bodies become links with box, sphere and cylinder colliders as geometry, revolute and prismatic joints keep their axes and limits, sensors become fixed frames, `base_footprint` sits at the lowest collider, and motors produce the topic-based `ros2_control` block. Output is deterministic and independent of where the robot stands. `findRobot(ros, name?)` picks a scene's robot, and an `OfflineConnection` gives a runtime that only builds. Helpers `rosPosition`, `rosRotation`, `rosOpticalRotation` and `rollPitchYaw` implement the conversions.
+`exportURDF()` serializes the robot in ROS coordinates: bodies become links with box, sphere and cylinder colliders as geometry, revolute and prismatic joints keep their axes and limits, sensors become fixed frames, `base_footprint` sits at the lowest collider, and motors produce the topic-based `ros2_control` block. Output is deterministic and independent of where the robot stands. To export from your own script without ROS, create the runtime over an `OfflineConnection`, which only builds; `findRobot(ros, name?)` picks a scene's robot, and `rosPosition`, `rosRotation`, `rosOpticalRotation` and `rollPitchYaw` are the coordinate conversions.
 
 ## Custom devices
 
-Extend `Device`, or `withDevice(Base)` for Three.js subclasses, to inherit registration and disposal; implement `beforeStep(time, delta)` for commands, `afterStep(time, delta)` for measurements and `stop()` for faults. `ros.publish`, `ros.subscribe`, `Schedule`, `stamp` and `header` are the building blocks. Runtime disposal releases every device, subscription, hook and the transport, and reports an `AggregateError` if any release throws.
+Implement the `Device` interface: `beforeStep(time, delta)` for commands, `afterStep(time, delta)` for measurements, `stop()` for faults and `dispose()` as needed, then call `ros.register(this)`, which returns the unregister function; `dispose()` calls it. `ros.publish` and `ros.subscribe` are the building blocks. Runtime disposal releases every device, hook and the transport, and reports an `AggregateError` if any release throws.

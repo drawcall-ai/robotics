@@ -4,15 +4,11 @@ import {
   RigidBody,
   type JointMotor,
 } from "@drawcall/physics";
-import { Group } from "three";
-import { runAll } from "./cleanup.js";
-import { withDevice, type DeviceOptions } from "./device.js";
-import { header } from "./messages.js";
-import type { ROS2 } from "./runtime.js";
-import { CameraSensor } from "./sensors/camera.js";
-import { LaserSensor } from "./sensors/laser.js";
-import { Schedule } from "./time.js";
-import { exportURDF, type Frame } from "./urdf.js";
+import { Group, type Object3D } from "three";
+import { runAll } from "../cleanup.js";
+import { header, identifier } from "../messages.js";
+import { getROS2, type ROS2 } from "../runtime.js";
+import { Schedule } from "./schedule.js";
 
 /** Seconds after which a joint command expires and its motor is disabled. */
 const COMMAND_TIMEOUT = 0.5;
@@ -25,16 +21,21 @@ interface Command {
   wall: number;
 }
 /** A motor ROS commands, through the interface its stiffness implies. */
-interface Drive {
+export interface Drive {
   motor: JointMotor;
-  field: "position" | "velocity";
+  command: "position" | "velocity";
 }
-/** What the children describe, read once after the scene is built. */
+/** What the children describe, read at first use and frozen: children added later are ignored. */
 interface Structure {
   base: RigidBody;
   joints: Map<string, AxisJoint>;
   drives: Map<string, Drive>;
-  frames: Record<string, Frame>;
+  frames: Map<string, Object3D>;
+}
+
+/** Any object with a frame id is a fixed frame of the robot it sits in. */
+function isFrame(object: Object3D): object is Object3D & { frameId: string } {
+  return "frameId" in object && typeof object.frameId === "string";
 }
 
 /**
@@ -42,76 +43,67 @@ interface Structure {
  * joint commands follow from that structure: the base is the body no joint hangs from, every named axis
  * joint is a URDF joint, a joint's motor makes it commanded, and each sensor is a frame.
  */
-export class Robot extends withDevice(Group) {
+export class Robot extends Group {
+  readonly ros: ROS2;
   private readonly schedule = new Schedule(STATE_RATE);
   private readonly commands = new Map<string, Command>();
   private readonly unsubscribe: () => void;
-  private structure?: Structure;
+  private readonly unregister: () => void;
+  private resolved?: Structure;
   private disposed = false;
-  constructor(options: DeviceOptions = {}) {
-    super(options);
-    try {
-      this.unsubscribe = this.ros.subscribe(
-        "joint_commands",
-        "sensor_msgs/msg/JointState",
-        (message) => this.receive(message),
-      );
-    } catch (error) {
-      super.dispose();
-      throw error;
-    }
+  constructor(options: { ros?: ROS2 } = {}) {
+    super();
+    this.ros = options.ros ?? getROS2();
+    this.unsubscribe = this.ros.subscribe(
+      "joint_commands",
+      "sensor_msgs/msg/JointState",
+      (message) => this.receive(message),
+    );
+    this.unregister = this.ros.register(this);
   }
   /** The body every joint hangs from; its pose is the robot's. */
   get base(): RigidBody {
-    return this.resolve().base;
+    return this.structure().base;
   }
-  /** Serializes the robot as URDF, with a ros2_control block when it has motors. */
-  urdf(): string {
-    const { base, joints, drives, frames } = this.resolve();
-    this.updateWorldMatrix(true, true);
-    return exportURDF({
-      name: this.name,
-      base,
-      joints: Object.fromEntries(joints),
-      frames,
-      commands: Object.fromEntries(
-        [...drives].map(([name, { field }]) => [name, field]),
-      ),
-      commandTopic: this.ros.topic("joint_commands"),
-      stateTopic: this.ros.topic("joint_states"),
-    });
+  /** Every named axis joint under the robot, by name. */
+  get joints(): ReadonlyMap<string, AxisJoint> {
+    return this.structure().joints;
+  }
+  /** The joints ROS commands, by name. */
+  get drives(): ReadonlyMap<string, Drive> {
+    return this.structure().drives;
+  }
+  /** The fixed frames by id: every sensor under the robot. */
+  get frames(): ReadonlyMap<string, Object3D> {
+    return this.structure().frames;
   }
 
-  private resolve(): Structure {
-    if (this.structure) return this.structure;
-    if (!this.name) throw new Error("A robot needs a name");
+  private structure(): Structure {
+    if (this.resolved) return this.resolved;
+    identifier("robot", this.name);
     const bodies: RigidBody[] = [];
-    const children: Joint[] = [];
+    const allJoints: Joint[] = [];
     const joints = new Map<string, AxisJoint>();
-    const frames: Record<string, Frame> = {};
+    const frames = new Map<string, Object3D>();
     this.traverse((object) => {
       if (object instanceof RigidBody) bodies.push(object);
-      if (object instanceof Joint) children.push(object);
+      if (object instanceof Joint) allJoints.push(object);
       if (object instanceof AxisJoint) {
-        if (!object.name)
-          throw new Error(`Every joint of ${this.name} needs a name`);
+        identifier("joint", object.name);
         if (joints.has(object.name))
           throw new Error(`${this.name} has two joints named ${object.name}`);
         joints.set(object.name, object);
       }
-      if (object instanceof CameraSensor || object instanceof LaserSensor) {
-        if (object.frameId in frames)
+      if (isFrame(object)) {
+        if (frames.has(object.frameId))
           throw new Error(
             `${this.name} has two frames named ${object.frameId}`,
           );
-        frames[object.frameId] = {
-          object,
-          optical: object instanceof CameraSensor,
-        };
+        frames.set(object.frameId, object);
       }
     });
     const roots = bodies.filter(
-      (body) => !children.some((joint) => joint.options.body1 === body),
+      (body) => !allJoints.some((joint) => joint.options.body1 === body),
     );
     const [base] = roots;
     if (!base || roots.length !== 1)
@@ -123,15 +115,15 @@ export class Robot extends withDevice(Group) {
       if (joint.motor)
         drives.set(name, {
           motor: joint.motor,
-          field: joint.motor.options.stiffness ? "position" : "velocity",
+          command: joint.motor.options.stiffness ? "position" : "velocity",
         });
-    this.structure = { base, joints, drives, frames };
-    return this.structure;
+    this.resolved = { base, joints, drives, frames };
+    return this.resolved;
   }
   private receive(message: unknown): void {
     if (typeof message !== "object" || message === null)
       throw new Error("Invalid joint command message");
-    const { drives } = this.resolve();
+    const { drives } = this.structure();
     const names: unknown = Reflect.get(message, "name");
     if (!Array.isArray(names))
       throw new Error("Joint command needs a name array");
@@ -142,7 +134,7 @@ export class Robot extends withDevice(Group) {
         throw new Error("Joint command names must be strings");
       const drive = drives.get(name);
       if (!drive) throw new Error(`Joint command names unknown joint ${name}`);
-      const values: unknown = Reflect.get(message, drive.field);
+      const values: unknown = Reflect.get(message, drive.command);
       // Native transports deliver float arrays as typed arrays, rosbridge as plain arrays.
       const value: unknown =
         Array.isArray(values) || values instanceof Float64Array
@@ -150,25 +142,25 @@ export class Robot extends withDevice(Group) {
           : undefined;
       if (typeof value !== "number" || !Number.isFinite(value))
         throw new Error(
-          `Joint command for ${name} needs a finite ${drive.field}`,
+          `Joint command for ${name} needs a finite ${drive.command}`,
         );
       this.commands.set(name, { value, time, wall });
     });
   }
   beforeStep(time: number): void {
     const wall = performance.now() / 1000;
-    for (const [name, { motor, field }] of this.resolve().drives) {
-      const command = this.commands.get(name);
+    for (const [name, { motor, command }] of this.structure().drives) {
+      const latest = this.commands.get(name);
       if (
-        !command ||
-        time - command.time > COMMAND_TIMEOUT ||
-        wall - command.wall > COMMAND_TIMEOUT
+        !latest ||
+        time - latest.time > COMMAND_TIMEOUT ||
+        wall - latest.wall > COMMAND_TIMEOUT
       ) {
         this.commands.delete(name);
         if (motor.enabled) motor.setEnabled(false);
         continue;
       }
-      const target = { position: 0, velocity: 0, [field]: command.value };
+      const target = { position: 0, velocity: 0, [command]: latest.value };
       if (
         motor.target?.position !== target.position ||
         motor.target.velocity !== target.velocity
@@ -178,7 +170,7 @@ export class Robot extends withDevice(Group) {
     }
   }
   afterStep(time: number): void {
-    const { joints } = this.resolve();
+    const { joints } = this.structure();
     if (!joints.size || !this.schedule.due(time)) return;
     const states = [...joints.values()].map((joint) => joint.getState());
     this.ros.publish("joint_states", "sensor_msgs/msg/JointState", {
@@ -191,14 +183,14 @@ export class Robot extends withDevice(Group) {
   }
   stop(): void {
     this.commands.clear();
-    for (const { motor } of this.structure?.drives.values() ?? [])
+    for (const { motor } of this.resolved?.drives.values() ?? [])
       if (motor.enabled) motor.setEnabled(false);
   }
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     runAll(
-      [() => this.stop(), this.unsubscribe, () => super.dispose()],
+      [() => this.stop(), this.unsubscribe, this.unregister],
       "Failed to dispose robot",
     );
   }
@@ -213,7 +205,7 @@ export function findRobot(ros: ROS2, name?: string): Robot {
   if (!robot || robots.length !== 1)
     throw new Error(
       name === undefined
-        ? `The scene has ${robots.length} robots; pick one with --robot`
+        ? `The scene has ${robots.length} robots; pick one by name`
         : `The scene has no robot named ${name}`,
     );
   return robot;

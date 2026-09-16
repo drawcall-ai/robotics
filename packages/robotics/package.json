@@ -22,8 +22,13 @@
   },
   "dependencies": {
     "@drawcall/physics-rapier": "0.4.0",
+    "@mcap/core": "2.2.2",
+    "commander": "^15.0.0",
     "jpeg-js": "^0.4.4",
-    "roslib": "^2.1.0"
+    "open": "^11.0.4",
+    "roslib": "^2.1.0",
+    "send": "^1.2.1",
+    "tar": "^7.5.22"
   },
   "peerDependencies": {
     "@drawcall/physics": "^0.4.0",
@@ -43,9 +48,7 @@
     "drawcall-robotics": "./dist/cli/main.js"
   },
   "optionalDependencies": {
-    "@mcap/core": "2.2.2",
     "rclnodejs": "2.2.0",
-    "send": "^1.2.1",
     "webgpu": "^0.6.1"
   },
   "engines": {

@@ -1,15 +1,9 @@
 import { expect, it } from "vitest";
-import { Schedule, stamp } from "../src/time.js";
+import { Schedule } from "../src/devices/schedule.js";
 
-it("normalizes nanosecond rounding across second boundaries", () => {
-  expect(stamp(1.9999999998)).toEqual({ sec: 2, nanosec: 0 });
-  expect(stamp(0.0125)).toEqual({ sec: 0, nanosec: 12_500_000 });
-  expect(() => stamp(-1)).toThrow();
-  expect(() => stamp(Infinity)).toThrow();
-});
-
-it("schedules by simulation time without a burst after skipped intervals", () => {
+it("fires once per period of simulation time without a burst after a gap", () => {
   const schedule = new Schedule(10);
+  expect(schedule.period).toBe(0.1);
   expect(schedule.due(0.01)).toBe(true);
   expect(schedule.due(0.09)).toBe(false);
   expect(schedule.due(0.1)).toBe(true);
@@ -18,4 +12,9 @@ it("schedules by simulation time without a burst after skipped intervals", () =>
   expect(schedule.due(0.5)).toBe(true);
   expect(schedule.due(0)).toBe(true); // the clock reset
   expect(schedule.due(0.05)).toBe(false);
+});
+
+it("needs a positive finite rate", () => {
+  for (const rate of [0, -5, Infinity, NaN])
+    expect(() => new Schedule(rate)).toThrow("Rate must be positive");
 });

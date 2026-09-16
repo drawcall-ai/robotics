@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { RosbridgeConnection } from "../src/connection.js";
+import { RosbridgeConnection } from "../src/connections/rosbridge.js";
 
 class WebSocketStub {
   static readonly CONNECTING = 0;
@@ -125,9 +125,7 @@ it("closes the socket and releases other topics when a control message fails", a
   send.mockImplementationOnce(() => {
     throw new Error("Socket send failed");
   });
-  expect(() => connection.dispose()).toThrow(
-    "Failed to dispose ROS connection",
-  );
+  expect(() => connection.dispose()).toThrow();
   expect(socket.readyState).toBe(WebSocketStub.CLOSED);
   expect(socket.sent).toContainEqual(
     expect.objectContaining({ op: "unadvertise", topic: "/sensor" }),

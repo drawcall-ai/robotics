@@ -1,17 +1,6 @@
-import { runAll } from "./cleanup.js";
 import { AbstractTransport, Ros, Topic, type RosbridgeMessage } from "roslib";
-
-export interface Connection {
-  readonly connected: boolean;
-  readonly error?: Error;
-  publish(name: string, type: string, message: unknown): void;
-  subscribe(
-    name: string,
-    type: string,
-    receive: (message: unknown) => void,
-  ): () => void;
-  dispose(): void;
-}
+import { runAll } from "../cleanup.js";
+import type { Connection } from "../runtime.js";
 
 class Socket extends AbstractTransport {
   readonly socket: WebSocket;

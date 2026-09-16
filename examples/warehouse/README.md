@@ -5,7 +5,7 @@ A warehouse and a differential-drive robot in [scene.ts](scene.ts), driven by a 
 ```sh
 curl -fsSL https://pixi.sh/install.sh | sh   # once: pixi installs ROS from RoboStack
 pixi run pnpm install                         # once: the ROS environment and rclnodejs built against it
-pixi run launch viewer:=true                  # or pnpm dev
+pnpm dev                                      # builds @drawcall/robotics, then pixi run launch viewer:=true
 ```
 
 `pnpm record` runs an episode while `ros2 bag record` writes every topic but Nav2's internals to a `rosbag2_*` directory here; `pnpm replay rosbag2_<date>` opens it in Lichtblick with the same layout. Lichtblick opens connected to the running stack. While it runs, `ros2 service call /sim/pause std_srvs/srv/Trigger` pauses the whole stack, `/sim/step` advances one physics substep, and `ros2 topic echo /sim/state` shows ground truth.

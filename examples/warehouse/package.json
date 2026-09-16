@@ -3,10 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pixi run launch viewer:=true",
-    "launch": "pixi run launch",
-    "record": "pixi run launch record:=true",
-    "replay": "drawcall-robotics view",
+    "dev": "pnpm --filter @drawcall/robotics build && pixi run launch viewer:=true",
+    "launch": "pnpm --filter @drawcall/robotics build && pixi run launch",
+    "record": "pnpm --filter @drawcall/robotics build && pixi run launch record:=true",
+    "replay": "pnpm --filter @drawcall/robotics build && drawcall-robotics view",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

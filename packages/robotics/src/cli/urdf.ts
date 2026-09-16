@@ -1,17 +1,24 @@
 import { AuthoringWorld, setDefaultWorld } from "@drawcall/physics";
-import { OfflineConnection } from "../offline.js";
-import { findRobot } from "../robot.js";
+import { Command } from "commander";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { OfflineConnection } from "../connections/offline.js";
 import { ROS2 } from "../runtime.js";
-import { runScene } from "./scene.js";
+import { exportURDF } from "../urdf/export.js";
 
 /** Prints the URDF of a scene, built without a physics backend, renderer or ROS. */
-export async function urdf(
-  file: string,
-  namespace?: string,
-  robot?: string,
-): Promise<void> {
-  setDefaultWorld(new AuthoringWorld());
-  const ros = new ROS2(new OfflineConnection(), { namespace });
-  await runScene(file);
-  process.stdout.write(findRobot(ros, robot).urdf());
-}
+export const urdf = new Command("urdf")
+  .description("print the URDF of the scene's robot")
+  .argument("<scene>", "the scene script")
+  .option("--namespace <ns>", "topic namespace", "/robot")
+  .option("--robot <name>", "the robot, if the scene has several")
+  .action(
+    async (scene: string, options: { namespace: string; robot?: string }) => {
+      setDefaultWorld(new AuthoringWorld());
+      const ros = new ROS2(new OfflineConnection(), {
+        namespace: options.namespace,
+      });
+      await import(pathToFileURL(resolve(scene)).href);
+      process.stdout.write(exportURDF({ ros, name: options.robot }));
+    },
+  );

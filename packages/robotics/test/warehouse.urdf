@@ -1,0 +1,87 @@
+<?xml version="1.0"?>
+<robot name="warehouse">
+  <material name="warehouse_material">
+    <color rgba="0.603922 0.647059 0.670588 1"/>
+  </material>
+  <link name="base_footprint"/>
+  <joint name="base_footprint_joint" type="fixed">
+    <parent link="base_footprint"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 0.36" rpy="0 0 0"/>
+  </joint>
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><box size="0.82 0.66 0.22"/></geometry>
+      <material name="warehouse_material"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><box size="0.82 0.66 0.22"/></geometry>
+    </collision>
+  </link>
+  <link name="left_wheel">
+    <visual>
+      <origin xyz="0 0 0" rpy="-1.570796 0 -3.141593"/>
+      <geometry><cylinder radius="0.22" length="0.13"/></geometry>
+      <material name="warehouse_material"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="-1.570796 0 -3.141593"/>
+      <geometry><cylinder radius="0.22" length="0.13"/></geometry>
+    </collision>
+  </link>
+  <link name="right_wheel">
+    <visual>
+      <origin xyz="0 0 0" rpy="-1.570796 0 -3.141593"/>
+      <geometry><cylinder radius="0.22" length="0.13"/></geometry>
+      <material name="warehouse_material"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="-1.570796 0 -3.141593"/>
+      <geometry><cylinder radius="0.22" length="0.13"/></geometry>
+    </collision>
+  </link>
+  <joint name="left_wheel" type="continuous">
+    <parent link="base_link"/>
+    <child link="left_wheel"/>
+    <origin xyz="0 0.45 -0.14" rpy="0 0 3.141593"/>
+    <axis xyz="0 -1 0"/>
+  </joint>
+  <joint name="right_wheel" type="continuous">
+    <parent link="base_link"/>
+    <child link="right_wheel"/>
+    <origin xyz="0 -0.45 -0.14" rpy="0 0 3.141593"/>
+    <axis xyz="0 -1 0"/>
+  </joint>
+  <link name="laser"/>
+  <joint name="laser_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="laser"/>
+    <origin xyz="0.32 0 0.24" rpy="0 0 0"/>
+  </joint>
+  <link name="camera_optical"/>
+  <joint name="camera_optical_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="camera_optical"/>
+    <origin xyz="0.38 0 0.28" rpy="-1.570796 0 -1.570796"/>
+  </joint>
+  <ros2_control name="warehouse" type="system">
+    <hardware>
+      <plugin>topic_based_ros2_control/TopicBasedSystem</plugin>
+      <param name="joint_commands_topic">/robot/joint_commands</param>
+      <param name="joint_states_topic">/robot/joint_states</param>
+      <param name="trigger_joint_command_threshold">-1</param>
+    </hardware>
+    <joint name="left_wheel">
+      <command_interface name="velocity"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="right_wheel">
+      <command_interface name="velocity"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+  </ros2_control>
+</robot>

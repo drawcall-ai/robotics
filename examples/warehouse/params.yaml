@@ -221,7 +221,8 @@ slam_toolbox:
 lifecycle_manager_navigation:
   ros__parameters:
     autostart: true
-    node_names: [controller_server, planner_server, behavior_server, bt_navigator]
+    node_names:
+      [controller_server, planner_server, behavior_server, bt_navigator]
 
 # slam_toolbox creates no bond, so it has its own manager with the bond check off.
 lifecycle_manager_slam:
@@ -236,8 +237,20 @@ foxglove_bridge:
     # Only what the viewer layout uses. Everything else is noise there: the 120 Hz clock trips
     # Lichtblick's rate alert, and Nav2 and SLAM services disagree on the Marker schema.
     topic_whitelist:
-      ['^/tf$', '^/tf_static$', '^/map$', '^/robot/.*', '^/robot_description$', '^/diff_drive_controller/.*',
-       '^/plan$', '^/local_plan$', '^/local_costmap/costmap$', '^/global_costmap/costmap$',
-       '^/goal_pose$', '^/initialpose$', '^/clicked_point$']
-    service_whitelist: ['^$']
-    param_whitelist: ['^$']
+      [
+        "^/tf$",
+        "^/tf_static$",
+        "^/map$",
+        "^/robot/.*",
+        "^/robot_description$",
+        "^/diff_drive_controller/.*",
+        "^/plan$",
+        "^/local_plan$",
+        "^/local_costmap/costmap$",
+        "^/global_costmap/costmap$",
+        "^/goal_pose$",
+        "^/initialpose$",
+        "^/clicked_point$",
+      ]
+    service_whitelist: ["^$"]
+    param_whitelist: ["^$"]

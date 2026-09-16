@@ -10,11 +10,7 @@
     "build": "pnpm -r --if-present build",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
-    "check": "pnpm build && pnpm typecheck && pnpm test",
-    "dev": "pnpm --filter @drawcall/robotics build && pnpm --filter @drawcall/example-warehouse dev",
-    "launch": "pnpm --filter @drawcall/robotics build && pnpm --filter @drawcall/example-warehouse launch",
-    "record": "pnpm --filter @drawcall/robotics build && pnpm --filter @drawcall/example-warehouse record",
-    "replay": "pnpm --filter @drawcall/robotics build && pnpm --filter @drawcall/example-warehouse replay",
+    "check": "pnpm build && pnpm typecheck && pnpm test && prettier --check .",
     "format": "prettier --write ."
   },
   "devDependencies": {

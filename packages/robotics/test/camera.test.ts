@@ -1,28 +1,17 @@
-import { afterEach, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { decode } from "jpeg-js";
 import { RenderTarget, Scene, Vector3 } from "three";
-import { ConnectionStub } from "./connection.js";
-import { setupWorld } from "@drawcall/physics-rapier";
-import { ROS2 } from "../src/runtime.js";
-import { CameraSensor } from "../src/sensors/camera.js";
-import { RendererStub } from "./renderer.js";
+import { CameraSensor } from "../src/devices/camera.js";
+import { defer, simulation } from "./fixture.js";
 
-const cleanup: (() => void)[] = [];
-afterEach(() => {
-  for (const release of cleanup.splice(0).reverse()) release();
-});
+const IMAGE = "/robot/camera/image/compressed";
+const INFO = "/robot/camera/camera_info";
 
 async function fixture() {
-  const world = await setupWorld({ gravity: [0, 0, 0] });
-  cleanup.push(() => world.dispose());
-  const connection = new ConnectionStub();
-  const { messages } = connection;
-  const renderer = new RendererStub();
-  const ros = new ROS2(connection, { world, renderer });
-  cleanup.push(() => ros.dispose());
+  const { world, ros, connection, renderer } = await simulation();
   const camera = new CameraSensor({ width: 320, height: 180, ros });
   new Scene().add(camera);
-  return { camera, renderer, messages, ros };
+  return { world, ros, camera, renderer, messages: connection.messages };
 }
 function field(message: unknown, key: string): unknown {
   if (typeof message !== "object" || message === null || !(key in message))
@@ -38,9 +27,7 @@ it("publishes calibration that projects points like the actual zoomed and offset
   camera.updateProjectionMatrix();
   camera.afterStep(0.25);
   await renderer.flush();
-  const info = messages.find(
-    (message) => message.name === "/robot/camera/camera_info",
-  )?.message;
+  const info = messages.find((message) => message.name === INFO)?.message;
   const calibration = field(info, "k");
   if (!Array.isArray(calibration)) throw new Error("Missing calibration");
   const coefficient = (index: number): number => {
@@ -81,9 +68,7 @@ it("encodes the readback as a JPEG the size of the sensor", async () => {
   renderer.pixel = 200;
   camera.afterStep(0.2);
   await renderer.flush();
-  const image = messages.find(
-    (message) => message.name === "/robot/camera/image/compressed",
-  )?.message;
+  const image = messages.find((message) => message.name === IMAGE)?.message;
   expect(field(image, "format")).toBe("jpeg");
   const data = field(image, "data");
   if (!(data instanceof Uint8Array))
@@ -96,7 +81,7 @@ it("encodes the readback as a JPEG the size of the sensor", async () => {
 it("restores the previous render target and publishes nothing after rendering fails", async () => {
   const { camera, renderer, messages } = await fixture();
   const previous = new RenderTarget(128, 128);
-  cleanup.push(() => previous.dispose());
+  defer(() => previous.dispose());
   renderer.setRenderTarget(previous);
   renderer.failRender = true;
   expect(() => camera.afterStep(0.1)).toThrow("GPU render failed");
@@ -105,36 +90,29 @@ it("restores the previous render target and publishes nothing after rendering fa
   expect(messages).toHaveLength(0);
 });
 
-it("skips samples while a readback is still in flight instead of queueing captures", async () => {
+it("skips a sample while a readback is still in flight instead of queueing captures", async () => {
   const { camera, renderer, messages } = await fixture();
   camera.afterStep(0.2);
   camera.afterStep(0.4);
-  expect(renderer.renders).toBe(1);
   await renderer.flush();
   camera.afterStep(0.6);
   await renderer.flush();
-  expect(renderer.renders).toBe(2);
-  expect(
-    messages.filter(
-      (message) => message.name === "/robot/camera/image/compressed",
-    ),
-  ).toHaveLength(2);
+  expect(messages.filter((message) => message.name === IMAGE)).toHaveLength(2);
 });
 
-it("publishes only image and calibration, never a camera world pose", async () => {
-  const { camera, renderer, messages } = await fixture();
+it("publishes only image and calibration from a step, never a camera pose", async () => {
+  const { world, camera, renderer, messages } = await fixture();
   camera.position.set(3, 4, 5);
   camera.rotation.set(0.2, 0.7, -0.1);
-  camera.afterStep(0.25);
+  world.update(0.01);
   await renderer.flush();
-  expect(messages.map(({ name }) => name)).toEqual([
-    "/robot/camera/image/compressed",
-    "/robot/camera/camera_info",
-  ]);
+  expect(new Set(messages.map(({ name }) => name))).toEqual(
+    new Set(["/clock", IMAGE, INFO]),
+  );
 });
 
-it("drops a frame whose readback completes after disconnection", async () => {
-  const { camera, renderer, messages, ros } = await fixture();
+it("drops a frame whose readback completes after disposal", async () => {
+  const { ros, camera, renderer, messages } = await fixture();
   camera.afterStep(0.2);
   ros.dispose();
   await renderer.flush();

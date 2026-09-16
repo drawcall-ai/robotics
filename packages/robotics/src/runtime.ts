@@ -1,9 +1,26 @@
 import { getDefaultWorld, type PhysicsWorld } from "@drawcall/physics";
-import type { Camera, Object3D, RenderTarget, Texture } from "three";
 import { runAll } from "./cleanup.js";
-import type { Connection } from "./connection.js";
-import type { DeviceLifecycle } from "./device.js";
-import { stamp } from "./time.js";
+import { SEGMENT, stamp } from "./messages.js";
+import type { Camera, Object3D, RenderTarget, Texture } from "three";
+
+export interface Connection {
+  readonly connected: boolean;
+  readonly error?: Error;
+  publish(name: string, type: string, message: unknown): void;
+  subscribe(
+    name: string,
+    type: string,
+    receive: (message: unknown) => void,
+  ): () => void;
+  dispose(): void;
+}
+
+export interface Device {
+  beforeStep?(time: number, delta: number): void;
+  afterStep?(time: number, delta: number): void;
+  stop?(): void;
+  dispose(): void;
+}
 
 /** The renderer operations sensors use. Three.js `WebGPURenderer` satisfies it in browsers and in Node. */
 export interface CaptureRenderer {
@@ -18,7 +35,6 @@ export interface CaptureRenderer {
     height: number,
   ): Promise<ArrayBufferView>;
 }
-
 export interface ROS2Options {
   /** The world the scene builds in; the physics default world unless given. */
   world?: PhysicsWorld;
@@ -27,7 +43,8 @@ export interface ROS2Options {
   namespace?: string;
 }
 
-const NAME = /^\/(?:[A-Za-z_][A-Za-z0-9_]*\/)*[A-Za-z_][A-Za-z0-9_]*$/;
+/** An absolute topic: name segments joined by `/`. */
+const TOPIC = new RegExp(`^(?:/${SEGMENT})+$`);
 let current: ROS2 | undefined;
 
 /** The runtime devices register with. Creating one makes it the default that `getROS2()` returns to a scene. */
@@ -35,8 +52,7 @@ export class ROS2 {
   readonly world: PhysicsWorld;
   readonly renderer?: CaptureRenderer;
   readonly namespace: string;
-  private readonly devices = new Set<DeviceLifecycle>();
-  private readonly subscriptions = new Set<() => void>();
+  private readonly devices = new Set<Device>();
   private readonly hooks: (() => void)[];
   private fault?: Error;
   private disposed = false;
@@ -51,7 +67,7 @@ export class ROS2 {
         "Dispose the current ROS runtime before creating another",
       );
     const namespace = options.namespace ?? "/robot";
-    if (namespace !== "/" && !NAME.test(namespace))
+    if (namespace !== "/" && !TOPIC.test(namespace))
       throw new Error(`Invalid ROS namespace: ${namespace}`);
     this.world = options.world ?? getDefaultWorld();
     this.renderer = options.renderer;
@@ -63,7 +79,7 @@ export class ROS2 {
     current = this;
   }
   get connected(): boolean {
-    return !this.disposed && !this.error && this.connection.connected;
+    return !this.disposed && !this.fault && this.connection.connected;
   }
   get error(): Error | undefined {
     return this.fault ?? this.connection.error;
@@ -73,16 +89,16 @@ export class ROS2 {
     const topic = name.startsWith("/")
       ? name
       : `${this.namespace === "/" ? "" : this.namespace}/${name}`;
-    if (!NAME.test(topic)) throw new Error(`Invalid ROS topic: ${topic}`);
+    if (!TOPIC.test(topic)) throw new Error(`Invalid ROS topic: ${topic}`);
     return topic;
   }
   /** The registered devices of a class, in registration order. */
   find<T>(type: abstract new (...args: never[]) => T): T[] {
     return [...this.devices].filter(
-      (device): device is T & DeviceLifecycle => device instanceof type,
+      (device): device is T & Device => device instanceof type,
     );
   }
-  register(device: DeviceLifecycle): () => void {
+  register(device: Device): () => void {
     if (!this.connected) throw new Error("ROS runtime is disconnected");
     if (this.devices.has(device))
       throw new Error("Device is already registered");
@@ -93,6 +109,7 @@ export class ROS2 {
     if (!this.connected) throw new Error("ROS runtime is disconnected");
     this.connection.publish(this.topic(name), type, message);
   }
+  /** The returned release is a no-op once the runtime is disposed: disposing the connection ends every subscription. */
   subscribe(
     name: string,
     type: string,
@@ -110,32 +127,32 @@ export class ROS2 {
         }
       },
     );
-    const release = () => {
-      if (this.subscriptions.delete(release)) unsubscribe();
+    return () => {
+      if (!this.disposed) unsubscribe();
     };
-    this.subscriptions.add(release);
-    return release;
   }
-  /** Records the fault and stops every actuator; the runtime stays disconnected until disposed. */
+  /** Records the first fault and stops every actuator; the runtime stays disconnected until disposed. */
   fail(error: unknown): void {
+    if (this.fault) return;
     const cause = error instanceof Error ? error : new Error(String(error));
     this.fault = cause;
     try {
-      this.stop();
+      runAll(
+        [...this.devices].map((device) => () => device.stop?.()),
+        "Failed to stop ROS devices",
+      );
     } catch (failure) {
       this.fault = new AggregateError([cause, failure], cause.message, {
         cause,
       });
     }
   }
-  private stop(): void {
-    runAll(
-      [...this.devices].map((device) => () => device.stop?.()),
-      "Failed to stop ROS devices",
-    );
-  }
   private update(phase: "beforeStep" | "afterStep", dt: number): void {
-    if (!this.connected) return this.stop();
+    if (this.fault) return;
+    if (!this.connection.connected) {
+      this.fail(this.connection.error ?? new Error("ROS connection lost"));
+      return;
+    }
     try {
       if (phase === "afterStep")
         this.publish("/clock", "rosgraph_msgs/msg/Clock", {
@@ -153,7 +170,6 @@ export class ROS2 {
     if (current === this) current = undefined;
     const releases = [
       ...[...this.devices].map((device) => () => device.dispose()),
-      ...this.subscriptions,
       ...this.hooks,
       () => this.connection.dispose(),
     ];

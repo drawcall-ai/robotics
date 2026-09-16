@@ -1,8 +1,7 @@
+const IMAGE = /\/image\/compressed$/;
+
 /** A layout for the standard topics: map, scans, costmap, plan and robot in 3D, one image panel per camera. */
-export function defaultLayout(
-  lasers: { topic: string }[],
-  cameras: { name: string; imageTopic: string; infoTopic: string }[],
-): unknown {
+export function defaultLayout(scans: string[], images: string[]): unknown {
   const configById: Record<string, unknown> = {
     "3D!scene": {
       cameraState: {
@@ -17,8 +16,8 @@ export function defaultLayout(
       topics: {
         "/map": { visible: true, colorMode: "costmap" },
         ...Object.fromEntries(
-          lasers.map((laser) => [
-            laser.topic,
+          scans.map((scan) => [
+            scan,
             {
               visible: true,
               colorMode: "flat",
@@ -51,26 +50,31 @@ export function defaultLayout(
       },
     },
   };
-  for (const { name, imageTopic, infoTopic } of cameras)
-    configById[`Image!${name}`] = {
-      imageMode: { imageTopic, calibrationTopic: infoTopic },
+  for (const image of images) {
+    const imageMode: Record<string, string> = { imageTopic: image };
+    // The topic pair `CameraSensor` publishes; an image from elsewhere shows without calibration.
+    if (IMAGE.test(image))
+      imageMode.calibrationTopic = image.replace(IMAGE, "/camera_info");
+    configById[`Image!${image}`] = {
+      imageMode,
       scene: { transforms: { enablePreloading: true } },
     };
+  }
   const column = (ids: string[]): unknown =>
     ids.length === 1
       ? ids[0]
       : { direction: "column", first: ids[0], second: column(ids.slice(1)) };
-  const images = cameras.map(({ name }) => `Image!${name}`);
+  const panels = images.map((image) => `Image!${image}`);
   return {
     configById,
     globalVariables: {},
     userNodes: {},
     playbackConfig: { speed: 1 },
-    layout: images.length
+    layout: panels.length
       ? {
           direction: "row",
           first: "3D!scene",
-          second: column(images),
+          second: column(panels),
           splitPercentage: 65,
         }
       : "3D!scene",

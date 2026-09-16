@@ -5,20 +5,19 @@ import {
   SRGBColorSpace,
   type Object3D,
 } from "three";
-import { withDevice } from "../device.js";
-import { frameId, header } from "../messages.js";
+import { header, identifier } from "../messages.js";
 import { getROS2, type ROS2 } from "../runtime.js";
-import { Schedule } from "../time.js";
+import { Schedule } from "./schedule.js";
 
-export class CameraSensor extends withDevice(PerspectiveCamera) {
+export class CameraSensor extends PerspectiveCamera {
+  readonly ros: ROS2;
   readonly width: number;
   readonly height: number;
   readonly frameId: string;
   private readonly schedule: Schedule;
   private readonly quality: number;
   private readonly target: RenderTarget;
-  readonly imageTopic: string;
-  readonly infoTopic: string;
+  private readonly unregister: () => void;
   private pending = false;
   constructor(
     options: {
@@ -34,31 +33,31 @@ export class CameraSensor extends withDevice(PerspectiveCamera) {
   ) {
     const width = options.width ?? 320;
     const height = options.height ?? 180;
+    const fov = options.fov ?? 70;
+    super(fov, width / height, 0.05, 100);
     if (![width, height].every((n) => Number.isInteger(n) && n > 0))
       throw new Error("Camera dimensions must be positive integers");
-    const fov = options.fov ?? 70;
     if (!(fov > 0 && fov < 180))
       throw new Error("Camera FOV must be between 0 and 180 degrees");
     const quality = options.quality ?? 80;
     if (!(quality >= 1 && quality <= 100))
       throw new Error("JPEG quality must lie in [1,100]");
-    const ros = options.ros ?? getROS2();
-    const name = options.name ?? "camera";
-    const imageTopic = ros.topic(`${name}/image/compressed`);
-    const infoTopic = ros.topic(`${name}/camera_info`);
-    const frame = frameId(options.frameId ?? `${name}_optical`);
-    const target = new RenderTarget(width, height);
-    target.texture.colorSpace = SRGBColorSpace;
-    super({ ros, args: [fov, width / height, 0.05, 100] });
-    this.name = name;
+    this.name = options.name ?? "camera";
     this.width = width;
     this.height = height;
-    this.frameId = frame;
+    this.frameId = identifier(
+      "frame",
+      options.frameId ?? `${this.name}_optical`,
+    );
     this.schedule = new Schedule(options.rate ?? 5);
     this.quality = quality;
-    this.target = target;
-    this.imageTopic = imageTopic;
-    this.infoTopic = infoTopic;
+    this.target = new RenderTarget(width, height);
+    this.target.texture.colorSpace = SRGBColorSpace;
+    this.ros = options.ros ?? getROS2();
+    this.unregister = this.ros.register(this);
+  }
+  get imageTopic(): string {
+    return this.ros.topic(`${this.name}/image/compressed`);
   }
   afterStep(time: number): void {
     // A capture still being read back means the GPU is behind; this sample is skipped rather than queued.
@@ -103,7 +102,7 @@ export class CameraSensor extends withDevice(PerspectiveCamera) {
     const fy = (projection[5] * height) / 2;
     const cx = ((1 - projection[8]) * width) / 2;
     const cy = ((1 + projection[9]) * height) / 2;
-    this.ros.publish(this.infoTopic, "sensor_msgs/msg/CameraInfo", {
+    this.ros.publish(`${this.name}/camera_info`, "sensor_msgs/msg/CameraInfo", {
       header: header(time, this.frameId),
       width,
       height,
@@ -118,7 +117,7 @@ export class CameraSensor extends withDevice(PerspectiveCamera) {
     });
   }
   dispose(): void {
-    super.dispose();
+    this.unregister();
     this.target.dispose();
     this.removeFromParent();
   }

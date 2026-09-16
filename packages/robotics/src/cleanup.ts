@@ -1,9 +1,9 @@
-/** Runs every step and throws one AggregateError afterwards if any failed, so one failure never skips the rest. */
-export function runAll(steps: Iterable<() => void>, message: string): void {
+/** Runs every task and throws one AggregateError afterwards if any failed, so one failure never skips the rest. */
+export function runAll(tasks: Iterable<() => void>, message: string): void {
   const errors: unknown[] = [];
-  for (const step of steps) {
+  for (const task of tasks) {
     try {
-      step();
+      task();
     } catch (error) {
       errors.push(error);
     }
