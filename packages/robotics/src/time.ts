@@ -4,8 +4,9 @@ export function stamp(seconds: number): { sec: number; nanosec: number } {
   const nanoseconds = Math.round(seconds * 1e9);
   return { sec: Math.floor(nanoseconds / 1e9), nanosec: nanoseconds % 1e9 };
 }
+/** Fires once per period of simulation time, without a burst after a gap and from scratch after the clock resets. */
 export class Schedule {
-  private next = 0;
+  private last = -Infinity;
   readonly period: number;
   constructor(rate: number) {
     if (!Number.isFinite(rate) || rate <= 0)
@@ -13,8 +14,9 @@ export class Schedule {
     this.period = 1 / rate;
   }
   due(time: number): boolean {
-    if (time + 1e-9 < this.next) return false;
-    this.next = (Math.floor((time + 1e-9) / this.period) + 1) * this.period;
+    if (time >= this.last && time - this.last + 1e-9 < this.period)
+      return false;
+    this.last = Math.floor((time + 1e-9) / this.period) * this.period;
     return true;
   }
 }

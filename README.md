@@ -1,127 +1,97 @@
 # Drawcall Robotics
 
-Connect a Three.js physics scene to ROS 2 through rosbridge. Declare cameras, lidar and motor bindings as ordinary objects; ROS runs in Docker and sends commands to native physics motors.
+Connect a Three.js physics scene to ROS 2. Declare a robot with cameras, lidar and motors as ordinary objects, export it as URDF from the same model, and run it as a native ROS 2 node next to a standard ros2_control, SLAM Toolbox and Nav2 stack. The simulator is a process in your launch file, the way Gazebo or Webots would be.
 
-| Directory                                                  | Purpose                                                                     |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------- |
-| [packages/robotics](packages/robotics/README.md)           | `@drawcall/robotics`: runtime, devices, coordinate conversion and transport |
-| [examples/warehouse](examples/warehouse)                   | Three.js warehouse and differential-drive robot                             |
-| [examples/warehouse/ros](examples/warehouse/ros/README.md) | ROS Jazzy controller, rosbridge image and live smoke check                  |
-| [DESIGN.md](DESIGN.md)                                     | Implemented architecture and scope                                          |
+| Directory                                          | Purpose                                                                              |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| [packages/robotics](packages/robotics/README.md)   | `@drawcall/robotics`: devices, URDF export, the `drawcall-robotics` simulator CLI    |
+| [examples/warehouse](examples/warehouse/README.md) | A warehouse scene and differential-drive robot with its ROS Jazzy stack through pixi |
+| [DESIGN.md](DESIGN.md)                             | Implemented architecture and scope                                                   |
 
 The workspace uses `@drawcall/physics` and its Rapier backend **0.4.0**. `JointMotor` belongs to physics; robotics binds ROS commands to it.
 
 ## Run the warehouse
 
-Requirements: Node.js 22.12+ (CI uses 24), pnpm 10 and a running Docker engine with Compose.
+Requirements: Node.js 24.2+, pnpm 10 and [pixi](https://pixi.sh) (`curl -fsSL https://pixi.sh/install.sh | sh`). pixi installs ROS Jazzy from RoboStack, about 4 GB, on macOS and Linux without Docker.
 
 ```sh
-pnpm install
-pnpm ros
+cd examples/warehouse
+pixi run pnpm install   # once: the ROS environment, then rclnodejs compiled against it
+pnpm dev                # ros2 launch with the simulator and Lichtblick; Ctrl+C stops everything
 ```
 
-In another terminal:
+Install inside `pixi run` so that rclnodejs finds the ROS libraries it compiles against. That is the same rule as for any ROS client library: source the environment first.
 
-```sh
-pnpm dev
-```
+`pnpm dev` is `pixi run launch viewer:=true` in `examples/warehouse`. The XML launch file obtains the URDF from the CLI through a `Command` substitution, as xacro-based launches do, starts the simulator as a node with `--viewer`, and brings up robot_state_publisher, ros2_control, SLAM Toolbox, Nav2, foxglove_bridge and the mission. The first run downloads the Lichtblick web build into `~/.cache/drawcall-robotics`. Lichtblick opens already connected, showing the robot model, map, scan, costmap, plan, cameras and a goal tool. The mission drives four goals and exits when done, which ends the launch: a run is an episode.
 
-Open the URL printed by Vite; if its preferred port is occupied, Vite chooses another. Click **Connect to ROS 2** with `ws://localhost:9090`. Compose exposes the websocket only on host `127.0.0.1`.
+`pnpm launch` runs the same without a viewer. `pnpm record` adds `ros2 bag record` to the launch, writing every topic to a `rosbag2_*` directory in `examples/warehouse` as MCAP, and `pnpm replay rosbag2_<date>` opens that recording in Lichtblick with a layout built from the sensors it holds.
 
-The browser simulates the robot and publishes sensor data. SLAM Toolbox estimates position and builds an occupancy map from lidar and wheel encoders. Nav2 plans and follows four goals using that map. The dashboard shows the ROS map, estimated position and camera image. See the [ROS guide](examples/warehouse/ros/README.md) for architecture, reset and validation.
-
-Stop the Docker service when finished:
-
-```sh
-docker compose -f examples/warehouse/compose.yaml down
-```
+While it runs, the simulator answers `/sim/pause`, `/sim/resume`, `/sim/step` and `/sim/reset` (`std_srvs/Trigger`) and publishes ground truth on `/sim/state`. Because every node runs on `use_sim_time`, pausing the simulator pauses the whole stack and one step advances it by exactly one physics substep. `drawcall-robotics snapshot /robot/camera/image/compressed --out frame.jpg` saves what a camera sees.
 
 ## API shape
 
+A scene is a plain script. It builds a Three.js scene in the default physics world and puts a robot in it. A `Robot` is a group: the bodies, joints and sensors under it are the robot, and its URDF, joint states and joint commands follow from that structure.
+
 ```ts
-const ros = await setupROS2("ws://localhost:9090", {
-  world,
-  scene,
-  renderer,
-  namespace: "/robot",
+import { CameraSensor, LaserSensor, Robot } from "@drawcall/robotics";
+
+const scene = new Scene();
+const robot = new Robot();
+robot.name = "warehouse";
+scene.add(robot);
+const chassis = new RigidBody({ mass: 12 }); // "base_link"; wheels, named joints, motors follow
+robot.add(chassis, leftWheel, leftAxle, rightWheel, rightAxle);
+
+const laser = new LaserSensor({
+  name: "scan",
+  frameId: "laser",
+  samples: 361,
+  range: 12,
 });
-
-const motor = new JointMotor({ joint: wheelJoint, damping: 10, maxForce: 20 });
-new MotorBinding({ motor, name: "left_wheel", mode: "velocity" });
-
-const camera = new CameraSensor({ name: "camera", rate: 5 });
-chassis.add(camera);
-
-// Keep the application's existing display loop.
-world.update(frameDelta);
-renderer.render(scene, viewer);
+const camera = new CameraSensor({
+  name: "camera",
+  frameId: "camera_optical",
+  rate: 5,
+});
+laser.position.set(0, 0.24, -0.32);
+camera.position.set(0, 0.28, -0.38);
+chassis.add(laser, camera);
 ```
 
-See the [package guide](packages/robotics/README.md) for imports, complete setup, multiple devices and extensions.
-
-- `setupROS2` connects and installs physics hooks in one awaited call.
-- `getROS2()` returns the connected default runtime or throws. Devices capture it at construction; use `{ ros }` for an explicit runtime.
-- Devices register when constructed. Scene parenting positions spatial sensors; there is no scene discovery or upfront device list.
-- Before each fixed physics substep, motor bindings apply the latest fresh command. After each completed substep, the runtime publishes `/clock` and samples due sensors.
-- Native physics motors execute the drive. Sensor joint states report physical motion, not target values.
-- Dispose the runtime to release its devices, subscriptions and hooks. Physics bodies, joints, motors, the scene and renderer remain application-owned.
+The base is the body no joint hangs from, every named axis joint becomes a URDF joint, a joint with a motor is commanded through ros2_control with a velocity or position interface depending on the motor's stiffness, and each sensor mounted on the robot is a frame. `drawcall-robotics urdf scene.ts` runs the script against an offline runtime and prints that URDF; `drawcall-robotics sim scene.ts` runs it as a ROS 2 node through rclnodejs, rendering the cameras with Dawn. Scenes with several robots pick one with `--robot <name>`. In a browser the same devices attach to a rosbridge connection; see the [package guide](packages/robotics/README.md).
 
 ## ROS topics
 
 Defaults under namespace `/robot`:
 
-| Topic                                                     | Type                                  | Direction                      |
-| --------------------------------------------------------- | ------------------------------------- | ------------------------------ |
-| `/robot/left_wheel/command`, `/robot/right_wheel/command` | `std_msgs/msg/Float64`                | ROS → browser                  |
-| `/robot/joint_states`                                     | `sensor_msgs/msg/JointState`          | Browser → ROS                  |
-| `/robot/scan`                                             | `sensor_msgs/msg/LaserScan`           | Browser → ROS                  |
-| `/robot/camera/image/compressed`                          | `sensor_msgs/msg/CompressedImage`     | Browser → ROS                  |
-| `/robot/camera/camera_info`                               | `sensor_msgs/msg/CameraInfo`          | Browser → ROS                  |
-| `/odom`                                                   | `nav_msgs/msg/Odometry`               | Encoder adapter → ROS          |
-| `/map`                                                    | `nav_msgs/msg/OccupancyGrid`          | SLAM Toolbox → ROS/browser     |
-| `/cmd_vel`                                                | `geometry_msgs/msg/Twist`             | Nav2 → motor adapter           |
-| `/tf`, `/tf_static`                                       | `tf2_msgs/msg/TFMessage`              | ROS estimation and robot model |
-| `/clock`                                                  | `rosgraph_msgs/msg/Clock`             | Browser → ROS                  |
-| `/robot/status`                                           | `std_msgs/msg/String` containing JSON | Mission client → browser       |
+| Topic                                                                | Type                                          | Direction                |
+| -------------------------------------------------------------------- | --------------------------------------------- | ------------------------ |
+| `/robot/joint_commands`                                              | `sensor_msgs/msg/JointState`                  | ros2_control → sim       |
+| `/robot/joint_states`                                                | `sensor_msgs/msg/JointState`                  | sim → ros2_control       |
+| `/robot/scan`                                                        | `sensor_msgs/msg/LaserScan`                   | sim → ROS                |
+| `/robot/camera/image/compressed`, `/robot/camera/camera_info`        | `CompressedImage`, `CameraInfo`               | sim → ROS                |
+| `/robot/overview/image/compressed`, `/robot/overview/camera_info`    | `CompressedImage`, `CameraInfo`               | sim → ROS (fixed camera) |
+| `/clock`                                                             | `rosgraph_msgs/msg/Clock`                     | sim → ROS                |
+| `/sim/state`, `/sim/pause`, `/sim/resume`, `/sim/step`, `/sim/reset` | `std_msgs/msg/String`, `std_srvs/srv/Trigger` | sim → agents             |
 
-Relative topic names use the runtime namespace. Absolute names such as `/clock` and `/tf` bypass it. Use one clock publisher per ROS graph. Frame IDs are independent of topic namespaces; choose distinct frame IDs for multiple robots or sensors.
+ROS-internal topics follow upstream conventions: `/diff_drive_controller/cmd_vel` and `/odom`, `/joint_states` from the broadcaster, `/tf`, `/map`, `/plan`. Absolute names such as `/clock` bypass the namespace. Use one clock publisher per ROS graph.
 
-Three.js forward `-Z`, left `-X`, up `+Y` map to ROS map axes `+X`, `+Y`, `+Z`. Camera optical frames use `+Z` forward, `+X` right and `+Y` down. The browser publishes no TF. ROS provides `map → odom → base_footprint → base_link → sensors` from SLAM, encoder odometry and known mounting offsets.
+Three.js forward `-Z`, left `-X`, up `+Y` map to ROS `+X`, `+Y`, `+Z`. Camera optical frames use `+Z` forward, `+X` right and `+Y` down. The simulation publishes no TF: `map → odom → base_footprint → base_link → wheels, sensors` come from SLAM, the drive controller and the generated URDF.
 
 ## Timing and limits
 
-Enable `use_sim_time` on ROS consumers; the example controller does this automatically. Simulation time counts completed fixed substeps, including catch-up work. This is asynchronous messaging: publishing `/clock` does not wait for ROS callbacks or acknowledge that ROS processed a step. There is no lockstep runner.
+Every ROS node runs on `use_sim_time`. Simulation time counts completed fixed substeps at 120 Hz and is published on `/clock`; there is no lockstep, and pausing the simulator pauses the clock and with it every node.
 
-Motor commands are unstamped `Float64` values. Each binding keeps the latest received value and checks both elapsed simulation time and monotonic wall time; the default timeout is 0.5 seconds. Expiry or disconnection disables the drive before further physics advancement. **Disabling removes actuation; the robot can coast. It does not brake or hold position.** A new command can reactivate a timed-out binding. There is no automatic transport reconnect; dispose and set up a new runtime.
+Joint commands are unstamped `JointState` messages republished at the controller manager's rate. The binding keeps the latest value per joint and expires it after 0.5 seconds of simulation or wall time. **Expiry removes actuation; the robot can coast. It does not brake or hold position.**
 
 Current scope:
 
-- Direct per-motor topics, not a `ros2_control` hardware plugin or trajectory action server.
-- Wheel encoder odometry, SLAM Toolbox mapping/localization, and Nav2 navigation; no ground-truth pose API.
-- A configurable planar lidar, 360° by default; no-hit rays use `range_max + 1`, marking them outside the valid measurement range. All rays in a scan represent one simulation instant.
-- Synchronous WebGL readback and JPEG encoding, with 320×180 at 5 Hz as the camera default. Large images or many cameras can stall the browser. Outgoing publications are dropped when websocket buffering exceeds 4 MiB; `ros.dropped` counts them.
-- Ordinary perspective capture without lens distortion. Render-target capture bypasses application postprocessing.
-- Reset means reloading the application. Restart the ROS service before reloading the browser to reset SLAM and odometry together. Backwards encoder timestamps stop the service visibly. `world.reset()` alone is not a coordinated ROS reset.
+- Topic-based ros2_control hardware, not a compiled hardware plugin or trajectory action server.
+- Encoder odometry, SLAM Toolbox mapping and localization, Nav2 navigation; ground truth only on `/sim/state`.
+- A configurable planar lidar, 360° by default, that sees everything including its own robot; no-hit rays and returns inside `minRange` use `range_max + 1`.
+- Cameras render into targets and read back asynchronously; a sample is skipped while a readback is in flight. Defaults are 320×180 at 5 Hz.
+- `/sim/reset` restarts the clock at zero, so nodes with time-dependent state, such as SLAM, must restart with it. A new launch is the ordinary way to start an episode.
 
 ## Validation
 
-```sh
-pnpm check
-python3 -m unittest discover -s examples/warehouse/ros -p 'test_*.py'
-```
-
-With Docker running and the browser connected, run the live smoke check:
-
-```sh
-docker compose -f examples/warehouse/compose.yaml exec ros bash -lc \
-  'source /opt/ros/jazzy/setup.bash && python3 /app/smoke.py --timeout 60'
-```
-
-The smoke check requires live odometry, scan, JPEG, joint-state and status messages, an occupancy map and the expected TF chain, an advancing clock, nonzero commands on both wheels and resulting encoder-estimated motion. A timeout fails visibly and reports which observations are missing.
-
-For a complete circuit, through Nav2:
-
-```sh
-docker compose -f examples/warehouse/compose.yaml exec ros bash -lc \
-  'source /opt/ros/jazzy/setup.bash && python3 /app/smoke.py --patrol --timeout 240'
-```
+`pnpm check` builds, typechecks and runs the package's unit tests, including the URDF export. The example is verified by running it: `pnpm launch` ends after the robot has completed its circuit.

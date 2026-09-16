@@ -1,9 +1,5 @@
 {
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "noEmit": true,
-    "module": "ESNext",
-    "moduleResolution": "Bundler"
-  },
+  "extends": "../../tsconfig.json",
+  "compilerOptions": { "noEmit": true },
   "include": ["src", "test"]
 }

@@ -3,15 +3,19 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.18.0",
+  "engines": {
+    "node": ">=24.2"
+  },
   "scripts": {
     "build": "pnpm -r --if-present build",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
     "check": "pnpm build && pnpm typecheck && pnpm test",
     "dev": "pnpm --filter @drawcall/robotics build && pnpm --filter @drawcall/example-warehouse dev",
-    "ros": "docker compose -f examples/warehouse/compose.yaml up --build",
-    "format": "prettier --write .",
-    "smoke": "docker compose -f examples/warehouse/compose.yaml exec -T ros bash -lc 'source /opt/ros/jazzy/setup.bash && python3 /app/smoke.py --timeout 60'"
+    "launch": "pnpm --filter @drawcall/robotics build && pnpm --filter @drawcall/example-warehouse launch",
+    "record": "pnpm --filter @drawcall/robotics build && pnpm --filter @drawcall/example-warehouse record",
+    "replay": "pnpm --filter @drawcall/robotics build && pnpm --filter @drawcall/example-warehouse replay",
+    "format": "prettier --write ."
   },
   "devDependencies": {
     "@types/three": "^0.185.0",
@@ -19,5 +23,14 @@
     "three": "0.185.1",
     "typescript": "^5.9.3",
     "vitest": "^4.0.17"
+  },
+  "pnpm": {
+    "patchedDependencies": {
+      "rclnodejs@2.2.0": "patches/rclnodejs@2.2.0.patch"
+    },
+    "onlyBuiltDependencies": [
+      "rclnodejs",
+      "webgpu"
+    ]
   }
 }

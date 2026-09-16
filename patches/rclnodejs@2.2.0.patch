@@ -1,0 +1,13 @@
+diff --git a/src/rcl_context_bindings.cpp b/src/rcl_context_bindings.cpp
+index 7daad5b2fc00bb1b333421e7b4ef8af8c13fb4b0..4a2b9f3170a9dd21581c286c6836103d308013fa 100644
+--- a/src/rcl_context_bindings.cpp
++++ b/src/rcl_context_bindings.cpp
+@@ -155,7 +155,7 @@ Napi::Value GetDomainId(const Napi::CallbackInfo& info) {
+     return env.Undefined();
+   }
+ 
+-  return Napi::BigInt::New(env, domain_id);
++  return Napi::BigInt::New(env, static_cast<uint64_t>(domain_id));
+ }
+ 
+ Napi::Object InitContextBindings(Napi::Env env, Napi::Object exports) {

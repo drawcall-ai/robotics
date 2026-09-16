@@ -1,13 +1,17 @@
+# Every node loads this one file and reads its own section.
 /**:
   ros__parameters:
     use_sim_time: true
-    enable_stamped_cmd_vel: false
+    enable_stamped_cmd_vel: true
 
 bt_navigator:
   ros__parameters:
     global_frame: map
     robot_base_frame: base_footprint
-    odom_topic: /odom
+    odom_topic: /diff_drive_controller/odom
+    # Nav2's 20 ms default aborts goals whenever a busy host delays a planner acknowledgement.
+    default_server_timeout: 1000
+    wait_for_service_timeout: 5000
     navigators: [navigate_to_pose, navigate_through_poses]
     navigate_to_pose:
       plugin: nav2_bt_navigator::NavigateToPoseNavigator
@@ -16,6 +20,7 @@ bt_navigator:
 
 controller_server:
   ros__parameters:
+    odom_topic: /diff_drive_controller/odom
     controller_frequency: 20.0
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.001
@@ -82,7 +87,6 @@ controller_server:
 local_costmap:
   local_costmap:
     ros__parameters:
-      use_sim_time: true
       global_frame: odom
       robot_base_frame: base_footprint
       rolling_window: true
@@ -113,7 +117,6 @@ local_costmap:
 global_costmap:
   global_costmap:
     ros__parameters:
-      use_sim_time: true
       global_frame: map
       robot_base_frame: base_footprint
       resolution: 0.05
@@ -171,3 +174,70 @@ behavior_server:
     max_rotational_vel: 0.6
     min_rotational_vel: 0.2
     rotational_acc_lim: 1.0
+
+controller_manager:
+  ros__parameters:
+    # Wheel transforms follow this rate; with odometry and SLAM it keeps /tf under Lichtblick's 60 Hz alert.
+    update_rate: 20
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+    diff_drive_controller:
+      type: diff_drive_controller/DiffDriveController
+
+diff_drive_controller:
+  ros__parameters:
+    left_wheel_names: [left_wheel]
+    right_wheel_names: [right_wheel]
+    # Wheel geometry of scene.ts.
+    wheel_separation: 0.9
+    wheel_radius: 0.22
+    odom_frame_id: odom
+    base_frame_id: base_footprint
+    enable_odom_tf: true
+    # Encoder velocities integrate cleanly; positions wrap at ±π in the simulation's joint state.
+    position_feedback: false
+    open_loop: false
+    cmd_vel_timeout: 0.5
+    publish_rate: 20.0
+    # Uncalibrated dead reckoning: trust planar pose and yaw a little, nothing else.
+    pose_covariance_diagonal:
+      [0.001, 0.001, 1000000.0, 1000000.0, 1000000.0, 0.03]
+    twist_covariance_diagonal:
+      [0.001, 0.001, 1000000.0, 1000000.0, 1000000.0, 0.03]
+
+slam_toolbox:
+  ros__parameters:
+    odom_frame: odom
+    map_frame: map
+    base_frame: base_footprint
+    scan_topic: /robot/scan
+    mode: mapping
+    resolution: 0.05
+    max_laser_range: 12.0
+    minimum_travel_distance: 0.1
+    minimum_travel_heading: 0.1
+    transform_publish_period: 0.1
+
+lifecycle_manager_navigation:
+  ros__parameters:
+    autostart: true
+    node_names: [controller_server, planner_server, behavior_server, bt_navigator]
+
+# slam_toolbox creates no bond, so it has its own manager with the bond check off.
+lifecycle_manager_slam:
+  ros__parameters:
+    autostart: true
+    bond_timeout: 0.0
+    node_names: [slam_toolbox]
+
+foxglove_bridge:
+  ros__parameters:
+    address: 127.0.0.1
+    # Only what the viewer layout uses. Everything else is noise there: the 120 Hz clock trips
+    # Lichtblick's rate alert, and Nav2 and SLAM services disagree on the Marker schema.
+    topic_whitelist:
+      ['^/tf$', '^/tf_static$', '^/map$', '^/robot/.*', '^/robot_description$', '^/diff_drive_controller/.*',
+       '^/plan$', '^/local_plan$', '^/local_costmap/costmap$', '^/global_costmap/costmap$',
+       '^/goal_pose$', '^/initialpose$', '^/clicked_point$']
+    service_whitelist: ['^$']
+    param_whitelist: ['^$']

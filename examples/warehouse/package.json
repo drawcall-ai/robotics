@@ -3,21 +3,19 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "dev": "pixi run launch viewer:=true",
+    "launch": "pixi run launch",
+    "record": "pixi run launch record:=true",
+    "replay": "drawcall-robotics view",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@drawcall/robotics": "workspace:*",
     "@drawcall/physics": "0.4.0",
-    "@drawcall/physics-rapier": "0.4.0",
+    "@drawcall/robotics": "workspace:*",
     "three": "^0.185.1"
   },
   "devDependencies": {
     "@types/three": "^0.185.0",
-    "typescript": "^5.9.3",
-    "vite": "^7.0.0",
-    "vitest": "^4.0.17"
+    "typescript": "^5.9.3"
   }
 }

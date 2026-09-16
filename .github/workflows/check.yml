@@ -15,4 +15,3 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm --filter @drawcall/robotics pack --pack-destination /tmp/packages
-      - run: docker compose -f examples/warehouse/compose.yaml build

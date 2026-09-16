@@ -1,46 +1,20 @@
 import { Device, withDevice } from "../src/device.js";
 import { LaserSensor } from "../src/sensors/laser.js";
 import { afterEach, expect, it, vi } from "vitest";
-import { PerspectiveCamera, Scene, WebGLRenderer } from "three";
+import { PerspectiveCamera } from "three";
 import { JointMotor, RevoluteJoint, RigidBody } from "@drawcall/physics";
 import { setupWorld } from "@drawcall/physics-rapier";
-import type { Connection } from "../src/connection.js";
+import { ConnectionStub } from "./connection.js";
 import { ROS2 } from "../src/runtime.js";
-import { MotorBinding } from "../src/motor.js";
+import { Robot } from "../src/robot.js";
+import { RendererStub } from "./renderer.js";
 
-vi.mock("three", async (importOriginal) => {
-  const three = await importOriginal<typeof import("three")>();
-  return { ...three, WebGLRenderer: class {} };
+const command = (velocity: number) => ({
+  name: ["wheel"],
+  position: [],
+  velocity: [velocity],
+  effort: [],
 });
-
-class Transport implements Connection {
-  connected = true;
-  dropped = 0;
-  readonly messages: { name: string; type: string; message: unknown }[] = [];
-  readonly receivers = new Map<string, (message: unknown) => void>();
-  publish(name: string, type: string, message: unknown): void {
-    this.messages.push({ name, type, message });
-  }
-  subscribe(
-    name: string,
-    _type: string,
-    receive: (message: unknown) => void,
-  ): () => void {
-    this.receivers.set(name, receive);
-    return () => {
-      this.receivers.delete(name);
-    };
-  }
-  receive(name: string, message: unknown): void {
-    const receive = this.receivers.get(name);
-    if (!receive) throw new Error(`No subscription for ${name}`);
-    receive(message);
-  }
-  dispose(): void {
-    this.connected = false;
-    this.receivers.clear();
-  }
-}
 
 const cleanup: (() => void)[] = [];
 afterEach(() => {
@@ -51,36 +25,34 @@ afterEach(() => {
 async function fixture() {
   const world = await setupWorld({ gravity: [0, 0, 0], fixedDelta: 0.01 });
   cleanup.push(() => world.dispose());
-  const transport = new Transport();
+  const transport = new ConnectionStub();
   const ros = new ROS2(transport, {
     world,
-    scene: new Scene(),
-    renderer: new WebGLRenderer(),
+    renderer: new RendererStub(),
   });
   cleanup.push(() => ros.dispose());
+  const base = new RigidBody({ world, type: "static" });
+  base.name = "base_link";
   const body = new RigidBody({
+    world,
     mass: 1,
     centerOfMass: [0, 0, 0],
     diagonalInertia: [1, 1, 1],
   });
-  const joint = new RevoluteJoint({ body0: null, body1: body, axis: "Z" });
+  body.name = "wheel_link";
+  const joint = new RevoluteJoint({ body0: base, body1: body, axis: "Z" });
+  joint.name = "wheel";
   const motor = new JointMotor({ joint, damping: 10, maxForce: 20 });
-  const binding = new MotorBinding({
-    motor,
-    name: "wheel",
-    mode: "velocity",
-    timeout: 0.05,
-    ros,
-  });
-  return { world, ros, transport, motor, binding, joint };
+  const robot = new Robot({ ros });
+  robot.name = "cart";
+  robot.add(base, body, joint);
+  return { world, ros, transport, motor, robot, joint };
 }
 
 it("selects the latest received command before the solver and publishes completed time", async () => {
   const { world, transport, motor, joint } = await fixture();
-  expect(motor.enabled).toBe(false);
-  transport.receive("/robot/wheel/command", { data: -2 });
-  transport.receive("/robot/wheel/command", { data: 3 });
-  expect(motor.enabled).toBe(false);
+  transport.receive("/robot/joint_commands", command(-2));
+  transport.receive("/robot/joint_commands", command(3));
   world.update(0.01);
   expect(motor.target?.velocity).toBe(3);
   expect(joint.getState().velocity).toBeGreaterThan(0);
@@ -94,10 +66,10 @@ it("selects the latest received command before the solver and publishes complete
 it("expires persistent actuation by simulation time and accepts a fresh repeated target", async () => {
   vi.spyOn(performance, "now").mockReturnValue(0);
   const { world, transport, motor } = await fixture();
-  transport.receive("/robot/wheel/command", { data: 3 });
-  for (let step = 0; step < 8; step++) world.update(0.01);
+  transport.receive("/robot/joint_commands", command(3));
+  for (let step = 0; step < 60; step++) world.update(0.01);
   expect(motor.enabled).toBe(false);
-  transport.receive("/robot/wheel/command", { data: 3 });
+  transport.receive("/robot/joint_commands", command(3));
   world.update(0.01);
   expect(motor.enabled).toBe(true);
 });
@@ -105,41 +77,53 @@ it("expires persistent actuation by simulation time and accepts a fresh repeated
 it("expires commands during a display pause before resuming the next physics step", async () => {
   const clock = vi.spyOn(performance, "now").mockReturnValue(0);
   const { world, transport, motor } = await fixture();
-  transport.receive("/robot/wheel/command", { data: 2 });
+  transport.receive("/robot/joint_commands", command(2));
   world.update(0.01);
-  clock.mockReturnValue(100);
+  clock.mockReturnValue(1000);
   world.update(0.01);
   expect(motor.enabled).toBe(false);
 });
 
 it("disables motors before another step when disconnected, even with a pending nonzero command", async () => {
   const { world, transport, motor, joint } = await fixture();
-  transport.receive("/robot/wheel/command", { data: 3 });
+  transport.receive("/robot/joint_commands", command(3));
   world.update(0.01);
   const velocity = joint.getState().velocity;
-  transport.receive("/robot/wheel/command", { data: 10 });
+  transport.receive("/robot/joint_commands", command(10));
   transport.connected = false;
   world.update(0.01);
   expect(motor.enabled).toBe(false);
   expect(joint.getState().velocity).toBeCloseTo(velocity, 5);
 });
 
-it("surfaces malformed ROS commands and stops an already active actuator", async () => {
+it("surfaces malformed or foreign joint commands and stops an already active actuator", async () => {
   const { world, ros, transport, motor } = await fixture();
-  transport.receive("/robot/wheel/command", { data: 3 });
+  transport.receive("/robot/joint_commands", command(3));
   world.update(0.01);
-  transport.receive("/robot/wheel/command", { data: "3" });
-  expect(ros.error?.message).toContain("Invalid wheel motor command");
+  transport.receive("/robot/joint_commands", {
+    name: ["wheel"],
+    velocity: ["3"],
+  });
+  expect(ros.error?.message).toContain("needs a finite velocity");
   expect(ros.connected).toBe(false);
   expect(motor.enabled).toBe(false);
 });
 
-it("disposes a binding without disposing its motor and releases subscriptions and hooks", async () => {
-  const { world, ros, transport, motor, binding } = await fixture();
-  transport.receive("/robot/wheel/command", { data: 2 });
+it("rejects commands for joints it does not own", async () => {
+  const { ros, transport } = await fixture();
+  transport.receive("/robot/joint_commands", {
+    name: ["wheel", "arm"],
+    velocity: [1, 2],
+  });
+  expect(ros.error?.message).toContain("unknown joint arm");
+});
+
+it("disposes a robot without disposing its motor and releases subscriptions and hooks", async () => {
+  const { world, ros, transport, motor, robot } = await fixture();
+  transport.receive("/robot/joint_commands", command(2));
   world.update(0.01);
-  binding.dispose();
-  binding.dispose();
+  robot.dispose();
+  robot.dispose();
   expect(motor.disposed).toBe(false);
   expect(motor.enabled).toBe(false);
   expect(transport.receivers.size).toBe(0);
@@ -187,13 +171,10 @@ it("preserves Three.js inheritance and constructor arguments while dispatching t
   expect(camera.samples).toBe(1);
 });
 
-it("does not register invalid sensors or leave a duplicate motor binding behind", async () => {
-  const { ros, world, motor } = await fixture();
+it("does not register invalid sensors", async () => {
+  const { ros, world } = await fixture();
   const register = vi.spyOn(ros, "register");
   expect(() => new LaserSensor({ ros, samples: 1 })).toThrow("at least two");
-  expect(
-    () => new MotorBinding({ ros, motor, name: "duplicate", mode: "velocity" }),
-  ).toThrow("already bound");
   expect(register).not.toHaveBeenCalled();
   expect(() => world.update(0.01)).not.toThrow();
 });
@@ -201,7 +182,7 @@ it("does not register invalid sensors or leave a duplicate motor binding behind"
 it("keeps unchanged native motor settings and restores externally changed target components", async () => {
   const { world, transport, motor } = await fixture();
   vi.spyOn(performance, "now").mockReturnValue(0);
-  transport.receive("/robot/wheel/command", { data: 3 });
+  transport.receive("/robot/joint_commands", command(3));
   world.update(0.01);
   const version = motor.settingsVersion;
   world.update(0.01);
@@ -214,22 +195,26 @@ it("keeps unchanged native motor settings and restores externally changed target
   expect(motor.enabled).toBe(true);
 });
 
-it("allows rebinding an application motor after subscription cleanup fails", async () => {
-  const { world, ros, transport, motor } = await fixture();
+it("allows moving a joint to a robot of a new runtime after subscription cleanup fails", async () => {
+  const { world, ros, transport, motor, robot } = await fixture();
+  transport.receive("/robot/joint_commands", command(2));
+  world.update(0.01);
+  expect(motor.enabled).toBe(true);
   vi.spyOn(transport.receivers, "delete").mockImplementationOnce(() => {
     throw new Error("Unsubscribe failed");
   });
   expect(() => ros.dispose()).toThrow("Failed to dispose ROS runtime");
   expect(motor.enabled).toBe(false);
-  const nextTransport = new Transport();
+  const nextTransport = new ConnectionStub();
   const next = new ROS2(nextTransport, {
     world,
-    scene: new Scene(),
-    renderer: new WebGLRenderer(),
+    renderer: new RendererStub(),
   });
   cleanup.push(() => next.dispose());
-  new MotorBinding({ ros: next, motor, name: "wheel", mode: "velocity" });
-  nextTransport.receive("/robot/wheel/command", { data: 2 });
+  const moved = new Robot({ ros: next });
+  moved.name = "cart";
+  moved.add(...robot.children);
+  nextTransport.receive("/robot/joint_commands", command(2));
   world.update(0.01);
   expect(motor.enabled).toBe(true);
   expect(motor.target?.velocity).toBe(2);

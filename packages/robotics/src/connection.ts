@@ -1,10 +1,9 @@
-import { disposeAll } from "./cleanup.js";
+import { runAll } from "./cleanup.js";
 import { AbstractTransport, Ros, Topic, type RosbridgeMessage } from "roslib";
 
 export interface Connection {
   readonly connected: boolean;
   readonly error?: Error;
-  readonly dropped: number;
   publish(name: string, type: string, message: unknown): void;
   subscribe(
     name: string,
@@ -16,7 +15,6 @@ export interface Connection {
 
 class Socket extends AbstractTransport {
   readonly socket: WebSocket;
-  dropped = 0;
   constructor(url: string) {
     super();
     this.socket = new WebSocket(url);
@@ -26,13 +24,6 @@ class Socket extends AbstractTransport {
     this.socket.onmessage = (event) => this.handleRawMessage(event.data);
   }
   send(message: RosbridgeMessage): void {
-    if (
-      message.op === "publish" &&
-      this.socket.bufferedAmount > 4 * 1024 * 1024
-    ) {
-      this.dropped++;
-      return;
-    }
     this.socket.send(JSON.stringify(message));
   }
   close(): void {
@@ -81,9 +72,6 @@ export class RosbridgeConnection implements Connection {
   get connected(): boolean {
     return this.ros.isConnected && !this.error;
   }
-  get dropped(): number {
-    return this.socket?.dropped ?? 0;
-  }
   async connect(url: string, timeout: number): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       const finish = (error?: Error) => {
@@ -115,11 +103,7 @@ export class RosbridgeConnection implements Connection {
   }
   private topic(name: string, type: string): Topic<unknown> {
     const current = this.topics.get(name);
-    if (current) {
-      if (current.messageType !== type)
-        throw new Error(`Topic ${name} already uses ${current.messageType}`);
-      return current;
-    }
+    if (current) return current;
     const topic = new Topic({
       ros: this.ros,
       name,
@@ -133,7 +117,7 @@ export class RosbridgeConnection implements Connection {
   }
   publish(name: string, type: string, message: unknown): void {
     if (!this.connected) throw new Error("ROS bridge is disconnected");
-    this.topic(name, type).publish(message);
+    this.topic(name, type).publish(base64Bytes(message));
   }
   subscribe(
     name: string,
@@ -154,6 +138,22 @@ export class RosbridgeConnection implements Connection {
       : [];
     releases.push(() => this.ros.close());
     this.topics.clear();
-    disposeAll(releases, "Failed to dispose ROS connection");
+    runAll(releases, "Failed to dispose ROS connection");
   }
+}
+
+/** rosbridge's JSON protocol carries `uint8[]` fields as base64 text. */
+function base64Bytes(value: unknown): unknown {
+  if (value instanceof Uint8Array) {
+    let binary = "";
+    for (let offset = 0; offset < value.length; offset += 0x8000)
+      binary += String.fromCharCode(...value.subarray(offset, offset + 0x8000));
+    return btoa(binary);
+  }
+  if (Array.isArray(value)) return value.map(base64Bytes);
+  if (typeof value === "object" && value !== null)
+    return Object.fromEntries(
+      Object.entries(value).map(([key, field]) => [key, base64Bytes(field)]),
+    );
+  return value;
 }

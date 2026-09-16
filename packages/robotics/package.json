@@ -21,6 +21,8 @@
     "prepack": "pnpm build"
   },
   "dependencies": {
+    "@drawcall/physics-rapier": "0.4.0",
+    "jpeg-js": "^0.4.4",
     "roslib": "^2.1.0"
   },
   "peerDependencies": {
@@ -29,11 +31,24 @@
   },
   "devDependencies": {
     "@drawcall/physics": "0.4.0",
-    "@drawcall/physics-rapier": "0.4.0"
+    "@types/node": "^26.6.0",
+    "@types/send": "^1.2.1"
   },
-  "description": "ROS 2 devices and simulation integration for Three.js and Drawcall physics.",
+  "description": "ROS 2 simulation for Three.js and Drawcall physics: sensors, ros2_control bindings, URDF export and a headless simulator node.",
   "license": "MIT",
   "publishConfig": {
     "access": "public"
+  },
+  "bin": {
+    "drawcall-robotics": "./dist/cli/main.js"
+  },
+  "optionalDependencies": {
+    "@mcap/core": "2.2.2",
+    "rclnodejs": "2.2.0",
+    "send": "^1.2.1",
+    "webgpu": "^0.6.1"
+  },
+  "engines": {
+    "node": ">=24.2"
   }
 }

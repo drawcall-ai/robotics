@@ -1,132 +1,48 @@
-import { Quaternion } from "three";
-import { rosPosition, rosOpticalRotation } from "../src/coordinates.js";
-import { afterEach, expect, it, vi } from "vitest";
-import {
-  Scene,
-  Vector3,
-  Vector4,
-  WebGLRenderer,
-  WebGLRenderTarget,
-  WebGLCubeRenderTarget,
-} from "three";
-import type { Connection } from "../src/connection.js";
+import { afterEach, expect, it } from "vitest";
+import { decode } from "jpeg-js";
+import { RenderTarget, Scene, Vector3 } from "three";
+import { ConnectionStub } from "./connection.js";
 import { setupWorld } from "@drawcall/physics-rapier";
 import { ROS2 } from "../src/runtime.js";
 import { CameraSensor } from "../src/sensors/camera.js";
-
-vi.mock("three", async (importOriginal) => {
-  const three = await importOriginal<typeof import("three")>();
-  return {
-    ...three,
-    WebGLRenderer: class {
-      xr = { enabled: true };
-      private target: WebGLRenderTarget | null = null;
-      private face = 0;
-      private mip = 0;
-      private scissorTest = true;
-      private viewport = new three.Vector4(0, 0, 1024, 768);
-      private canvasViewport = this.viewport.clone();
-      getRenderTarget() {
-        return this.target;
-      }
-      getActiveCubeFace() {
-        return this.face;
-      }
-      getActiveMipmapLevel() {
-        return this.mip;
-      }
-      getScissorTest() {
-        return this.scissorTest;
-      }
-      setScissorTest(value: boolean) {
-        this.scissorTest = value;
-      }
-      getViewport(value: Vector4) {
-        return value.copy(this.canvasViewport);
-      }
-      getCurrentViewport(value: Vector4) {
-        return value.copy(this.viewport);
-      }
-      setViewport(value: Vector4) {
-        this.viewport.copy(value);
-      }
-      getScissor(value: Vector4) {
-        return value.copy(this.canvasViewport);
-      }
-      setScissor() {}
-      setRenderTarget(target: WebGLRenderTarget | null, face = 0, mip = 0) {
-        this.target = target;
-        this.face = face;
-        this.mip = mip;
-        this.viewport.copy(target?.viewport ?? this.canvasViewport);
-      }
-      clear() {}
-      render() {}
-      readRenderTargetPixels() {}
-    },
-  };
-});
+import { RendererStub } from "./renderer.js";
 
 const cleanup: (() => void)[] = [];
 afterEach(() => {
   for (const release of cleanup.splice(0).reverse()) release();
-  vi.restoreAllMocks();
-  vi.unstubAllGlobals();
 });
 
 async function fixture() {
-  vi.stubGlobal("document", {
-    createElement: () => ({
-      width: 0,
-      height: 0,
-      getContext: () => ({
-        createImageData: (width: number, height: number) => ({
-          data: new Uint8ClampedArray(width * height * 4),
-        }),
-        putImageData() {},
-      }),
-      toDataURL: () => "data:image/jpeg;base64,cGl4ZWxz",
-    }),
-  });
   const world = await setupWorld({ gravity: [0, 0, 0] });
   cleanup.push(() => world.dispose());
-  const messages: { name: string; message: unknown }[] = [];
-  const connection: Connection = {
-    connected: true,
-    dropped: 0,
-    publish(name, _type, message) {
-      messages.push({ name, message });
-    },
-    subscribe() {
-      return () => {};
-    },
-    dispose() {},
-  };
-  const renderer = new WebGLRenderer();
-  const ros = new ROS2(connection, { world, scene: new Scene(), renderer });
+  const connection = new ConnectionStub();
+  const { messages } = connection;
+  const renderer = new RendererStub();
+  const ros = new ROS2(connection, { world, renderer });
   cleanup.push(() => ros.dispose());
   const camera = new CameraSensor({ width: 320, height: 180, ros });
-  return { camera, renderer, messages };
+  new Scene().add(camera);
+  return { camera, renderer, messages, ros };
+}
+function field(message: unknown, key: string): unknown {
+  if (typeof message !== "object" || message === null || !(key in message))
+    throw new Error(`Missing ${key}`);
+  return Reflect.get(message, key);
 }
 
 it("publishes calibration that projects points like the actual zoomed and offset Three camera", async () => {
-  const { camera, messages } = await fixture();
+  const { camera, renderer, messages } = await fixture();
   camera.zoom = 2;
   camera.filmOffset = 3;
   camera.setViewOffset(640, 360, 30, 40, 320, 180);
   camera.updateProjectionMatrix();
   camera.afterStep(0.25);
+  await renderer.flush();
   const info = messages.find(
     (message) => message.name === "/robot/camera/camera_info",
   )?.message;
-  if (
-    typeof info !== "object" ||
-    info === null ||
-    !("k" in info) ||
-    !Array.isArray(info.k)
-  )
-    throw new Error("Missing camera calibration");
-  const calibration = info.k;
+  const calibration = field(info, "k");
+  if (!Array.isArray(calibration)) throw new Error("Missing calibration");
   const coefficient = (index: number): number => {
     const value: unknown = calibration[index];
     if (typeof value !== "number")
@@ -160,36 +76,67 @@ it("publishes calibration that projects points like the actual zoomed and offset
   });
 });
 
-it("restores the previous render target, face, mip, viewport, scissor and XR after rendering fails", async () => {
+it("encodes the readback as a JPEG the size of the sensor", async () => {
   const { camera, renderer, messages } = await fixture();
-  const previous = new WebGLCubeRenderTarget(128);
+  renderer.pixel = 200;
+  camera.afterStep(0.2);
+  await renderer.flush();
+  const image = messages.find(
+    (message) => message.name === "/robot/camera/image/compressed",
+  )?.message;
+  expect(field(image, "format")).toBe("jpeg");
+  const data = field(image, "data");
+  if (!(data instanceof Uint8Array))
+    throw new Error("Image data must be bytes");
+  const decoded = decode(data);
+  expect([decoded.width, decoded.height]).toEqual([320, 180]);
+  expect(decoded.data[0]).toBeCloseTo(200, -1);
+});
+
+it("restores the previous render target and publishes nothing after rendering fails", async () => {
+  const { camera, renderer, messages } = await fixture();
+  const previous = new RenderTarget(128, 128);
   cleanup.push(() => previous.dispose());
-  previous.viewport.set(10, 20, 90, 60);
-  renderer.setRenderTarget(previous, 4, 2);
-  renderer.setScissorTest(true);
-  renderer.xr.enabled = true;
-  vi.spyOn(renderer, "render").mockImplementationOnce(() => {
-    throw new Error("GPU render failed");
-  });
+  renderer.setRenderTarget(previous);
+  renderer.failRender = true;
   expect(() => camera.afterStep(0.1)).toThrow("GPU render failed");
   expect(renderer.getRenderTarget()).toBe(previous);
-  expect(renderer.getActiveCubeFace()).toBe(4);
-  expect(renderer.getActiveMipmapLevel()).toBe(2);
-  expect(renderer.getCurrentViewport(new Vector4()).toArray()).toEqual([
-    10, 20, 90, 60,
-  ]);
-  expect(renderer.getScissorTest()).toBe(true);
-  expect(renderer.xr.enabled).toBe(true);
+  await renderer.flush();
   expect(messages).toHaveLength(0);
 });
 
+it("skips samples while a readback is still in flight instead of queueing captures", async () => {
+  const { camera, renderer, messages } = await fixture();
+  camera.afterStep(0.2);
+  camera.afterStep(0.4);
+  expect(renderer.renders).toBe(1);
+  await renderer.flush();
+  camera.afterStep(0.6);
+  await renderer.flush();
+  expect(renderer.renders).toBe(2);
+  expect(
+    messages.filter(
+      (message) => message.name === "/robot/camera/image/compressed",
+    ),
+  ).toHaveLength(2);
+});
+
 it("publishes only image and calibration, never a camera world pose", async () => {
-  const { camera, messages } = await fixture();
+  const { camera, renderer, messages } = await fixture();
   camera.position.set(3, 4, 5);
   camera.rotation.set(0.2, 0.7, -0.1);
   camera.afterStep(0.25);
+  await renderer.flush();
   expect(messages.map(({ name }) => name)).toEqual([
     "/robot/camera/image/compressed",
     "/robot/camera/camera_info",
   ]);
+});
+
+it("drops a frame whose readback completes after disconnection", async () => {
+  const { camera, renderer, messages, ros } = await fixture();
+  camera.afterStep(0.2);
+  ros.dispose();
+  await renderer.flush();
+  expect(messages).toHaveLength(0);
 });

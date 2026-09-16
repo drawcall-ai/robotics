@@ -1,12 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { Scene, WebGLRenderer } from "three";
 import { setupWorld } from "@drawcall/physics-rapier";
 import { ROS2 } from "../src/runtime.js";
-
-vi.mock("three", async (importOriginal) => {
-  const three = await importOriginal<typeof import("three")>();
-  return { ...three, WebGLRenderer: class {} };
-});
+import { RendererStub } from "./renderer.js";
 
 const cleanup: (() => void)[] = [];
 afterEach(() => {
@@ -19,15 +14,13 @@ async function fixture() {
   const unsubscribe = vi.fn();
   const connection = {
     connected: true,
-    dropped: 0,
     publish: vi.fn(),
     subscribe: () => unsubscribe,
     dispose: vi.fn(),
   };
   const ros = new ROS2(connection, {
     world,
-    scene: new Scene(),
-    renderer: new WebGLRenderer(),
+    renderer: new RendererStub(),
   });
   cleanup.push(() => ros.dispose());
   return { world, ros, connection, unsubscribe };
@@ -67,7 +60,7 @@ it("stops every device after a fault even when an earlier stop fails", async () 
   expect(ros.error).toBeInstanceOf(AggregateError);
   expect(ros.error).toMatchObject({
     cause: fault,
-    errors: [fault, stopFailure],
+    errors: [fault, expect.objectContaining({ errors: [stopFailure] })],
   });
 });
 

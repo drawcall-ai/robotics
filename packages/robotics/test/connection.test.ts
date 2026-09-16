@@ -8,7 +8,6 @@ class WebSocketStub {
   static readonly CLOSED = 3;
   static instances: WebSocketStub[] = [];
   readyState = WebSocketStub.CONNECTING;
-  bufferedAmount = 0;
   readonly sent: unknown[] = [];
   onopen?: (event: Event) => void;
   onclose?: (event: Event) => void;
@@ -82,22 +81,6 @@ it("advertises once, decodes incoming messages, and unsubscribes cleanly", async
   expect(received).toHaveBeenCalledTimes(1);
 });
 
-it("bounds outgoing publication when the socket is congested without dropping subscription control", async () => {
-  const { connection, socket } = await connect();
-  socket.bufferedAmount = 5 * 1024 * 1024;
-  connection.publish("/camera", "sensor_msgs/msg/CompressedImage", {
-    data: "AA==",
-  });
-  expect(connection.dropped).toBe(1);
-  connection.subscribe("/command", "std_msgs/msg/Float64", () => {});
-  expect(socket.sent).toContainEqual(
-    expect.objectContaining({ op: "subscribe", topic: "/command" }),
-  );
-  expect(socket.sent).not.toContainEqual(
-    expect.objectContaining({ op: "publish" }),
-  );
-});
-
 it("surfaces operation-specific rosbridge errors instead of remaining connected", async () => {
   const { connection, socket } = await connect();
   connection.publish("/sensor", "missing_msgs/msg/Missing", {});
@@ -124,12 +107,9 @@ it("surfaces operation-specific rosbridge errors instead of remaining connected"
   expect(connection.connected).toBe(false);
 });
 
-it("rejects publishing after closure and rejects conflicting topic types", async () => {
+it("rejects publishing after closure", async () => {
   const { connection, socket } = await connect();
   connection.publish("/sensor", "std_msgs/msg/Float64", { data: 1 });
-  expect(() =>
-    connection.publish("/sensor", "std_msgs/msg/String", { data: "1" }),
-  ).toThrow("already uses");
   socket.close();
   expect(connection.connected).toBe(false);
   expect(() =>
@@ -154,4 +134,18 @@ it("closes the socket and releases other topics when a control message fails", a
   );
   expect(connection.connected).toBe(false);
   expect(() => connection.dispose()).not.toThrow();
+});
+
+it("encodes byte arrays as base64 for the rosbridge wire format", async () => {
+  const { connection, socket } = await connect();
+  connection.publish("/camera", "sensor_msgs/msg/CompressedImage", {
+    format: "jpeg",
+    data: new Uint8Array([255, 216, 255, 217]),
+  });
+  expect(socket.sent).toContainEqual(
+    expect.objectContaining({
+      op: "publish",
+      msg: { format: "jpeg", data: "/9j/2Q==" },
+    }),
+  );
 });

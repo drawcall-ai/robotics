@@ -16,4 +16,6 @@ it("schedules by simulation time without a burst after skipped intervals", () =>
   expect(schedule.due(0.45)).toBe(true);
   expect(schedule.due(0.46)).toBe(false);
   expect(schedule.due(0.5)).toBe(true);
+  expect(schedule.due(0)).toBe(true); // the clock reset
+  expect(schedule.due(0.05)).toBe(false);
 });

@@ -1,23 +1,39 @@
-import { disposeAll } from "./cleanup.js";
+import { getDefaultWorld, type PhysicsWorld } from "@drawcall/physics";
+import type { Camera, Object3D, RenderTarget, Texture } from "three";
+import { runAll } from "./cleanup.js";
+import type { Connection } from "./connection.js";
 import type { DeviceLifecycle } from "./device.js";
-import type { PhysicsWorld } from "@drawcall/physics";
-import type { Scene, WebGLRenderer } from "three";
-import { RosbridgeConnection, type Connection } from "./connection.js";
 import { stamp } from "./time.js";
 
+/** The renderer operations sensors use. Three.js `WebGPURenderer` satisfies it in browsers and in Node. */
+export interface CaptureRenderer {
+  render(scene: Object3D, camera: Camera): unknown;
+  getRenderTarget(): RenderTarget<Texture> | null;
+  setRenderTarget(target: RenderTarget<Texture> | null): void;
+  readRenderTargetPixelsAsync(
+    target: RenderTarget,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ): Promise<ArrayBufferView>;
+}
+
 export interface ROS2Options {
-  world: PhysicsWorld;
-  scene: Scene;
-  renderer: WebGLRenderer;
+  /** The world the scene builds in; the physics default world unless given. */
+  world?: PhysicsWorld;
+  /** Needed by cameras; a runtime that only builds a scene, as for URDF export, has none. */
+  renderer?: CaptureRenderer;
   namespace?: string;
 }
-let current: ROS2 | undefined;
-let connecting = false;
 
+const NAME = /^\/(?:[A-Za-z_][A-Za-z0-9_]*\/)*[A-Za-z_][A-Za-z0-9_]*$/;
+let current: ROS2 | undefined;
+
+/** The runtime devices register with. Creating one makes it the default that `getROS2()` returns to a scene. */
 export class ROS2 {
   readonly world: PhysicsWorld;
-  readonly scene: Scene;
-  readonly renderer: WebGLRenderer;
+  readonly renderer?: CaptureRenderer;
   readonly namespace: string;
   private readonly devices = new Set<DeviceLifecycle>();
   private readonly subscriptions = new Set<() => void>();
@@ -26,19 +42,25 @@ export class ROS2 {
   private disposed = false;
   constructor(
     readonly connection: Connection,
-    options: ROS2Options,
+    options: ROS2Options = {},
   ) {
     if (!connection.connected)
       throw new Error("Connect ROS before creating a runtime");
-    this.world = options.world;
-    this.scene = options.scene;
+    if (current)
+      throw new Error(
+        "Dispose the current ROS runtime before creating another",
+      );
+    const namespace = options.namespace ?? "/robot";
+    if (namespace !== "/" && !NAME.test(namespace))
+      throw new Error(`Invalid ROS namespace: ${namespace}`);
+    this.world = options.world ?? getDefaultWorld();
     this.renderer = options.renderer;
-    this.namespace = options.namespace ?? "/robot";
-    this.topic("validate");
+    this.namespace = namespace;
     this.hooks = [
       this.world.onBeforeStep((dt) => this.update("beforeStep", dt)),
       this.world.onAfterStep((dt) => this.update("afterStep", dt)),
     ];
+    current = this;
   }
   get connected(): boolean {
     return !this.disposed && !this.error && this.connection.connected;
@@ -46,16 +68,19 @@ export class ROS2 {
   get error(): Error | undefined {
     return this.fault ?? this.connection.error;
   }
-  get dropped(): number {
-    return this.connection.dropped;
-  }
+  /** The absolute topic for `name`: under the namespace unless already absolute. */
   topic(name: string): string {
     const topic = name.startsWith("/")
       ? name
       : `${this.namespace === "/" ? "" : this.namespace}/${name}`;
-    if (!/^\/(?:[A-Za-z_][A-Za-z0-9_]*\/)*[A-Za-z_][A-Za-z0-9_]*$/.test(topic))
-      throw new Error(`Invalid ROS topic: ${topic}`);
+    if (!NAME.test(topic)) throw new Error(`Invalid ROS topic: ${topic}`);
     return topic;
+  }
+  /** The registered devices of a class, in registration order. */
+  find<T>(type: abstract new (...args: never[]) => T): T[] {
+    return [...this.devices].filter(
+      (device): device is T & DeviceLifecycle => device instanceof type,
+    );
   }
   register(device: DeviceLifecycle): () => void {
     if (!this.connected) throw new Error("ROS runtime is disconnected");
@@ -91,34 +116,26 @@ export class ROS2 {
     this.subscriptions.add(release);
     return release;
   }
+  /** Records the fault and stops every actuator; the runtime stays disconnected until disposed. */
   fail(error: unknown): void {
     const cause = error instanceof Error ? error : new Error(String(error));
     this.fault = cause;
-    const errors = this.stop();
-    this.fault = errors.length
-      ? new AggregateError([cause, ...errors], cause.message, { cause })
-      : cause;
-  }
-  private stop(): unknown[] {
-    const errors: unknown[] = [];
-    for (const device of this.devices) {
-      try {
-        device.stop?.();
-      } catch (error) {
-        errors.push(error);
-      }
+    try {
+      this.stop();
+    } catch (failure) {
+      this.fault = new AggregateError([cause, failure], cause.message, {
+        cause,
+      });
     }
-    return errors;
+  }
+  private stop(): void {
+    runAll(
+      [...this.devices].map((device) => () => device.stop?.()),
+      "Failed to stop ROS devices",
+    );
   }
   private update(phase: "beforeStep" | "afterStep", dt: number): void {
-    if (!this.connected) {
-      const errors = this.stop();
-      if (errors.length) {
-        this.fault = new AggregateError(errors, "Failed to stop ROS devices");
-        throw this.fault;
-      }
-      return;
-    }
+    if (!this.connected) return this.stop();
     try {
       if (phase === "afterStep")
         this.publish("/clock", "rosgraph_msgs/msg/Clock", {
@@ -141,36 +158,12 @@ export class ROS2 {
       () => this.connection.dispose(),
     ];
     this.devices.clear();
-    disposeAll(releases, "Failed to dispose ROS runtime");
+    runAll(releases, "Failed to dispose ROS runtime");
   }
 }
 
-export async function setupROS2(
-  url: string,
-  options: ROS2Options & { timeout?: number },
-): Promise<ROS2> {
-  if (current || connecting)
-    throw new Error(
-      "Dispose the current ROS runtime before setting up another",
-    );
-  const timeout = options.timeout ?? 10000;
-  if (!Number.isFinite(timeout) || timeout <= 0)
-    throw new Error("Connection timeout must be positive");
-  const connection = new RosbridgeConnection();
-  connecting = true;
-  try {
-    await connection.connect(url, timeout);
-    current = new ROS2(connection, options);
-    return current;
-  } catch (error) {
-    connection.dispose();
-    throw error;
-  } finally {
-    connecting = false;
-  }
-}
 export function getROS2(): ROS2 {
-  if (!current?.connected)
-    throw new Error("Call and await setupROS2() before creating ROS devices");
+  if (!current)
+    throw new Error("Create a ROS runtime before creating ROS devices");
   return current;
 }

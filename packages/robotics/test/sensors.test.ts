@@ -1,15 +1,12 @@
-import { JointStateSensor } from "../src/sensors/joint-state.js";
 import { afterEach, expect, it, vi } from "vitest";
-import { Scene, WebGLRenderer } from "three";
+import { Object3D, Vector3 } from "three";
 import { RigidBody, RevoluteJoint } from "@drawcall/physics";
+import { Robot } from "../src/robot.js";
 import { setupWorld } from "@drawcall/physics-rapier";
 import { ROS2 } from "../src/runtime.js";
 import { LaserSensor } from "../src/sensors/laser.js";
-
-vi.mock("three", async (importOriginal) => {
-  const three = await importOriginal<typeof import("three")>();
-  return { ...three, WebGLRenderer: class {} };
-});
+import { ConnectionStub } from "./connection.js";
+import { RendererStub } from "./renderer.js";
 const cleanup: (() => void)[] = [];
 afterEach(() => {
   for (const release of cleanup.splice(0).reverse()) release();
@@ -18,34 +15,29 @@ afterEach(() => {
 async function fixture() {
   const world = await setupWorld({ gravity: [0, 0, 0], fixedDelta: 0.01 });
   cleanup.push(() => world.dispose());
-  const messages: { name: string; type: string; message: unknown }[] = [];
-  const ros = new ROS2(
-    {
-      connected: true,
-      dropped: 0,
-      publish(name, type, message) {
-        messages.push({ name, type, message });
-      },
-      subscribe() {
-        return () => {};
-      },
-      dispose() {},
-    },
-    { world, scene: new Scene(), renderer: new WebGLRenderer() },
-  );
+  const connection = new ConnectionStub();
+  const { messages } = connection;
+  const ros = new ROS2(connection, { world, renderer: new RendererStub() });
   cleanup.push(() => ros.dispose());
+  const base = new RigidBody({ world, type: "static" });
+  base.name = "base_link";
   const body = new RigidBody({
+    world,
     mass: 1,
     centerOfMass: [0, 0, 0],
     diagonalInertia: [1, 1, 1],
   });
-  const joint = new RevoluteJoint({ body0: null, body1: body, axis: "Z" });
-  return { ros, world, messages, joint };
+  body.name = "wheel_link";
+  const joint = new RevoluteJoint({ body0: base, body1: body, axis: "Z" });
+  joint.name = "wheel";
+  const robot = new Robot({ ros });
+  robot.name = "cart";
+  robot.add(base, body, joint);
+  return { ros, world, messages, joint, robot };
 }
 
 it("publishes measured encoder feedback without a robot pose", async () => {
-  const { ros, world, messages, joint } = await fixture();
-  new JointStateSensor({ ros, joints: { wheel: joint } });
+  const { world, messages, joint } = await fixture();
   world.update(0.01);
   const stamp = { sec: 0, nanosec: 10_000_000 };
   const state = joint.getState();
@@ -68,11 +60,21 @@ it("uses world geometry for rays without publishing world pose", async () => {
     ros,
     samples: 3,
     range: 7,
+    minRange: 0.1,
     frameId: "front_laser",
   });
   laser.position.set(2, 3, 4);
   laser.rotation.y = Math.PI / 2;
-  const raycast = vi.spyOn(world, "raycast").mockReturnValue(null);
+  const raycast = vi
+    .spyOn(world, "raycast")
+    .mockReturnValue(null)
+    .mockReturnValueOnce({
+      distance: 0.05,
+      point: new Vector3(),
+      normal: new Vector3(),
+      body: new RigidBody({ world, type: "static" }),
+      collider: new Object3D(),
+    });
   world.update(0.01);
   expect(raycast).toHaveBeenCalledTimes(3);
   const directions = raycast.mock.calls.map((call) => call[1]);
@@ -86,9 +88,13 @@ it("uses world geometry for rays without publishing world pose", async () => {
         stamp: { sec: 0, nanosec: 10_000_000 },
         frame_id: "front_laser",
       },
-      ranges: [8, 8, 8],
+      ranges: [8, 8, 8], // the first hit lies inside the dead zone
       angle_increment: Math.PI,
     }),
   });
-  expect(messages.map(({ name }) => name)).toEqual(["/clock", "/robot/scan"]);
+  expect(messages.map(({ name }) => name)).toEqual([
+    "/clock",
+    "/robot/joint_states",
+    "/robot/scan",
+  ]);
 });

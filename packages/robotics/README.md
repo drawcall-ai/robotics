@@ -1,149 +1,91 @@
 # @drawcall/robotics
 
-ROS 2 devices for Three.js and Drawcall physics. Connect once, attach spatial sensors to your scene, and bind ROS commands to native physics motors.
+ROS 2 simulation for Three.js and Drawcall physics: sensors and ros2_control bindings as scene objects, URDF export from the same model, and a headless simulator that runs as a native ROS 2 node.
 
-## Minimal application
+## A scene
 
-This example assumes a rosbridge server at `ws://localhost:9090`. The [warehouse example](../../README.md#run-the-warehouse) supplies one in Docker.
+A scene is a plain script: it builds a Three.js scene in the default physics world and puts a `Robot` in it. The robot is a group, and everything under it is the robot.
 
 ```ts
-import { JointMotor, RevoluteJoint, RigidBody } from "@drawcall/physics";
-import { setupWorld } from "@drawcall/physics-rapier";
+import { CameraSensor, Robot } from "@drawcall/robotics";
 import {
-  CameraSensor,
-  JointStateSensor,
-  MotorBinding,
-  setupROS2,
-} from "@drawcall/robotics";
-import { PerspectiveCamera, Scene, WebGLRenderer } from "three";
+  BoxCollider,
+  JointMotor,
+  RevoluteJoint,
+  RigidBody,
+} from "@drawcall/physics";
+import { Scene } from "three";
 
-const world = await setupWorld({ gravity: [0, -9.81, 0], fixedDelta: 1 / 120 });
 const scene = new Scene();
-const renderer = new WebGLRenderer({ antialias: true });
-renderer.setSize(640, 360);
-document.body.append(renderer.domElement);
-const viewer = new PerspectiveCamera(60, 640 / 360, 0.1, 100);
-viewer.position.set(3, 2, 3);
-viewer.lookAt(0, 1, 0);
+const robot = new Robot();
+robot.name = "cart";
+scene.add(robot);
 
-const rotor = new RigidBody({
-  mass: 1,
-  centerOfMass: [0, 0, 0],
-  diagonalInertia: [1, 1, 1],
-});
-rotor.position.y = 1;
-const joint = new RevoluteJoint({ body0: null, body1: rotor, axis: "Y" });
-joint.position.y = 1;
-scene.add(rotor, joint);
-const motor = new JointMotor({ joint, damping: 10, maxForce: 20 });
+const base = new RigidBody({ mass: 12 });
+base.name = "base_link";
+base.add(new BoxCollider({ size: [0.6, 0.2, 0.8] }));
+const wheel = new RigidBody({ mass: 1 });
+wheel.name = "wheel_link";
+const axle = new RevoluteJoint({ body0: base, body1: wheel, axis: "X" });
+axle.name = "wheel";
+new JointMotor({ joint: axle, damping: 30, maxForce: 10 });
+robot.add(base, wheel, axle);
 
-const ros = await setupROS2("ws://localhost:9090", { world, scene, renderer });
-new MotorBinding({ motor, name: "rotor", mode: "velocity" });
-new JointStateSensor({ joints: { rotor: joint } });
 const camera = new CameraSensor({
   name: "camera",
-  width: 320,
-  height: 180,
+  frameId: "camera_optical",
   rate: 5,
 });
-rotor.add(camera);
-// Add application-owned meshes, lights and scenery as usual.
-
-let previous = performance.now();
-renderer.setAnimationLoop(() => {
-  const now = performance.now();
-  world.update((now - previous) / 1000);
-  previous = now;
-  renderer.render(scene, viewer);
-});
-
-function dispose() {
-  renderer.setAnimationLoop(null);
-  ros.dispose();
-  world.dispose();
-  renderer.dispose();
-  renderer.domElement.remove();
-}
+camera.position.set(0, 0.3, -0.4);
+base.add(camera);
 ```
 
-Publish repeated `std_msgs/msg/Float64` messages to `/robot/rotor/command` to drive the motor. Positive values follow the physics joint's positive axis; velocity units are rad/s for revolute joints and m/s for prismatic joints. Commands expire after 0.5 seconds by default. Expiry **disables actuation and permits coasting**; it does not brake. Use `mode: "position"` with nonzero stiffness for position targets, respecting the backend's angular target restrictions.
+From that structure the robot derives everything ROS needs: the base link is the body no joint hangs from, every named axis joint is a URDF joint, a joint with a motor is commanded through ros2_control (velocity, or position when the motor has stiffness), each sensor on the robot is a fixed frame, and a `base_footprint` link sits under the lowest collider. The robot publishes `joint_states` and applies `joint_commands` itself; `robot.urdf()` serializes it.
 
-## Devices and lifetime
+```sh
+drawcall-robotics urdf scene.ts > robot.urdf      # links, colliders, joints, mounts, ros2_control block
+drawcall-robotics sim scene.ts --viewer               # serves and opens Lichtblick with a layout for the scene's cameras
+drawcall-robotics view rosbag2_2026_09_16-14_50_26    # a rosbag2 directory or .mcap file, layout from its sensors
+drawcall-robotics snapshot /robot/camera/image/compressed --out frame.jpg
+```
 
-`setupROS2` connects and captures `world`, `scene` and `renderer`. `getROS2()` retrieves the default connected runtime or throws. Device constructors register automatically with that runtime; `{ ros }` selects an explicit one. There is no scene auto-discovery and no upfront device array.
+`sim` is a ROS 2 node through [rclnodejs](https://github.com/RobotWebTools/rclnodejs). It publishes `/clock`, `<namespace>/joint_states`, one `LaserScan` per lidar and a `CompressedImage` plus `CameraInfo` per camera, and drives motors from `<namespace>/joint_commands` as published by the [topic-based ros2_control hardware interface](https://github.com/PickNikRobotics/topic_based_ros2_control) the URDF declares. It offers `/sim/pause`, `/sim/resume`, `/sim/step` and `/sim/reset` as `std_srvs/Trigger` and publishes ground truth on `/sim/state`. Start it from a launch file like any simulator:
 
-| Device             | Configuration and output                                                                                                       |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| `MotorBinding`     | Existing `motor`, `name`, `mode`, optional `timeout`; subscribes to `<name>/command`                                           |
-| `CameraSensor`     | PerspectiveCamera with `name`, dimensions, `fov`, `rate`, `frameId`; publishes `<name>/image/compressed`, `<name>/camera_info` |
-| `LaserSensor`      | Object3D with `name`, `samples`, `range`, `rate`, `frameId`, `excludeBodies`; publishes scan                                   |
-| `JointStateSensor` | `joints` record mapping names to axis joints, optional `rate`; publishes `joint_states`                                        |
+```python
+ExecuteProcess(cmd=["drawcall-robotics", "sim", "scene.ts"])  # node_modules/.bin on PATH, e.g. through pixi.toml
+```
 
-For multiple spatial sensors, choose distinct names and frame IDs:
+Install the package with the ROS environment sourced, for example `pixi run pnpm install`, because rclnodejs compiles against it like any ROS client library. rclnodejs is an optional dependency, so browser projects skip the build; it has prebuilt binaries only for Ubuntu, and on macOS its 2.2.0 release needs the one-line compile fix in this repository's `patches/`. The CLI needs Node.js 24.2 or newer.
+
+## In the browser
+
+The same devices work against rosbridge, for a page that simulates while ROS runs elsewhere. The page owns the physics world (`setupWorld` makes it the default) and steps it in its own loop:
 
 ```ts
-const rear = new CameraSensor({ name: "rear", frameId: "rear_optical" });
-rear.rotation.y = Math.PI;
-rotor.add(rear);
+import { ROS2, RosbridgeConnection } from "@drawcall/robotics";
+
+const connection = new RosbridgeConnection();
+await connection.connect("ws://localhost:9090", 10_000);
+new ROS2(connection, { renderer, namespace: "/robot" }); // in the default physics world
+await import("./scene.ts"); // the same script the CLI runs
 ```
 
-These are ideal simulated measurements, without a hardware noise model. Reading world geometry internally to generate images/ranges does not expose it to ROS.
+`renderer` is a Three.js `WebGPURenderer`; the runtime needs `render`, `getRenderTarget`, `setRenderTarget` and `readRenderTargetPixelsAsync`. Byte arrays are `Uint8Array` everywhere; the rosbridge transport encodes them as base64 on the wire.
 
-Removing a sensor from its Three.js parent does not unregister it. Call `sensor.dispose()` to stop publication and release its resources. Runtime disposal disposes all registered devices and subscriptions, removes hooks and closes the connection; application-owned motors, joints, bodies, scene and renderer remain intact.
+## Devices
 
-Relative topics use the default namespace `/robot`; `{ namespace: "/other_robot" }` changes it. Absolute topics bypass the namespace. Frame IDs do not automatically inherit the topic namespace. `/clock` remains global. Sensors never publish TF or world poses; the ROS robot model owns mounting transforms and localization owns estimated world transforms.
+| Device         | Configuration and output                                                                                                                                                             |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Robot`        | Group with a `name`; publishes `joint_states` for its joints, applies `joint_commands` to its motors, `urdf()` exports it                                                            |
+| `CameraSensor` | PerspectiveCamera with `name`, dimensions, `fov`, `rate`, `quality`, `frameId`; publishes `<name>/image/compressed` and `<name>/camera_info`                                         |
+| `LaserSensor`  | Object3D with `name`, `samples`, `range`, `minRange`, `angleMin`, `angleMax`, `rate`, `frameId`; publishes a scan of everything, its own robot included; `minRange` is the dead zone |
+
+Devices register with the runtime they are given, by default the current one from `getROS2()`, and unregister on `dispose()`. A camera captures the scene it is part of. `ros.find(CameraSensor)` lists the registered devices of a class. Sensors never publish TF or world poses: the URDF's `robot_state_publisher` owns mounting transforms and localization owns the rest. Joint commands expire after 0.5 s and expiry disables actuation without braking.
+
+## URDF export
+
+`robot.urdf()` serializes the robot in ROS coordinates: bodies become links with box, sphere and cylinder colliders as geometry, revolute and prismatic joints keep their axes and limits, sensors become fixed frames, `base_footprint` sits at the lowest collider, and motors produce the topic-based `ros2_control` block. Output is deterministic and independent of where the robot stands. `findRobot(ros, name?)` picks a scene's robot, and an `OfflineConnection` gives a runtime that only builds. Helpers `rosPosition`, `rosRotation`, `rosOpticalRotation` and `rollPitchYaw` implement the conversions.
 
 ## Custom devices
 
-Extend `Device` to inherit registration, the `ros` reference and disposal. For example, publish simulation time as a custom diagnostic:
-
-```ts
-import { Device, Schedule } from "@drawcall/robotics";
-
-class Diagnostic extends Device {
-  private readonly schedule = new Schedule(1);
-  afterStep(time: number): void {
-    if (this.schedule.due(time)) {
-      this.ros.publish("diagnostic/time", "std_msgs/msg/Float64", {
-        data: time,
-      });
-    }
-  }
-}
-
-const diagnostic = new Diagnostic();
-// Later: diagnostic.dispose(), or dispose the entire runtime.
-```
-
-Devices may implement `beforeStep(time, delta)` for commands, `afterStep(time, delta)` for measurements, and `stop()` for disconnect/fault handling. Actuator extensions should implement `stop()` and remove their own actuation. `ros.subscribe(name, type, callback)` returns an unsubscribe function; validate incoming data in the callback and release it during disposal.
-
-For Three.js subclasses, use the same lifecycle through `withDevice`:
-
-```ts
-import { PerspectiveCamera } from "three";
-import { withDevice } from "@drawcall/robotics";
-
-class CustomCamera extends withDevice(PerspectiveCamera) {
-  afterStep(time: number) {
-    // Capture using this.ros.renderer and this camera.
-  }
-}
-
-// args forwards the base constructor arguments.
-const camera = new CustomCamera({ ros, args: [70, 16 / 9, 0.05, 100] });
-scene.add(camera);
-```
-
-`new Diagnostic()` uses the default runtime; `new Diagnostic({ ros })` selects one explicitly. `args` preserves the base constructor’s tuple types and is optional when that constructor accepts no arguments. Native Three.js methods and `instanceof PerspectiveCamera` still work. If a device owns resources, override `dispose()` to release them and call `super.dispose()` to unregister. The mixin handles ROS registration only.
-
-Registration happens in `super()`. Validate constructor inputs before it; if later initialization throws, call `super.dispose()` in the error path before rethrowing. The runtime accepts the `DeviceLifecycle` structural interface too: hooks and `dispose()` suffice, without inheritance or a `ros` field. Runtime cleanup attempts all devices, subscriptions, hooks and transport even if a release throws, then reports an `AggregateError`.
-
-## Runtime semantics
-
-Before each physics substep, bindings apply fresh commands. After a completed substep, `/clock` and due sensor measurements use `world.time`. Enable `use_sim_time` in ROS nodes. The display still renders at its own frame rate. ROS communication is asynchronous: no acknowledgement barrier or lockstep is implied.
-
-Body frames map Three.js forward `-Z`, left `-X`, up `+Y` to ROS forward `+X`, left `+Y`, up `+Z`. Camera optical frames use forward `+Z`, right `+X`, down `+Y`. Exported conversion helpers are `rosPosition`, `rosRotation` and `rosOpticalRotation`.
-
-The initial transport uses roslib/rosbridge, per-topic queues of one and a 4 MiB websocket publication threshold. Inspect `ros.connected`, `ros.error` and `ros.dropped`. Reconnection requires disposing the runtime and calling setup again. HTTPS applications need a compatible WSS endpoint.
-
-This package currently provides direct `Float64` motor commands, not `ros2_control`. There is no ground-truth pose publisher. Lidar is a simultaneous 360° scan by default, configurable with `angleMin`/`angleMax`, with `range_max + 1` for misses. Camera capture uses synchronous WebGL readback and JPEG encoding; defaults are 320×180 at 5 Hz. Reload for a fresh simulation clock. Restart the example ROS stack before reloading the browser; backwards encoder timestamps fail visibly rather than mixing SLAM sessions. Physics reset alone is not coordinated with ROS.
+Extend `Device`, or `withDevice(Base)` for Three.js subclasses, to inherit registration and disposal; implement `beforeStep(time, delta)` for commands, `afterStep(time, delta)` for measurements and `stop()` for faults. `ros.publish`, `ros.subscribe`, `Schedule`, `stamp` and `header` are the building blocks. Runtime disposal releases every device, subscription, hook and the transport, and reports an `AggregateError` if any release throws.

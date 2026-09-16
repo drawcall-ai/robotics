@@ -4,26 +4,24 @@ import {
   rosPosition,
   rosRotation,
   rosOpticalRotation,
+  rollPitchYaw,
 } from "../src/coordinates.js";
 
 it("maps forward, left and up to ROS axes and preserves heading rotation", () => {
-  expect(rosPosition(new Vector3(0, 0, -1))).toEqual({ x: 1, y: -0, z: 0 });
-  expect(rosPosition(new Vector3(-1, 0, 0))).toEqual({ x: -0, y: 1, z: 0 });
-  expect(rosPosition(new Vector3(0, 1, 0))).toEqual({ x: -0, y: -0, z: 1 });
+  expect(rosPosition(new Vector3(0, 0, -1)).toArray()).toEqual([1, -0, 0]);
+  expect(rosPosition(new Vector3(-1, 0, 0)).toArray()).toEqual([-0, 1, 0]);
+  expect(rosPosition(new Vector3(0, 1, 0)).toArray()).toEqual([-0, -0, 1]);
   const rotation = rosRotation(
     new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.PI / 2),
   );
-  const forward = new Vector3(1, 0, 0).applyQuaternion(
-    new Quaternion(rotation.x, rotation.y, rotation.z, rotation.w),
-  );
+  const forward = new Vector3(1, 0, 0).applyQuaternion(rotation);
   expect(forward.x).toBeCloseTo(0);
   expect(forward.y).toBeCloseTo(1);
   expect(forward.z).toBeCloseTo(0);
 });
 
 it("maps camera optical right, down and forward into the ROS map frame", () => {
-  const optical = rosOpticalRotation(new Quaternion());
-  const rotation = new Quaternion(optical.x, optical.y, optical.z, optical.w);
+  const rotation = rosOpticalRotation(new Quaternion());
   const axes = [
     { optical: new Vector3(1, 0, 0), expected: new Vector3(0, -1, 0) },
     { optical: new Vector3(0, 1, 0), expected: new Vector3(0, 0, -1) },
@@ -41,8 +39,7 @@ it("preserves all optical axes for a camera with combined yaw, pitch and roll", 
     new Euler(0.35, -0.8, 0.27, "YXZ"),
   );
   const original = camera.clone();
-  const value = rosOpticalRotation(camera);
-  const rotation = new Quaternion(value.x, value.y, value.z, value.w);
+  const rotation = rosOpticalRotation(camera);
   const axes = [
     { optical: new Vector3(1, 0, 0), camera: new Vector3(1, 0, 0) },
     { optical: new Vector3(0, 1, 0), camera: new Vector3(0, -1, 0) },
@@ -57,4 +54,16 @@ it("preserves all optical axes for a camera with combined yaw, pitch and roll", 
   }
   expect(camera.equals(original)).toBe(true);
   expect(rotation.length()).toBeCloseTo(1);
+});
+
+it("expresses ROS rotations as URDF fixed-axis roll, pitch and yaw", () => {
+  const rotation = new Quaternion().setFromEuler(
+    new Euler(0.3, -0.5, 0.9, "XYZ"),
+  );
+  const ros = rosRotation(rotation);
+  const [roll, pitch, yaw] = rollPitchYaw(ros);
+  const rebuilt = new Quaternion().setFromEuler(
+    new Euler(roll, pitch, yaw, "ZYX"),
+  );
+  expect(rebuilt.angleTo(ros)).toBeLessThan(1e-12);
 });

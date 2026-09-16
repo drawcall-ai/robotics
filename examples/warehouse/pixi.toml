@@ -1,0 +1,29 @@
+[workspace]
+name = "warehouse"
+channels = ["https://prefix.dev/robostack-jazzy", "https://prefix.dev/conda-forge"]
+platforms = ["osx-arm64", "linux-64", "linux-aarch64"]
+
+[activation.env]
+# rclnodejs links the ROS libraries of this environment by name; on Linux the loader needs their directory.
+# macOS strips DYLD variables, so there the CLI relaunches itself with DYLD_LIBRARY_PATH.
+LD_LIBRARY_PATH = "$CONDA_PREFIX/lib"
+# The example's npm tools, so the launch file runs drawcall-robotics like any other executable.
+PATH = "$PIXI_PROJECT_ROOT/node_modules/.bin:$PATH"
+ROS_DOMAIN_ID = "17"
+# Fast DDS on macOS cannot lock its shared-memory port files and its discovery lags badly with
+# a full Nav2 stack; CycloneDDS is the middleware Nav2 recommends and behaves on every platform here.
+RMW_IMPLEMENTATION = "rmw_cyclonedds_cpp"
+
+[tasks]
+launch = "ros2 launch bringup.launch.xml"
+
+[dependencies]
+ros-jazzy-ros-base = "*"
+ros-jazzy-rmw-cyclonedds-cpp = "*"
+ros-jazzy-navigation2 = "*"
+ros-jazzy-slam-toolbox = "*"
+ros-jazzy-ros2-control = "*"
+ros-jazzy-ros2-controllers = "*"
+ros-jazzy-topic-based-ros2-control = "*"
+ros-jazzy-robot-state-publisher = "*"
+ros-jazzy-foxglove-bridge = "*"

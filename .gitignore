@@ -3,5 +3,5 @@ dist/
 .DS_Store
 *.tgz
 __pycache__/
-.venv/
-test-results/
+.pixi/
+rosbag2_*/

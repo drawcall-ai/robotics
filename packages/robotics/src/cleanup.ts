@@ -1,11 +1,9 @@
-export function disposeAll(
-  releases: Iterable<() => void>,
-  message: string,
-): void {
+/** Runs every step and throws one AggregateError afterwards if any failed, so one failure never skips the rest. */
+export function runAll(steps: Iterable<() => void>, message: string): void {
   const errors: unknown[] = [];
-  for (const release of releases) {
+  for (const step of steps) {
     try {
-      release();
+      step();
     } catch (error) {
       errors.push(error);
     }
