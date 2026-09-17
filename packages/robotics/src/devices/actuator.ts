@@ -6,6 +6,7 @@ import {
   type JointDriveTarget,
 } from "@drawcall/physics";
 import { getROS2, type Device, type ROS2 } from "../runtime.js";
+import { runAll } from "../cleanup.js";
 
 /** Seconds after which a joint command expires and the actuator goes passive. */
 const COMMAND_TIMEOUT = 0.5;
@@ -55,7 +56,7 @@ export class JointActuator
   override setTarget(): never {
     throw new Error("Actuator targets come from joint_commands");
   }
-  /** A copy keeps the gains and interface; its target comes from ROS. */
+  /** Inherited cloning constructs the gains and interface; controller targets are never copied. */
   override copy(): this {
     return this;
   }
@@ -100,15 +101,22 @@ export class JointActuator
     if (this.target) super.setTarget(undefined);
   }
   dispose(): void {
-    this.stop();
-    this.unsubscribe();
-    this.unregister();
-    const joint = this.joint;
-    if (!joint || joint.disposed) return;
-    if (joint instanceof ScalarJoint) joint.setDrive(undefined);
-    if (joint instanceof GenericJoint)
-      for (const [dof, drive] of joint.drives)
-        if (drive === this) joint.setDrive(dof, undefined);
+    runAll(
+      [
+        () => this.stop(),
+        this.unsubscribe,
+        this.unregister,
+        () => {
+          const joint = this.joint;
+          if (!joint || joint.disposed) return;
+          if (joint instanceof ScalarJoint) joint.setDrive(undefined);
+          if (joint instanceof GenericJoint)
+            for (const [dof, drive] of joint.drives)
+              if (drive === this) joint.setDrive(dof, undefined);
+        },
+      ],
+      "Failed to dispose joint actuator",
+    );
   }
 }
 

@@ -158,3 +158,17 @@ it("reports a disposed camera's failed readback to its owner without faulting th
   expect(ros.connected).toBe(true);
   expect(ros.error).toBeUndefined();
 });
+
+it("joins pending camera work through runtime disposal before its target is released", async () => {
+  const { ros, camera, renderer, messages } = await fixture();
+  const release = vi.spyOn(RenderTarget.prototype, "dispose");
+  camera.afterStep(0.2);
+  const completion = ros.disposeAsync();
+  expect(ros.connected).toBe(false);
+  expect(camera.parent).toBe(null);
+  expect(release).not.toHaveBeenCalled();
+  await renderer.flush();
+  await completion;
+  expect(release).toHaveBeenCalledOnce();
+  expect(messages).toHaveLength(0);
+});

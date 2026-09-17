@@ -19,7 +19,7 @@ export interface Device {
   beforeStep?(time: number, delta: number): void;
   afterStep?(time: number, delta: number): void;
   stop?(): void;
-  dispose(): void;
+  dispose(): void | Promise<void>;
 }
 
 /** The renderer operations sensors use. Three.js `WebGPURenderer` satisfies it in browsers and in Node. */
@@ -56,6 +56,7 @@ export class ROS2 {
   private readonly hooks: (() => void)[];
   private fault?: Error;
   private disposed = false;
+  private disposal?: Promise<unknown[]>;
   constructor(
     readonly connection: Connection,
     options: ROS2Options = {},
@@ -164,18 +165,47 @@ export class ROS2 {
       throw this.fault;
     }
   }
-  /** Disconnects synchronously. The renderer owner must await camera disposal before releasing GPU resources. */
+  /** Disconnects synchronously and reports synchronous release failures. Use disposeAsync to also join device work. */
   dispose(): void {
+    const failure = this.release();
+    if (failure) throw failure;
+  }
+  /** Disconnects immediately, then joins every device. Repeated calls report all original release failures. */
+  async disposeAsync(): Promise<void> {
+    this.release();
+    const errors = await this.disposal;
+    if (errors?.length)
+      throw new AggregateError(errors, "Failed to dispose ROS runtime");
+  }
+  private release(): AggregateError | undefined {
     if (this.disposed) return;
     this.disposed = true;
     if (current === this) current = undefined;
-    const releases = [
+    const releases: (() => void | Promise<void>)[] = [
       ...[...this.devices].map((device) => () => device.dispose()),
       ...this.hooks,
       () => this.connection.dispose(),
     ];
     this.devices.clear();
-    runAll(releases, "Failed to dispose ROS runtime");
+    const errors: unknown[] = [];
+    const pending: Promise<void>[] = [];
+    for (const release of releases) {
+      try {
+        const completion = release();
+        if (completion) pending.push(completion);
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    // Observe every rejection now, including when the caller only disconnects synchronously.
+    this.disposal = Promise.allSettled(pending).then((results) => [
+      ...errors,
+      ...results
+        .filter((result) => result.status === "rejected")
+        .map((result) => result.reason),
+    ]);
+    if (errors.length)
+      return new AggregateError(errors, "Failed to dispose ROS runtime");
   }
 }
 

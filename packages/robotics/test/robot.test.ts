@@ -200,3 +200,27 @@ it("finds the only robot, or one by name when a scene has several", () => {
   expect(findRobot(ros, "two").name).toBe("two");
   expect(() => findRobot(ros, "three")).toThrow("no robot named three");
 });
+
+it("stops and detaches an actuator even when releasing its subscription fails", async () => {
+  const { world, ros, connection } = await simulation();
+  const subscribe = connection.subscribe.bind(connection);
+  const failure = new Error("Subscription release failed");
+  vi.spyOn(connection, "subscribe").mockImplementation((...args) => {
+    const release = subscribe(...args);
+    return () => {
+      release();
+      throw failure;
+    };
+  });
+  const { actuator, joint } = cart(ros);
+  connection.receive(COMMANDS, jointCommand("velocity", 2));
+  world.update(0.01);
+  expect(actuator.target?.velocity).toBe(2);
+  expect(() => actuator.dispose()).toThrow(
+    expect.objectContaining({ errors: [failure] }),
+  );
+  expect(actuator.target).toBeUndefined();
+  expect(joint.drive).toBeUndefined();
+  expect(ros.find(JointActuator)).toEqual([]);
+  expect(() => ros.dispose()).not.toThrow();
+});

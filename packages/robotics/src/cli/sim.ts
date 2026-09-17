@@ -55,25 +55,17 @@ async function run(
   const renderer = await createRenderer();
   resources.defer(() => renderer.dispose());
   const connection = await RclConnection.create("sim");
-  resources.defer(() => connection.dispose());
-  const ros = new ROS2(connection, {
-    renderer,
-    namespace: options.namespace,
-  });
-  resources.defer(async () => {
-    const captures = Promise.allSettled(
-      ros.find(CameraSensor).map(async (camera) => camera.dispose()),
-    );
-    await using cameras = new AsyncDisposableStack();
-    cameras.defer(async () => {
-      const errors = (await captures)
-        .filter((result) => result.status === "rejected")
-        .map((result) => result.reason);
-      if (errors.length)
-        throw new AggregateError(errors, "Failed to stop cameras");
+  let ros: ROS2;
+  {
+    using setup = new DisposableStack();
+    setup.defer(() => connection.dispose());
+    ros = new ROS2(connection, {
+      renderer,
+      namespace: options.namespace,
     });
-    ros.dispose();
-  });
+    resources.defer(() => ros.disposeAsync());
+    setup.move();
+  }
   // The scene builds against the current runtime and registers its devices there.
   await import(pathToFileURL(resolve(scene)).href);
   const base = findRobot(ros, options.robot).base;

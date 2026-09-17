@@ -1,36 +1,6 @@
-import { AbstractTransport, Ros, Topic, type RosbridgeMessage } from "roslib";
+import { Ros, Topic, WebSocketTransportFactory } from "roslib";
 import { runAll } from "../cleanup.js";
 import type { Connection } from "../runtime.js";
-
-class Socket extends AbstractTransport {
-  readonly socket: WebSocket;
-  constructor(url: string) {
-    super();
-    this.socket = new WebSocket(url);
-    this.socket.onopen = (event) => this.emit("open", event);
-    this.socket.onclose = (event) => this.emit("close", event);
-    this.socket.onerror = (event) => this.emit("error", event);
-    this.socket.onmessage = (event) => this.handleRawMessage(event.data);
-  }
-  send(message: RosbridgeMessage): void {
-    this.socket.send(JSON.stringify(message));
-  }
-  close(): void {
-    this.socket.close();
-  }
-  isConnecting(): boolean {
-    return this.socket.readyState === WebSocket.CONNECTING;
-  }
-  isOpen(): boolean {
-    return this.socket.readyState === WebSocket.OPEN;
-  }
-  isClosing(): boolean {
-    return this.socket.readyState === WebSocket.CLOSING;
-  }
-  isClosed(): boolean {
-    return this.socket.readyState === WebSocket.CLOSED;
-  }
-}
 
 export class RosbridgeConnection implements Connection {
   private readonly ros: Ros;
@@ -39,8 +9,8 @@ export class RosbridgeConnection implements Connection {
   constructor() {
     this.ros = new Ros({
       transportFactory: async (url) => {
-        const socket = new Socket(url);
-        socket.on("message", (message) => {
+        const transport = await WebSocketTransportFactory(url);
+        transport.on("message", (message) => {
           if (
             message.op === "status" &&
             "level" in message &&
@@ -50,7 +20,7 @@ export class RosbridgeConnection implements Connection {
               `ROS bridge: ${"msg" in message ? String(message.msg) : "protocol error"}`,
             );
         });
-        return socket;
+        return transport;
       },
     });
     this.ros.on("error", () => {
@@ -61,6 +31,7 @@ export class RosbridgeConnection implements Connection {
     return this.ros.isConnected && !this.error;
   }
   async connect(url: string, timeout: number): Promise<void> {
+    const setup = this.ros.connect(url);
     await new Promise<void>((resolve, reject) => {
       const finish = (error?: Error) => {
         clearTimeout(timer);
@@ -80,12 +51,18 @@ export class RosbridgeConnection implements Connection {
       this.ros.once("connection", opened);
       this.ros.once("error", failed);
       this.ros.once("close", failed);
-      void this.ros
-        .connect(url)
-        .catch((error: unknown) =>
-          finish(error instanceof Error ? error : new Error(String(error))),
+      void setup.catch((error: unknown) =>
+        finish(error instanceof Error ? error : new Error(String(error))),
+      );
+    }).catch(async (cause: unknown) => {
+      // A timed-out transport factory can still acquire a socket. Join it before closing.
+      const [result] = await Promise.allSettled([setup]);
+      if (result.status === "rejected" && result.reason !== cause)
+        cause = new AggregateError(
+          [cause, result.reason],
+          "ROS bridge setup failed",
+          { cause },
         );
-    }).catch((cause: unknown) => {
       try {
         this.dispose();
       } catch (error) {

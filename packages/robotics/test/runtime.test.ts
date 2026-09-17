@@ -113,3 +113,81 @@ it("publishes at the root with the root namespace", async () => {
 it("rejects an invalid namespace", () => {
   expect(() => offline("bot")).toThrow("Invalid ROS namespace");
 });
+
+function deferred() {
+  let resolve: (() => void) | undefined;
+  let reject: ((error: unknown) => void) | undefined;
+  const promise = new Promise<void>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  if (!resolve || !reject) throw new Error("Promise executor did not run");
+  return { promise, resolve, reject };
+}
+
+it("disconnects immediately and joins all device work after synchronous disposal", async () => {
+  const { ros, world, connection } = await simulation();
+  const first = deferred();
+  const second = deferred();
+  const afterStep = vi.fn();
+  const dispose = vi.fn(() => first.promise);
+  ros.register({ afterStep, dispose });
+  ros.register({ dispose: () => second.promise });
+  ros.dispose();
+  expect(ros.connected).toBe(false);
+  expect(connection.disposed).toBe(true);
+  world.update(0.01);
+  expect(afterStep).not.toHaveBeenCalled();
+  const finished = vi.fn();
+  const completion = ros.disposeAsync().then(finished);
+  first.resolve();
+  await Promise.resolve();
+  expect(finished).not.toHaveBeenCalled();
+  second.resolve();
+  await completion;
+  await ros.disposeAsync();
+  expect(finished).toHaveBeenCalledOnce();
+  expect(dispose).toHaveBeenCalledOnce();
+});
+
+it("retains synchronous and asynchronous release failures for every async join", async () => {
+  const { ros, connection } = await simulation();
+  const readback = deferred();
+  const syncFailure = new Error("Device release failed");
+  const asyncFailure = new Error("Readback failed");
+  ros.register({
+    dispose() {
+      throw syncFailure;
+    },
+  });
+  ros.register({ dispose: () => readback.promise });
+  expect(() => ros.dispose()).toThrow("Failed to dispose ROS runtime");
+  expect(connection.disposed).toBe(true);
+  readback.reject(asyncFailure);
+  // A later owner can join a synchronous shutdown without an unhandled rejection in between.
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  for (let attempt = 0; attempt < 2; attempt++)
+    await expect(ros.disposeAsync()).rejects.toMatchObject({
+      errors: [syncFailure, asyncFailure],
+    });
+  expect(() => ros.dispose()).not.toThrow();
+});
+
+it("async disposal starts every release before waiting, even when a device throws", async () => {
+  const { ros, connection } = await simulation();
+  const delayed = deferred();
+  const failure = new Error("Device release failed");
+  ros.register({ dispose: () => delayed.promise });
+  ros.register({
+    dispose() {
+      throw failure;
+    },
+  });
+  const last = vi.fn();
+  ros.register({ dispose: last });
+  const completion = ros.disposeAsync();
+  expect(last).toHaveBeenCalledOnce();
+  expect(connection.disposed).toBe(true);
+  delayed.resolve();
+  await expect(completion).rejects.toMatchObject({ errors: [failure] });
+});

@@ -1,4 +1,12 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { WebSocketTransportFactory } from "roslib";
+vi.mock("roslib", async (original) => {
+  const roslib = await original<typeof import("roslib")>();
+  return {
+    ...roslib,
+    WebSocketTransportFactory: vi.fn(roslib.WebSocketTransportFactory),
+  };
+});
 import { RosbridgeConnection } from "../src/connections/rosbridge.js";
 
 class WebSocketStub {
@@ -47,7 +55,7 @@ async function connect() {
   const connection = new RosbridgeConnection();
   connections.push(connection);
   const opening = connection.connect("ws://localhost:9090", 1000);
-  await Promise.resolve();
+  await vi.waitFor(() => expect(WebSocketStub.instances).toHaveLength(1));
   const socket = WebSocketStub.instances[0];
   if (!socket) throw new Error("WebSocket was not created");
   socket.open();
@@ -152,7 +160,7 @@ it("rejects a failed connection with both errors when closing also fails", async
   const connection = new RosbridgeConnection();
   connections.push(connection);
   const opening = connection.connect("ws://localhost:9090", 1000);
-  await Promise.resolve();
+  await vi.waitFor(() => expect(WebSocketStub.instances).toHaveLength(1));
   const socket = WebSocketStub.instances[0];
   if (!socket) throw new Error("WebSocket was not created");
   const failure = new Error("Socket close failed");
@@ -167,4 +175,36 @@ it("rejects a failed connection with both errors when closing also fails", async
   });
   socket.onerror?.(new Event("error"));
   await rejected;
+});
+
+it("joins delayed transport creation before closing a timed-out connection", async () => {
+  vi.useFakeTimers();
+  try {
+    let release: (() => void) | undefined;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const actual = await vi.importActual<typeof import("roslib")>("roslib");
+    vi.mocked(WebSocketTransportFactory).mockImplementationOnce(async (url) => {
+      await pending;
+      return actual.WebSocketTransportFactory(url);
+    });
+    const connection = new RosbridgeConnection();
+    connections.push(connection);
+    const opening = connection.connect("ws://localhost:9090", 10);
+    const failure = expect(opening).rejects.toThrow("timed out");
+    await vi.advanceTimersByTimeAsync(10);
+    expect(WebSocketStub.instances).toHaveLength(0);
+    if (!release) throw new Error("Transport setup did not initialize");
+    release();
+    await failure;
+    expect(WebSocketStub.instances[0]?.readyState).toBe(WebSocketStub.CLOSED);
+    const retry = connection.connect("ws://localhost:9090", 1000);
+    await vi.waitFor(() => expect(WebSocketStub.instances).toHaveLength(2));
+    WebSocketStub.instances[1]?.open();
+    await retry;
+    expect(connection.connected).toBe(true);
+  } finally {
+    vi.useRealTimers();
+  }
 });

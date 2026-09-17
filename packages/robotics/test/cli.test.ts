@@ -3,10 +3,11 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   connection: { dispose: vi.fn(), subscribe: vi.fn(), service: vi.fn() },
   createConnection: vi.fn(),
+  createRuntime: vi.fn(),
   world: { dispose: vi.fn(), fixedDelta: 1 / 120, update: vi.fn() },
   renderer: { dispose: vi.fn() },
   runtime: {
-    dispose: vi.fn(),
+    disposeAsync: vi.fn<() => Promise<void>>(),
     connected: true,
     find: vi.fn<() => { dispose(): Promise<void> }[]>(() => []),
   },
@@ -24,7 +25,7 @@ vi.mock("../src/cli/webgpu.js", () => ({
 vi.mock("../src/runtime.js", () => ({
   ROS2: class {
     constructor() {
-      return mocks.runtime;
+      return mocks.createRuntime();
     }
   },
 }));
@@ -37,6 +38,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers();
   mocks.createConnection.mockResolvedValue(mocks.connection);
+  mocks.createRuntime.mockReturnValue(mocks.runtime);
+  mocks.runtime.disposeAsync.mockResolvedValue(undefined);
   mocks.connection.subscribe.mockReturnValue(vi.fn());
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -77,12 +80,25 @@ it("releases physics and rendering when native connection setup fails", async ()
   expect(mocks.world.dispose).toHaveBeenCalledOnce();
 });
 
+it("releases the connection when runtime construction fails before taking ownership", async () => {
+  mocks.createRuntime.mockImplementationOnce(() => {
+    throw new Error("runtime setup failed");
+  });
+  await expect(
+    sim.parseAsync(["missing-scene.ts"], { from: "user" }),
+  ).rejects.toThrow("runtime setup failed");
+  expect(mocks.connection.dispose).toHaveBeenCalledOnce();
+  expect(mocks.runtime.disposeAsync).not.toHaveBeenCalled();
+  expect(mocks.renderer.dispose).toHaveBeenCalledOnce();
+  expect(mocks.world.dispose).toHaveBeenCalledOnce();
+});
+
 it("releases acquired resources when the scene cannot be imported", async () => {
   await expect(
     sim.parseAsync(["missing-scene.ts"], { from: "user" }),
   ).rejects.toThrow();
-  expect(mocks.runtime.dispose).toHaveBeenCalledOnce();
-  expect(mocks.connection.dispose).toHaveBeenCalledOnce();
+  expect(mocks.runtime.disposeAsync).toHaveBeenCalledOnce();
+  expect(mocks.connection.dispose).not.toHaveBeenCalled();
   expect(mocks.renderer.dispose).toHaveBeenCalledOnce();
   expect(mocks.world.dispose).toHaveBeenCalledOnce();
 });
@@ -118,7 +134,7 @@ it("stops during viewer startup and removes timers and signal listeners", async 
   expect(signal?.aborted).toBe(true);
   expect(process.listenerCount("SIGTERM")).toBe(before);
   expect(vi.getTimerCount()).toBe(0);
-  expect(mocks.runtime.dispose).toHaveBeenCalledOnce();
+  expect(mocks.runtime.disposeAsync).toHaveBeenCalledOnce();
   expect(mocks.renderer.dispose).toHaveBeenCalledOnce();
   expect(mocks.world.dispose).toHaveBeenCalledOnce();
 });
@@ -153,25 +169,24 @@ it("preserves snapshot subscription and disposal failures", async () => {
   expect(vi.getTimerCount()).toBe(0);
 });
 
-it("joins camera readback before releasing the renderer even when runtime disposal fails", async () => {
-  let finish: (() => void) | undefined;
-  const readback = new Promise<void>((resolve) => {
-    finish = resolve;
+it("waits for runtime cleanup before releasing the renderer, including on failure", async () => {
+  let reject: ((error: Error) => void) | undefined;
+  const cleanup = new Promise<void>((_resolve, fail) => {
+    reject = fail;
   });
-  const camera = { dispose: vi.fn(() => readback) };
-  mocks.runtime.find.mockReturnValueOnce([camera]);
+  mocks.runtime.disposeAsync.mockReturnValueOnce(cleanup);
   const disposal = new Error("runtime disposal failed");
-  mocks.runtime.dispose.mockImplementationOnce(() => {
-    throw disposal;
-  });
   const result = sim.parseAsync(["missing-scene.ts"], { from: "user" });
   const failure = expect(result).rejects.toMatchObject({ error: disposal });
-  await vi.waitFor(() => expect(camera.dispose).toHaveBeenCalledOnce());
+  await vi.waitFor(() =>
+    expect(mocks.runtime.disposeAsync).toHaveBeenCalledOnce(),
+  );
   expect(mocks.renderer.dispose).not.toHaveBeenCalled();
-  if (!finish) throw new Error("Readback was not initialized");
-  finish();
+  if (!reject) throw new Error("Runtime cleanup did not initialize");
+  reject(disposal);
   await failure;
   expect(mocks.renderer.dispose).toHaveBeenCalledOnce();
+  expect(mocks.world.dispose).toHaveBeenCalledOnce();
 });
 
 it("reports viewer startup failure once while disposing the simulation", async () => {
@@ -200,35 +215,6 @@ it("surfaces viewer cleanup failure after cancellation", async () => {
   const failure = expect(result).rejects.toBe(cleanup);
   await vi.waitFor(() => expect(mocks.serve).toHaveBeenCalled());
   process.emit("SIGTERM");
-  await failure;
-  expect(mocks.renderer.dispose).toHaveBeenCalledOnce();
-});
-
-it("observes every camera failure while waiting for all readbacks before renderer disposal", async () => {
-  let finish: (() => void) | undefined;
-  const slow = new Promise<void>((resolve) => {
-    finish = resolve;
-  });
-  const failed = new Error("readback failed");
-  const cameras = [
-    { dispose: vi.fn(() => slow) },
-    {
-      dispose: vi.fn(async () => {
-        throw failed;
-      }),
-    },
-  ];
-  mocks.runtime.find.mockReturnValueOnce(cameras);
-  const result = sim.parseAsync(["missing-scene.ts"], { from: "user" });
-  const failure = expect(result).rejects.toMatchObject({
-    error: expect.objectContaining({ errors: [failed] }),
-  });
-  await vi.waitFor(() => {
-    for (const camera of cameras) expect(camera.dispose).toHaveBeenCalledOnce();
-  });
-  expect(mocks.renderer.dispose).not.toHaveBeenCalled();
-  if (!finish) throw new Error("Readback did not initialize");
-  finish();
   await failure;
   expect(mocks.renderer.dispose).toHaveBeenCalledOnce();
 });
