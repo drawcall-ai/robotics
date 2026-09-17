@@ -7,13 +7,8 @@ ROS 2 simulation for Three.js and Drawcall physics: sensors and ros2_control bin
 A scene is a plain script: it builds a Three.js scene in the default physics world and puts a `Robot` in it. The robot is a group, and everything under it is the robot.
 
 ```ts
-import { CameraSensor, Robot } from "@drawcall/robotics";
-import {
-  BoxCollider,
-  JointMotor,
-  RevoluteJoint,
-  RigidBody,
-} from "@drawcall/physics";
+import { CameraSensor, JointActuator, Robot } from "@drawcall/robotics";
+import { BoxCollider, RevoluteJoint, RigidBody } from "@drawcall/physics";
 import { Scene } from "three";
 
 const scene = new Scene();
@@ -28,7 +23,9 @@ const wheel = new RigidBody({ mass: 1 });
 wheel.name = "wheel_link";
 const axle = new RevoluteJoint({ body0: base, body1: wheel, axis: "X" });
 axle.name = "wheel";
-new JointMotor({ joint: axle, damping: 30, maxForce: 10 });
+axle.setDrive(
+  new JointActuator({ interface: "velocity", damping: 30, maxForce: 10 }),
+);
 robot.add(base, wheel, axle);
 
 const camera = new CameraSensor({
@@ -40,7 +37,7 @@ camera.position.set(0, 0.3, -0.4);
 base.add(camera);
 ```
 
-From that structure the robot derives everything ROS needs: the base link is the body no joint hangs from, every named axis joint is a URDF joint, a joint with a motor is commanded through ros2_control (velocity, or position when the motor has stiffness), each sensor on the robot is a fixed frame, and a `base_footprint` link sits under the lowest collider. The robot publishes `joint_states` and applies `joint_commands` itself; `exportURDF()` serializes the runtime's robot, and `exportURDF({ name })` picks one of several.
+From that structure the robot derives everything ROS needs: the base link is the body no joint hangs from, every named axis joint is a URDF joint, a joint driven by a `JointActuator` is commanded through ros2_control with the actuator's interface (position, velocity or effort) while a plain `JointDrive` is a simulated spring, each sensor on the robot is a fixed frame, and a `base_footprint` link sits under the lowest collider. The robot publishes `joint_states`; each actuator applies its own `joint_commands`; `exportURDF()` serializes the runtime's robot, and `exportURDF({ name })` picks one of several.
 
 ```sh
 drawcall-robotics urdf scene.ts > robot.urdf      # links, colliders, joints, mounts, ros2_control block
@@ -49,7 +46,7 @@ drawcall-robotics view rosbag2_2026_09_16-14_50_26    # a rosbag2 directory or .
 drawcall-robotics snapshot /robot/camera/image/compressed --out frame.jpg
 ```
 
-`sim` is a ROS 2 node through [rclnodejs](https://github.com/RobotWebTools/rclnodejs). It publishes `/clock`, `<namespace>/joint_states`, one `LaserScan` per lidar and a `CompressedImage` plus `CameraInfo` per camera, and drives motors from `<namespace>/joint_commands` as published by the [topic-based ros2_control hardware interface](https://github.com/PickNikRobotics/topic_based_ros2_control) the URDF declares. It offers `/sim/pause`, `/sim/resume`, `/sim/step` and `/sim/reset` as `std_srvs/Trigger` and publishes ground truth on `/sim/state`. Start it from a launch file like any simulator:
+`sim` is a ROS 2 node through [rclnodejs](https://github.com/RobotWebTools/rclnodejs). It publishes `/clock`, `<namespace>/joint_states`, one `LaserScan` per lidar and a `CompressedImage` plus `CameraInfo` per camera, and actuators apply `<namespace>/joint_commands` as published by the [topic-based ros2_control hardware interface](https://github.com/PickNikRobotics/topic_based_ros2_control) the URDF declares. It offers `/sim/pause`, `/sim/resume`, `/sim/step` and `/sim/reset` as `std_srvs/Trigger` and publishes ground truth on `/sim/state`. Start it from a launch file like any simulator:
 
 ```python
 ExecuteProcess(cmd=["drawcall-robotics", "sim", "scene.ts"])  # node_modules/.bin on PATH, e.g. through pixi.toml
@@ -76,17 +73,18 @@ The page owns renderer cleanup. Before shutting down, capture `const cameras = r
 
 ## Devices
 
-| Device         | Configuration and output                                                                                                                                                             |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Robot`        | Group with a `name`; publishes `joint_states` for its joints, applies `joint_commands` to its motors, `exportURDF()` exports it                                                      |
-| `CameraSensor` | PerspectiveCamera with `name`, dimensions, `fov`, `rate`, `quality`, `frameId`; publishes `<name>/image/compressed` and `<name>/camera_info`                                         |
-| `LaserSensor`  | Object3D with `name`, `samples`, `range`, `minRange`, `angleMin`, `angleMax`, `rate`, `frameId`; publishes a scan of everything, its own robot included; `minRange` is the dead zone |
+| Device          | Configuration and output                                                                                                                                                                 |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Robot`         | Group with a `name`; publishes `joint_states` for its joints, `exportURDF()` exports it                                                                                                  |
+| `JointActuator` | `JointDrive` with a ros2_control `interface` and URDF `maxVelocity`; attached with `joint.setDrive`, it applies `joint_commands` for its joint's name and rejects targets from the scene |
+| `CameraSensor`  | PerspectiveCamera with `name`, dimensions, `fov`, `rate`, `quality`, `frameId`; publishes `<name>/image/compressed` and `<name>/camera_info`                                             |
+| `LaserSensor`   | Object3D with `name`, `samples`, `range`, `minRange`, `angleMin`, `angleMax`, `rate`, `frameId`; publishes a scan of everything, its own robot included; `minRange` is the dead zone     |
 
-Devices register with the runtime they are given, by default the current runtime, and unregister on `dispose()`. A camera captures the scene it is part of. `ros.find(CameraSensor)` lists the registered devices of a class. Sensors never publish TF or world poses: the URDF's `robot_state_publisher` owns mounting transforms and localization owns the rest. Joint commands expire after 0.5 s and expiry disables actuation without braking.
+Devices register with the runtime they are given, by default the current runtime, and unregister on `dispose()`. A camera captures the scene it is part of. `ros.find(CameraSensor)` lists the registered devices of a class. Sensors never publish TF or world poses: the URDF's `robot_state_publisher` owns mounting transforms and localization owns the rest. Joint commands expire after 0.5 s and expiry makes the actuator passive without braking. Disposing an actuator detaches it from its joint.
 
 ## URDF export
 
-`exportURDF()` serializes the robot in ROS coordinates: bodies become links with box, sphere and cylinder colliders as geometry, revolute and prismatic joints keep their axes and limits, sensors become fixed frames, `base_footprint` sits at the lowest collider, and motors produce the topic-based `ros2_control` block. Output is deterministic and independent of where the robot stands. To export from your own script without ROS, create the runtime over an `OfflineConnection`, which only builds; `findRobot(ros, name?)` picks a scene's robot, and `rosPosition`, `rosRotation`, `rosOpticalRotation` and `rollPitchYaw` are the coordinate conversions.
+`exportURDF()` serializes the robot in ROS coordinates: bodies become links with box, sphere and cylinder colliders as geometry, revolute and prismatic joints keep their axes and limits, sensors become fixed frames, `base_footprint` sits at the lowest collider, joint limits carry each actuator's `maxForce` as effort and `maxVelocity` as velocity, and actuators produce the topic-based `ros2_control` block. Output is deterministic and independent of where the robot stands. To export from your own script without ROS, create the runtime over an `OfflineConnection`, which only builds; `findRobot(ros, name?)` picks a scene's robot, and `rosPosition`, `rosRotation`, `rosOpticalRotation` and `rollPitchYaw` are the coordinate conversions.
 
 ## Custom devices
 

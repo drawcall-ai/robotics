@@ -2,7 +2,6 @@ import { afterEach, vi } from "vitest";
 import type { RenderTarget, Texture } from "three";
 import {
   AuthoringWorld,
-  JointMotor,
   RevoluteJoint,
   RigidBody,
   setDefaultWorld,
@@ -10,6 +9,7 @@ import {
 import { setupWorld } from "@drawcall/physics-rapier";
 import type { Connection } from "../src/runtime.js";
 import { OfflineConnection } from "../src/connections/offline.js";
+import { JointActuator } from "../src/devices/actuator.js";
 import { Robot } from "../src/devices/robot.js";
 import type { CaptureRenderer } from "../src/runtime.js";
 import { ROS2 } from "../src/runtime.js";
@@ -29,7 +29,7 @@ export class ConnectionStub implements Connection {
   connected = true;
   disposed = false;
   readonly messages: { name: string; type: string; message: unknown }[] = [];
-  readonly receivers = new Map<string, (message: unknown) => void>();
+  readonly receivers = new Map<string, Set<(message: unknown) => void>>();
   publish(name: string, type: string, message: unknown): void {
     this.messages.push({ name, type, message });
   }
@@ -38,16 +38,19 @@ export class ConnectionStub implements Connection {
     _type: string,
     receive: (message: unknown) => void,
   ): () => void {
-    this.receivers.set(name, receive);
+    let receivers = this.receivers.get(name);
+    if (!receivers) this.receivers.set(name, (receivers = new Set()));
+    receivers.add(receive);
     return () => {
       if (this.disposed) throw new Error("Released after close");
-      this.receivers.delete(name);
+      receivers.delete(receive);
+      if (!receivers.size) this.receivers.delete(name);
     };
   }
   receive(name: string, message: unknown): void {
-    const receive = this.receivers.get(name);
-    if (!receive) throw new Error(`No subscription for ${name}`);
-    receive(message);
+    const receivers = this.receivers.get(name);
+    if (!receivers?.size) throw new Error(`No subscription for ${name}`);
+    for (const receive of receivers) receive(message);
   }
   dispose(): void {
     this.connected = false;
@@ -109,8 +112,17 @@ export function offline(namespace?: string): ROS2 {
   return ros;
 }
 
-/** A robot with one motorized wheel on a static base; stiffness makes the motor position-commanded. */
-export function cart(ros: ROS2, { stiffness }: { stiffness?: number } = {}) {
+/** A robot with one actuated wheel on a static base; stiffness makes the actuator position-commanded. */
+export function cart(
+  ros: ROS2,
+  {
+    stiffness,
+    interface: command = stiffness ? "position" : "velocity",
+  }: {
+    stiffness?: number;
+    interface?: "position" | "velocity" | "effort";
+  } = {},
+) {
   const { world } = ros;
   const base = new RigidBody({ world, type: "static" });
   base.name = "base_link";
@@ -123,15 +135,22 @@ export function cart(ros: ROS2, { stiffness }: { stiffness?: number } = {}) {
   wheel.name = "wheel_link";
   const joint = new RevoluteJoint({ body0: base, body1: wheel, axis: "Z" });
   joint.name = "wheel";
-  const motor = new JointMotor({ joint, damping: 10, maxForce: 20, stiffness });
+  const actuator = new JointActuator({
+    ros,
+    interface: command,
+    stiffness,
+    damping: command === "effort" ? undefined : 10,
+    maxForce: 20,
+  });
+  joint.setDrive(actuator);
   const robot = new Robot({ ros });
   robot.name = "cart";
   robot.add(base, wheel, joint);
-  return { robot, base, wheel, joint, motor };
+  return { robot, base, wheel, joint, actuator };
 }
 
 export function jointCommand(
-  field: "position" | "velocity",
+  field: "position" | "velocity" | "effort",
   value: number,
   name = "wheel",
 ) {

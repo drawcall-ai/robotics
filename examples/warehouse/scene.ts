@@ -1,13 +1,17 @@
 import {
   BoxCollider,
   CylinderCollider,
-  JointMotor,
   RevoluteJoint,
   RigidBody,
   SphereCollider,
   SphericalJoint,
 } from "@drawcall/physics";
-import { CameraSensor, LaserSensor, Robot } from "@drawcall/robotics";
+import {
+  CameraSensor,
+  JointActuator,
+  LaserSensor,
+  Robot,
+} from "@drawcall/robotics";
 import {
   AmbientLight,
   BoxGeometry,
@@ -156,7 +160,9 @@ function assemble() {
       frame1: new Matrix4().makeRotationY(Math.PI),
     });
     joint.name = name;
-    new JointMotor({ joint, damping: 30, maxForce: 10 });
+    joint.setDrive(
+      new JointActuator({ interface: "velocity", damping: 30, maxForce: 10 }),
+    );
     bot.add(body, joint);
   }
   wheel("left_wheel", -0.45);

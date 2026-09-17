@@ -1,3 +1,4 @@
+export * from "./actuator.js";
 export * from "./robot.js";
 export * from "./camera.js";
 export * from "./laser.js";

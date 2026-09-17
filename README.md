@@ -7,7 +7,7 @@ Connect a Three.js physics scene to ROS 2. Declare a robot with cameras, lidar a
 | [packages/robotics](packages/robotics/README.md)   | `@drawcall/robotics`: devices, URDF export, the `drawcall-robotics` simulator CLI    |
 | [examples/warehouse](examples/warehouse/README.md) | A warehouse scene and differential-drive robot with its ROS Jazzy stack through pixi |
 
-The workspace uses `@drawcall/physics` and its Rapier backend **0.4.0**. `JointMotor` belongs to physics; robotics binds ROS commands to it.
+The workspace uses `@drawcall/physics` and its Rapier backend **0.5.0**. `JointDrive` belongs to physics; robotics extends it as `JointActuator`, the drive ros2_control commands.
 
 ## Run the warehouse
 
@@ -38,7 +38,7 @@ const scene = new Scene();
 const robot = new Robot();
 robot.name = "warehouse";
 scene.add(robot);
-const chassis = new RigidBody({ mass: 12 }); // "base_link"; wheels, named joints, motors follow
+const chassis = new RigidBody({ mass: 12 }); // "base_link"; wheels, named joints, actuators follow
 robot.add(chassis, leftWheel, leftAxle, rightWheel, rightAxle);
 
 const laser = new LaserSensor({
@@ -57,7 +57,7 @@ camera.position.set(0, 0.28, -0.38);
 chassis.add(laser, camera);
 ```
 
-The base is the body no joint hangs from, every named axis joint becomes a URDF joint, a joint with a motor is commanded through ros2_control with a velocity or position interface depending on the motor's stiffness, and each sensor mounted on the robot is a frame. `drawcall-robotics urdf scene.ts` runs the script against an offline runtime and prints that URDF; `drawcall-robotics sim scene.ts` runs it as a ROS 2 node through rclnodejs, rendering the cameras with Dawn. Scenes with several robots pick one with `--robot <name>`. In a browser the same devices attach to a rosbridge connection; see the [package guide](packages/robotics/README.md).
+The base is the body no joint hangs from, every named axis joint becomes a URDF joint, a joint driven by a `JointActuator` is commanded through ros2_control with the interface the actuator declares (position, velocity or effort), a plain `JointDrive` is a simulated spring, and each sensor mounted on the robot is a frame. `drawcall-robotics urdf scene.ts` runs the script against an offline runtime and prints that URDF; `drawcall-robotics sim scene.ts` runs it as a ROS 2 node through rclnodejs, rendering the cameras with Dawn. Scenes with several robots pick one with `--robot <name>`. In a browser the same devices attach to a rosbridge connection; see the [package guide](packages/robotics/README.md).
 
 ## ROS topics
 
@@ -81,7 +81,7 @@ Three.js forward `-Z`, left `-X`, up `+Y` map to ROS `+X`, `+Y`, `+Z`. Camera op
 
 Every ROS node runs on `use_sim_time`. Simulation time counts completed fixed substeps at 120 Hz and is published on `/clock`; there is no lockstep, and pausing the simulator pauses the clock and with it every node.
 
-Joint commands are unstamped `JointState` messages republished at the controller manager's rate. The binding keeps the latest value per joint and expires it after 0.5 seconds of simulation or wall time. **Expiry removes actuation; the robot can coast. It does not brake or hold position.**
+Joint commands are unstamped `JointState` messages republished at the controller manager's rate. Each actuator keeps the latest value for its joint and expires it after 0.5 seconds of simulation or wall time. **Expiry removes actuation; the robot can coast. It does not brake or hold position.**
 
 Current scope:
 

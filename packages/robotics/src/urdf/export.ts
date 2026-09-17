@@ -6,6 +6,7 @@ import {
   rosPosition,
   rosRotation,
 } from "../coordinates.js";
+import type { JointActuator } from "../devices/actuator.js";
 import { findRobot, type Robot } from "../devices/robot.js";
 import { getROS2, type ROS2 } from "../runtime.js";
 import {
@@ -51,11 +52,13 @@ export function exportURDF({
     `  </material>`,
     ...footprintXML(base, [...links.values()]),
     ...[...links.values()].flatMap((link) => linkXML(link, material)),
-    ...joints.flatMap(jointXML),
+    ...joints.flatMap((joint) =>
+      jointXML(joint, robot.actuators.get(joint.name)),
+    ),
     ...frames.flatMap(([name, object]) =>
       frameXML(name, object, links, robot.name),
     ),
-    ...(robot.drives.size ? controlXML(robot, joints) : []),
+    ...(robot.actuators.size ? controlXML(robot, joints) : []),
     "</robot>",
     "",
   ].join("\n");
@@ -91,7 +94,10 @@ function linkXML(link: Link, material: string): string[] {
   ];
 }
 
-function jointXML({ name, joint, parent, child, origin }: LinkJoint): string[] {
+function jointXML(
+  { name, joint, parent, child, origin }: LinkJoint,
+  actuator: JointActuator | undefined,
+): string[] {
   const limits = joint.limits;
   const prismatic = joint instanceof PrismaticJoint;
   if (prismatic && !limits)
@@ -106,7 +112,7 @@ function jointXML({ name, joint, parent, child, origin }: LinkJoint): string[] {
     `    <axis xyz="${vec(axis.x, axis.y, axis.z)}"/>`,
     ...(limits
       ? [
-          `    <limit lower="${num(limits[0])}" upper="${num(limits[1])}" effort="0" velocity="0"/>`,
+          `    <limit lower="${num(limits[0])}" upper="${num(limits[1])}" effort="${num(actuator?.options.maxForce ?? 0)}" velocity="${num(actuator?.options.maxVelocity ?? 0)}"/>`,
         ]
       : []),
     `  </joint>`,
@@ -177,7 +183,7 @@ function controlXML(robot: Robot, joints: LinkJoint[]): string[] {
     `      <param name="trigger_joint_command_threshold">-1</param>`,
     `    </hardware>`,
     ...joints.flatMap(({ name }) => {
-      const command = robot.drives.get(name)?.command;
+      const command = robot.actuators.get(name)?.options.interface;
       return [
         `    <joint name="${name}">`,
         ...(command ? [`      <command_interface name="${command}"/>`] : []),

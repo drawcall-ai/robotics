@@ -21,7 +21,7 @@
     "prepack": "pnpm build"
   },
   "dependencies": {
-    "@drawcall/physics-rapier": "0.4.0",
+    "@drawcall/physics-rapier": "0.5.0",
     "@mcap/core": "2.2.2",
     "commander": "^15.0.0",
     "jpeg-js": "^0.4.4",
@@ -31,11 +31,11 @@
     "tar": "^7.5.22"
   },
   "peerDependencies": {
-    "@drawcall/physics": "^0.4.0",
+    "@drawcall/physics": "^0.5.0",
     "three": ">=0.185.0"
   },
   "devDependencies": {
-    "@drawcall/physics": "0.4.0",
+    "@drawcall/physics": "0.5.0",
     "@types/node": "^26.6.0",
     "@types/send": "^1.2.1"
   },

@@ -1,4 +1,5 @@
 import { expect, it, vi } from "vitest";
+import { JointActuator } from "../src/devices/actuator.js";
 import { findRobot, Robot } from "../src/devices/robot.js";
 import { ROS2 } from "../src/runtime.js";
 import {
@@ -15,76 +16,110 @@ const COMMANDS = "/robot/joint_commands";
 
 it("drives the joint with the latest command", async () => {
   const { world, ros, connection } = await simulation();
-  const { joint, motor } = cart(ros);
+  const { joint, actuator } = cart(ros);
   connection.receive(COMMANDS, jointCommand("velocity", -2));
   connection.receive(COMMANDS, jointCommand("velocity", 3));
   world.update(0.01);
-  expect(motor.target?.velocity).toBe(3);
+  expect(actuator.target?.velocity).toBe(3);
   expect(joint.getState().velocity).toBeGreaterThan(0);
 });
 
-it("commands a position through a stiff motor", async () => {
+it("commands a position through a stiff actuator", async () => {
   const { world, ros, connection } = await simulation();
-  const { motor } = cart(ros, { stiffness: 50 });
+  const { actuator } = cart(ros, { stiffness: 50 });
   connection.receive(COMMANDS, jointCommand("position", 1.2));
   world.update(0.01);
-  expect(motor.target).toEqual({ position: 1.2, velocity: 0 });
+  expect(actuator.target).toEqual({ position: 1.2, velocity: 0, effort: 0 });
   connection.receive(COMMANDS, jointCommand("velocity", 1));
   expect(ros.error?.message).toContain("needs a finite position");
+});
+
+it("commands a torque through an effort actuator", async () => {
+  const { world, ros, connection } = await simulation();
+  const { joint, actuator } = cart(ros, { interface: "effort" });
+  connection.receive(COMMANDS, jointCommand("effort", 2));
+  world.update(0.01);
+  expect(actuator.target).toEqual({ position: 0, velocity: 0, effort: 2 });
+  expect(joint.getState().velocity).toBeCloseTo(0.02, 5);
+});
+
+it("requires the gains its interface acts through", async () => {
+  const { ros } = await simulation();
+  expect(() => new JointActuator({ ros, interface: "position" })).toThrow(
+    "needs stiffness",
+  );
+  expect(
+    () => new JointActuator({ ros, interface: "velocity", stiffness: 1 }),
+  ).toThrow("no stiffness");
+  expect(
+    () => new JointActuator({ ros, interface: "effort", damping: 1 }),
+  ).toThrow("no gains");
+  expect(
+    () => new JointActuator({ ros, interface: "effort", maxVelocity: -1 }),
+  ).toThrow("velocity limit");
 });
 
 it("lets a command expire by simulation time and accepts a repeated one", async () => {
   vi.spyOn(performance, "now").mockReturnValue(0);
   const { world, ros, connection } = await simulation();
-  const { motor } = cart(ros);
+  const { actuator } = cart(ros);
   connection.receive(COMMANDS, jointCommand("velocity", 3));
   for (let step = 0; step < 60; step++) world.update(0.01);
-  expect(motor.enabled).toBe(false);
+  expect(actuator.target).toBeUndefined();
   connection.receive(COMMANDS, jointCommand("velocity", 3));
   world.update(0.01);
-  expect(motor.enabled).toBe(true);
+  expect(actuator.target?.velocity).toBe(3);
 });
 
 it("lets a command expire by wall time across a pause", async () => {
   const clock = vi.spyOn(performance, "now").mockReturnValue(0);
   const { world, ros, connection } = await simulation();
-  const { motor } = cart(ros);
+  const { actuator } = cart(ros);
   connection.receive(COMMANDS, jointCommand("velocity", 2));
   world.update(0.01);
   clock.mockReturnValue(1000);
   world.update(0.01);
-  expect(motor.enabled).toBe(false);
+  expect(actuator.target).toBeUndefined();
 });
 
-it("stops the motor before the next step once disconnected", async () => {
+it("goes passive before the next step once disconnected", async () => {
   const { world, ros, connection } = await simulation();
-  const { joint, motor } = cart(ros);
+  const { joint, actuator } = cart(ros);
   connection.receive(COMMANDS, jointCommand("velocity", 3));
   world.update(0.01);
   const velocity = joint.getState().velocity;
   connection.receive(COMMANDS, jointCommand("velocity", 10));
   connection.connected = false;
   world.update(0.01);
-  expect(motor.enabled).toBe(false);
+  expect(actuator.target).toBeUndefined();
   expect(joint.getState().velocity).toBeCloseTo(velocity, 5);
 });
 
-it("faults on a malformed command and stops the motor", async () => {
+it("faults on a malformed command and goes passive", async () => {
   const { world, ros, connection } = await simulation();
-  const { motor } = cart(ros);
+  const { actuator } = cart(ros);
   connection.receive(COMMANDS, jointCommand("velocity", 3));
   world.update(0.01);
   connection.receive(COMMANDS, { name: ["wheel"], velocity: ["3"] });
   expect(ros.error?.message).toContain("needs a finite velocity");
   expect(ros.connected).toBe(false);
-  expect(motor.enabled).toBe(false);
+  expect(actuator.target).toBeUndefined();
 });
 
-it("faults on a command for a joint it does not have", async () => {
-  const { ros, connection } = await simulation();
-  cart(ros);
-  connection.receive(COMMANDS, { name: ["wheel", "arm"], velocity: [1, 2] });
-  expect(ros.error?.message).toContain("unknown joint arm");
+it("ignores commands for other joints and rejects targets from the scene", async () => {
+  const { world, ros, connection } = await simulation();
+  const { joint, actuator } = cart(ros);
+  const spare = new JointActuator({ ros, interface: "velocity", damping: 1 });
+  connection.receive(COMMANDS, jointCommand("velocity", 3));
+  connection.receive(COMMANDS, jointCommand("velocity", 5, "arm"));
+  world.update(0.01);
+  expect(spare.target).toBeUndefined();
+  expect(actuator.target?.velocity).toBe(3);
+  expect(() => actuator.setTarget()).toThrow("joint_commands");
+  const version = actuator.settingsVersion;
+  world.update(0.01);
+  expect(actuator.settingsVersion).toBe(version);
+  expect(joint.drive).toBe(actuator);
 });
 
 it("publishes the joint state", async () => {
@@ -105,49 +140,35 @@ it("publishes the joint state", async () => {
   });
 });
 
-it("stops listening and driving on dispose without disposing the motor", async () => {
+it("detaches and stops listening on dispose", async () => {
   const { world, ros, connection } = await simulation();
-  const { robot, motor } = cart(ros);
+  const { robot, joint, actuator } = cart(ros);
   connection.receive(COMMANDS, jointCommand("velocity", 2));
   world.update(0.01);
-  robot.dispose();
-  robot.dispose();
-  expect(motor.disposed).toBe(false);
-  expect(motor.enabled).toBe(false);
+  actuator.dispose();
+  actuator.dispose();
+  expect(actuator.target).toBeUndefined();
+  expect(joint.drive).toBeUndefined();
   expect(() =>
     connection.receive(COMMANDS, jointCommand("velocity", 2)),
   ).toThrow("No subscription");
+  robot.dispose();
+  robot.dispose();
   ros.dispose();
   const count = connection.messages.length;
   world.update(0.01);
   expect(connection.messages).toHaveLength(count);
 });
 
-it("leaves an unchanged target alone and restores an externally changed motor", async () => {
-  vi.spyOn(performance, "now").mockReturnValue(0);
+it("drives the joint again from a new runtime with a new actuator", async () => {
   const { world, ros, connection } = await simulation();
-  const { motor } = cart(ros);
-  connection.receive(COMMANDS, jointCommand("velocity", 3));
-  world.update(0.01);
-  const version = motor.settingsVersion;
-  world.update(0.01);
-  expect(motor.settingsVersion).toBe(version);
-  motor.setTarget({ position: 2, velocity: 3 });
-  world.update(0.01);
-  expect(motor.target).toEqual({ position: 0, velocity: 3 });
-  motor.setEnabled(false);
-  world.update(0.01);
-  expect(motor.enabled).toBe(true);
-});
-
-it("drives the motor again from a robot of a new runtime over the same joint", async () => {
-  const { world, ros, connection } = await simulation();
-  const { robot, motor } = cart(ros);
+  const { robot, joint, actuator } = cart(ros);
   connection.receive(COMMANDS, jointCommand("velocity", 2));
   world.update(0.01);
-  expect(motor.enabled).toBe(true);
+  expect(actuator.target?.velocity).toBe(2);
   ros.dispose();
-  expect(motor.enabled).toBe(false);
+  expect(actuator.target).toBeUndefined();
+  expect(joint.drive).toBeUndefined();
   const nextConnection = new ConnectionStub();
   const next = new ROS2(nextConnection, {
     world,
@@ -157,10 +178,15 @@ it("drives the motor again from a robot of a new runtime over the same joint", a
   const moved = new Robot({ ros: next });
   moved.name = "cart";
   moved.add(...robot.children);
+  const replacement = new JointActuator({
+    ros: next,
+    interface: "velocity",
+    damping: 10,
+  });
+  joint.setDrive(replacement);
   nextConnection.receive(COMMANDS, jointCommand("velocity", 2));
   world.update(0.01);
-  expect(motor.enabled).toBe(true);
-  expect(motor.target?.velocity).toBe(2);
+  expect(replacement.target?.velocity).toBe(2);
 });
 
 it("finds the only robot, or one by name when a scene has several", () => {

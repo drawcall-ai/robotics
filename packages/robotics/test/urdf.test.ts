@@ -3,22 +3,26 @@ import { BoxGeometry, Matrix4 } from "three";
 import {
   BoxCollider,
   CylinderCollider,
-  JointMotor,
   MeshCollider,
   RevoluteJoint,
   RigidBody,
   SphericalJoint,
 } from "@drawcall/physics";
+import { JointActuator } from "../src/devices/actuator.js";
 import { CameraSensor } from "../src/devices/camera.js";
 import { LaserSensor } from "../src/devices/laser.js";
 import { Robot } from "../src/devices/robot.js";
 import { exportURDF } from "../src/urdf/export.js";
 import { offline } from "./fixture.js";
 
-/** A rover standing somewhere: box chassis, one motorized wheel on a cylinder, a camera and a lidar. */
+/** A rover standing somewhere: box chassis, one actuated wheel on a cylinder, a camera and a lidar. */
 function rover(
   name = "rover",
-  { at = [5, 1, -2], stiffness }: { at?: number[]; stiffness?: number } = {},
+  {
+    at = [5, 1, -2],
+    stiffness,
+    limits,
+  }: { at?: number[]; stiffness?: number; limits?: [number, number] } = {},
 ) {
   const [x = 0, y = 0, z = 0] = at;
   const robot = new Robot();
@@ -37,11 +41,20 @@ function rover(
     body0: base,
     body1: wheel,
     axis: "X",
+    limits,
     frame0: new Matrix4().setPosition(0.3, -0.05, 0),
     frame1: new Matrix4(),
   });
   axle.name = "axle";
-  new JointMotor({ joint: axle, damping: 1, maxForce: 1, stiffness });
+  axle.setDrive(
+    new JointActuator({
+      interface: stiffness ? "position" : "velocity",
+      damping: 1,
+      maxForce: 1,
+      maxVelocity: 3,
+      stiffness,
+    }),
+  );
   const camera = new CameraSensor();
   camera.position.set(0, 0.1, -0.2);
   const laser = new LaserSensor();
@@ -93,13 +106,21 @@ it("is deterministic and independent of where the robot stands", () => {
   expect(exportURDF({ ros })).toBe(urdf);
 });
 
-it("commands a stiff motor through the position interface", () => {
+it("commands a stiff actuator through the position interface", () => {
   const ros = offline();
   rover("stiff", { stiffness: 50 });
   expect(exportURDF({ ros })).toContain('<command_interface name="position"/>');
 });
 
-it("has no control block without motors", () => {
+it("writes the actuator's force and velocity limits on a limited joint", () => {
+  const ros = offline();
+  rover("limited", { stiffness: 50, limits: [-1, 1] });
+  expect(exportURDF({ ros })).toContain(
+    '<limit lower="-1" upper="1" effort="1" velocity="3"/>',
+  );
+});
+
+it("has no control block without actuators", () => {
   const ros = offline();
   const free = new Robot();
   free.name = "free";

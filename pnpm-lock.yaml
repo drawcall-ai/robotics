@@ -32,8 +32,8 @@ importers:
   examples/warehouse:
     dependencies:
       '@drawcall/physics':
-        specifier: 0.4.0
-        version: 0.4.0(three@0.185.1)
+        specifier: 0.5.0
+        version: 0.5.0(three@0.185.1)
       '@drawcall/robotics':
         specifier: workspace:*
         version: link:../../packages/robotics
@@ -51,8 +51,8 @@ importers:
   packages/robotics:
     dependencies:
       '@drawcall/physics-rapier':
-        specifier: 0.4.0
-        version: 0.4.0(@drawcall/physics@0.4.0(three@0.185.1))(three@0.185.1)
+        specifier: 0.5.0
+        version: 0.5.0(@drawcall/physics@0.5.0(three@0.185.1))(three@0.185.1)
       '@mcap/core':
         specifier: 2.2.2
         version: 2.2.2
@@ -79,8 +79,8 @@ importers:
         version: 0.185.1
     devDependencies:
       '@drawcall/physics':
-        specifier: 0.4.0
-        version: 0.4.0(three@0.185.1)
+        specifier: 0.5.0
+        version: 0.5.0(three@0.185.1)
       '@types/node':
         specifier: ^26.6.0
         version: 26.6.0
@@ -107,14 +107,14 @@ packages:
   '@dimforge/rapier3d-compat@0.20.0':
     resolution: {integrity: sha512-X4W9pJBdGRX5CO3c/gUNjBFEFG2fn4nYxp9k8STdBDaLa0/w5XTW2ArpayS+9jGFojTi3uFSOWAElCd4rkpekA==}
 
-  '@drawcall/physics-rapier@0.4.0':
-    resolution: {integrity: sha512-hNAcqhBH3d9200LZkqyPOxji6HMEy4Aog5dnOF/UzCyAD2LROgibZ41qoKHv8QtwyYqFru9GnVt1sZCB2ItANA==}
+  '@drawcall/physics-rapier@0.5.0':
+    resolution: {integrity: sha512-w7hpGf911tjwiObIufLEZuRa+9iR9uLdjilZ5M1dC4f2ctdgesxGidnraISB60ntiJJtER8Lz5Osoy6pWBF8yA==}
     peerDependencies:
-      '@drawcall/physics': ^0.4.0
+      '@drawcall/physics': ^0.5.0
       three: '>=0.180.0'
 
-  '@drawcall/physics@0.4.0':
-    resolution: {integrity: sha512-qHoTzlzVLLsV2Mim7WGtPC9Skk8++7Y4337ah8/ap+ySdJ72/KBuGpOzXQW1W6VD/rv+7TyCYxwQswW+axUXrQ==}
+  '@drawcall/physics@0.5.0':
+    resolution: {integrity: sha512-oGdhW41Z0vSQZ4DWtg+4WV/oBFoAriT8RvB1a2uAL79nDXvcfGANv68f8PjuH/lC678bGBHNWTsRWBACgSdljQ==}
     peerDependencies:
       three: '>=0.185.0'
 
@@ -1068,13 +1068,13 @@ snapshots:
 
   '@dimforge/rapier3d-compat@0.20.0': {}
 
-  '@drawcall/physics-rapier@0.4.0(@drawcall/physics@0.4.0(three@0.185.1))(three@0.185.1)':
+  '@drawcall/physics-rapier@0.5.0(@drawcall/physics@0.5.0(three@0.185.1))(three@0.185.1)':
     dependencies:
       '@dimforge/rapier3d-compat': 0.20.0
-      '@drawcall/physics': 0.4.0(three@0.185.1)
+      '@drawcall/physics': 0.5.0(three@0.185.1)
       three: 0.185.1
 
-  '@drawcall/physics@0.4.0(three@0.185.1)':
+  '@drawcall/physics@0.5.0(three@0.185.1)':
     dependencies:
       three: 0.185.1
 
