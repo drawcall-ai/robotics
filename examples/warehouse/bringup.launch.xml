@@ -6,7 +6,8 @@
   <let name="scene" value="$(dirname)/scene.ts"/>
   <let name="params" value="$(dirname)/params.yaml"/>
 
-  <executable cmd="drawcall-robotics sim $(var scene) $(if $(var viewer) --viewer --no-viewer)" on_exit="shutdown"/>
+  <executable cmd="drawcall-robotics sim $(var scene) --wait-for-start $(if $(var viewer) --viewer --no-viewer)" on_exit="shutdown" unless="$(var record)"/>
+  <executable cmd="drawcall-robotics sim $(var scene) --wait-for-start --record $(if $(var viewer) --viewer --no-viewer)" cwd="$(dirname)" on_exit="shutdown" if="$(var record)"/>
   <!-- The URDF is exported from the scene the simulator runs, like xacro: it exists only in memory. -->
   <node pkg="robot_state_publisher" exec="robot_state_publisher" on_exit="shutdown">
     <param from="$(var params)"/>
@@ -35,8 +36,4 @@
   </node>
   <node pkg="foxglove_bridge" exec="foxglove_bridge" if="$(var viewer)" on_exit="shutdown"><param from="$(var params)"/></node>
   <executable cmd="python3 $(dirname)/mission.py --ros-args -p use_sim_time:=true" on_exit="shutdown"/>
-  <!-- Everything but the clock, which replay provides, Nav2's bond heartbeats, and its debug topics: the costmap
-       layers crash the planner when subscribed to, and the controller's evaluation and marker streams are huge. -->
-  <executable cmd="ros2 bag record --all --use-sim-time --exclude-regex ^/(clock|bond|evaluation|marker)$|_costmap/.+_(layer|raw|updates)"
-              cwd="$(dirname)" if="$(var record)" on_exit="shutdown"/>
 </launch>

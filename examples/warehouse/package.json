@@ -7,10 +7,11 @@
     "launch": "pnpm --filter @drawcall/robotics build && pixi run launch",
     "record": "pnpm --filter @drawcall/robotics build && pixi run launch record:=true",
     "replay": "pnpm --filter @drawcall/robotics build && drawcall-robotics view",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "results": "pnpm --filter @drawcall/robotics build && drawcall-robotics results"
   },
   "dependencies": {
-    "@drawcall/physics": "0.5.0",
+    "@drawcall/physics": "0.6.0",
     "@drawcall/robotics": "workspace:*",
     "three": "^0.185.1"
   },

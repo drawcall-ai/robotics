@@ -3,10 +3,19 @@ import { runAll } from "./cleanup.js";
 import { SEGMENT, stamp } from "./messages.js";
 import type { Camera, Object3D, RenderTarget, Texture } from "three";
 
+export interface PublishOptions {
+  retain?: boolean;
+}
+
 export interface Connection {
   readonly connected: boolean;
   readonly error?: Error;
-  publish(name: string, type: string, message: unknown): void;
+  publish(
+    name: string,
+    type: string,
+    message: unknown,
+    options?: PublishOptions,
+  ): void;
   subscribe(
     name: string,
     type: string,
@@ -18,6 +27,7 @@ export interface Connection {
 export interface Device {
   beforeStep?(time: number, delta: number): void;
   afterStep?(time: number, delta: number): void;
+  evaluate?(): void;
   stop?(): void;
   dispose(): void | Promise<void>;
 }
@@ -106,9 +116,14 @@ export class ROS2 {
     this.devices.add(device);
     return () => this.devices.delete(device);
   }
-  publish(name: string, type: string, message: unknown): void {
+  publish(
+    name: string,
+    type: string,
+    message: unknown,
+    options?: PublishOptions,
+  ): void {
     if (!this.connected) throw new Error("ROS runtime is disconnected");
-    this.connection.publish(this.topic(name), type, message);
+    this.connection.publish(this.topic(name), type, message, options);
   }
   /** The returned release is a no-op once the runtime is disposed: disposing the connection ends every subscription. */
   subscribe(
@@ -160,6 +175,8 @@ export class ROS2 {
           clock: stamp(this.world.time),
         });
       for (const device of this.devices) device[phase]?.(this.world.time, dt);
+      if (phase === "afterStep")
+        for (const device of this.devices) device.evaluate?.();
     } catch (error) {
       this.fail(error);
       throw this.fault;

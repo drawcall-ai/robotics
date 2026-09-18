@@ -32,8 +32,8 @@ importers:
   examples/warehouse:
     dependencies:
       '@drawcall/physics':
-        specifier: 0.5.0
-        version: 0.5.0(three@0.185.1)
+        specifier: 0.6.0
+        version: 0.6.0(three@0.185.1)
       '@drawcall/robotics':
         specifier: workspace:*
         version: link:../../packages/robotics
@@ -51,11 +51,20 @@ importers:
   packages/robotics:
     dependencies:
       '@drawcall/physics-rapier':
-        specifier: 0.5.0
-        version: 0.5.0(@drawcall/physics@0.5.0(three@0.185.1))(three@0.185.1)
+        specifier: 0.6.0
+        version: 0.6.0(@drawcall/physics@0.6.0(three@0.185.1))(three@0.185.1)
+      '@foxglove/rosmsg':
+        specifier: ^5.0.5
+        version: 5.0.5
+      '@foxglove/rosmsg2-serialization':
+        specifier: ^3.1.2
+        version: 3.1.2
       '@mcap/core':
         specifier: 2.2.2
         version: 2.2.2
+      '@mcap/support':
+        specifier: ^1.1.0
+        version: 1.1.0
       commander:
         specifier: ^15.0.0
         version: 15.0.0
@@ -79,8 +88,8 @@ importers:
         version: 0.185.1
     devDependencies:
       '@drawcall/physics':
-        specifier: 0.5.0
-        version: 0.5.0(three@0.185.1)
+        specifier: 0.6.0
+        version: 0.6.0(three@0.185.1)
       '@types/node':
         specifier: ^26.6.0
         version: 26.6.0
@@ -107,14 +116,14 @@ packages:
   '@dimforge/rapier3d-compat@0.20.0':
     resolution: {integrity: sha512-X4W9pJBdGRX5CO3c/gUNjBFEFG2fn4nYxp9k8STdBDaLa0/w5XTW2ArpayS+9jGFojTi3uFSOWAElCd4rkpekA==}
 
-  '@drawcall/physics-rapier@0.5.0':
-    resolution: {integrity: sha512-w7hpGf911tjwiObIufLEZuRa+9iR9uLdjilZ5M1dC4f2ctdgesxGidnraISB60ntiJJtER8Lz5Osoy6pWBF8yA==}
+  '@drawcall/physics-rapier@0.6.0':
+    resolution: {integrity: sha512-Fzsx6RmqUgpgG6/NYhT9IQkDVYkEpHC7j97ZI37ds0Y8jCmLX0r++KjZ/d/uwpkY0sIHYgGo6JMierh1Kh16Tg==}
     peerDependencies:
-      '@drawcall/physics': ^0.5.0
+      '@drawcall/physics': ^0.6.0
       three: '>=0.180.0'
 
-  '@drawcall/physics@0.5.0':
-    resolution: {integrity: sha512-oGdhW41Z0vSQZ4DWtg+4WV/oBFoAriT8RvB1a2uAL79nDXvcfGANv68f8PjuH/lC678bGBHNWTsRWBACgSdljQ==}
+  '@drawcall/physics@0.6.0':
+    resolution: {integrity: sha512-3agQxvIGEN9TTcC7n9OtGnNTaMjjfULrQvbAhmNPSjHaJ5BbTDggZW94yQkO+9r3vMvqH4oWgX0PmzYPOen+bA==}
     peerDependencies:
       three: '>=0.185.0'
 
@@ -274,8 +283,36 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@foxglove/cdr@3.5.1':
+    resolution: {integrity: sha512-Fubm04/xC1SkeNaviwUhbFk8nAiiNvIqlmP5MW7r6IVGFa35rsA0E3/Rg/pGdE77ZXf4XNwShZcQoEmje62ddQ==}
+    engines: {node: '>= 14'}
+
   '@foxglove/crc@0.0.3':
     resolution: {integrity: sha512-DjIZsnL3CyP/yQ/vUYA9cjrD0a/8YXejI5ZmsaOiT16cLfZcTwaCxIN01/ys4jsy+dZCQ/9DnWFn7AEFbiMDaA==}
+
+  '@foxglove/message-definition@0.5.0':
+    resolution: {integrity: sha512-B/2GvWn4wRSsPDywcmy6uNXgAfZRhiOAnmy3qAaS6MHVqiHQqs/RoDsoW6Gw9sXSweJpeH5qAqAihvm1pR9Thg==}
+
+  '@foxglove/rosmsg2-serialization@3.1.2':
+    resolution: {integrity: sha512-KKtmHuuIQy6I0JLUi01LFhV7hrZb5xd+LegtuGz2+9L9pftBxtVVKhoxO6B/kQREGocIUOLP8494kxLF58LMWw==}
+    engines: {node: '>= 20'}
+
+  '@foxglove/rosmsg@5.0.5':
+    resolution: {integrity: sha512-+qY6xW+4HdbPI3ItAlFFMjXgAiplXyRsv+kqdBk8OcWGH38BmEd7s6v/VnCkbYovAoB5rfR5giuKfmPRNzwbrA==}
+    engines: {node: '>= 14'}
+
+  '@foxglove/rostime@1.1.3':
+    resolution: {integrity: sha512-Gr3Xy4sNbo2NcXg0tBHb/jVUqIcDyZ1kgHj9dB7K+Y1A7AQ0oSCmSXIuf8oqeteSIs0pl8BJOWEwAtLNC99Izg==}
+    engines: {node: '>= 14'}
+
+  '@foxglove/wasm-bz2@0.3.0':
+    resolution: {integrity: sha512-MP18X3TbeoGT3Kfke7KrYin+5zESfcPnsdD2gaVviN1xzteoDDfVTZbVmbdfGrIV/qAAhBhBVbRcrN25rWSNOQ==}
+
+  '@foxglove/wasm-lz4@1.0.2':
+    resolution: {integrity: sha512-qwGOVLITlMBwuI+Vf09xWkTtbQldaCKchGEiFNZzsY0Q6ZXnHFhFgl4UAew7Xaq0wCv5YB7hqYsHmSrFIVSjCg==}
+
+  '@foxglove/wasm-zstd@1.0.1':
+    resolution: {integrity: sha512-hqKTO45Sl+kSq9SDqM9xi5L+GncjFEZIJgYEkGTlpJXTfhy1Gf+a+3epWMcE0tLUKmzM77dtu8snape/J+7ueQ==}
 
   '@isaacs/fs-minipass@4.0.1':
     resolution: {integrity: sha512-wgm9Ehl2jpeqP3zw/7mo3kRHFp5MEDhqAdwy1fTGkHAwnkGOVsgpvQhL8B5n1qlb01jV3n/bI0ZfZp5lWA1k4w==}
@@ -287,8 +324,38 @@ packages:
   '@mcap/core@2.2.2':
     resolution: {integrity: sha512-W4NFiyqQlJsNjw8JxAAQ872u0xLWJy0GFC3YFm8bTLbNs+HdDWe8DwBqznr0MGYpWtw+AX8XzHWB5Y9rLEGJJg==}
 
+  '@mcap/support@1.1.0':
+    resolution: {integrity: sha512-ykO32FKP6vjYcjU/KyMTNOMC2CErsV3Wr7hKGNEcop8HWAoi6rlex0nH86QIKn54BoFAM97Rqqs/w0SOJiikKg==}
+
   '@oxc-project/types@0.149.0':
     resolution: {integrity: sha512-Efcc+iF0j3Bf67YjEqIqWXbX5XddXoK/Mw4K1/JuXwRCZ8N16VR7iT23nlCc9XrveFVh/E5Rqs2StT0V8v9LdA==}
+
+  '@protobufjs/aspromise@1.1.2':
+    resolution: {integrity: sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ==}
+
+  '@protobufjs/base64@1.1.2':
+    resolution: {integrity: sha512-AZkcAA5vnN/v4PDqKyMR5lx7hZttPDgClv83E//FMNhR2TMcLUhfRUBHCmSl0oi9zMgDDqRUJkSxO3wm85+XLg==}
+
+  '@protobufjs/codegen@2.0.5':
+    resolution: {integrity: sha512-zgXFLzW3Ap33e6d0Wlj4MGIm6Ce8O89n/apUaGNB/jx+hw+ruWEp7EwGUshdLKVRCxZW12fp9r40E1mQrf/34g==}
+
+  '@protobufjs/eventemitter@1.1.1':
+    resolution: {integrity: sha512-vW1GmwMZNnL+gMRaovlh9yZX74kc+TTU3FObkkurpMaRtBfLP3ldjS9KQWlwZgraRE0+dheEEoAxdzcJQ8eXZg==}
+
+  '@protobufjs/fetch@1.1.1':
+    resolution: {integrity: sha512-GpptLrs57adMSuHi3VNj0mAF8dwh36LMaYF6XyJ6JMWlVsc+t42tm1HSEDmOs3A8fC9yyeisgLhsTVQokOZ0zw==}
+
+  '@protobufjs/float@1.0.2':
+    resolution: {integrity: sha512-Ddb+kVXlXst9d+R9PfTIxh1EdNkgoRe5tOX6t01f1lYWOvJnSPDBlG241QLzcyPdoNTsblLUdujGSE4RzrTZGQ==}
+
+  '@protobufjs/path@1.1.2':
+    resolution: {integrity: sha512-6JOcJ5Tm08dOHAbdR3GrvP+yUUfkjG5ePsHYczMFLq3ZmMkAD98cDgcT2iA1lJ9NVwFd4tH/iSSoe44YWkltEA==}
+
+  '@protobufjs/pool@1.1.0':
+    resolution: {integrity: sha512-0kELaGSIDBKvcgS4zkjz1PeddatrjYcmMWOlAuAPwAeccUrPHdUqo/J6LiymHHEiJT5NrF1UVwxY14f+fy4WQw==}
+
+  '@protobufjs/utf8@1.1.2':
+    resolution: {integrity: sha512-b1UQwcEZ4yCnMCD8DAL1VlbvBJE9/IX4FTIp7BG1xYpf29SLazLSrqUkj4w7Y5y7cCVP6E5tcqqcI0xemPkHug==}
 
   '@rclnodejs/ref-array-di@1.2.2':
     resolution: {integrity: sha512-BHslJ1wmmaiPQ2rPZrO9Du9Cd/eQjZ+N5T84poFZk9JFJkYatbtXALbjWTgoHWpl6Cvm415NfwsGc2xkjzFPxw==}
@@ -745,8 +812,14 @@ packages:
     resolution: {integrity: sha512-WkUDrojuJs0xkgGf2udWxa3yGBRxPtxUkB79i6aCZLRgc7PM8fZe9TosfPDcvEpQZbuFASnHYmRLBLUbmLOIIA==}
     engines: {node: '>= 12.0.0'}
 
+  long@5.3.2:
+    resolution: {integrity: sha512-mNAgZ1GmyNhD7AuqnTG3/VQ26o760+ZYBPKjPvugO8+nLbYfX6TVpJPseBvopbdY+qpZ/lKUnmEc1LeZYS3QAA==}
+
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
+
+  md5-typescript@1.0.5:
+    resolution: {integrity: sha512-ovAc4EtiNt2dY8JPhPr/wkC9h4U5k/nuClNVcG0Ga3V1rMlYpAY24ZaaymFXJlz+ccJ6UMPo3FSaVKe7czBsXw==}
 
   meshoptimizer@1.1.1:
     resolution: {integrity: sha512-oRFNWJRDA/WTrVj7NWvqa5HqE1t9MYDj2VaWirQCzCCrAd2GHrqR/sQezCxiWATPNlKTcRaPRHPJwIRoPBAp5g==}
@@ -837,6 +910,10 @@ packages:
   proc-log@6.1.0:
     resolution: {integrity: sha512-iG+GYldRf2BQ0UDUAd6JQ/RwzaQy6mXmsk/IzlYyal4A4SNFw54MeH4/tLkF4I5WoWG9SQwuqWzS99jaFQHBuQ==}
     engines: {node: ^20.17.0 || >=22.9.0}
+
+  protobufjs@7.6.6:
+    resolution: {integrity: sha512-dYDWdjSl5RNb7SgPxGQcRU+GtvP7s2fpkrY0r432PcOIaZ0/rBcxEZnQN67iJhFuQiVw754JDoPruPCNdGsbjg==}
+    engines: {node: '>=12.0.0'}
 
   range-parser@1.3.0:
     resolution: {integrity: sha512-hek2mFQpPuI4E1BBKrSto+BU3e3x4xuarsbiwr3+lf7p44juvFMV0XFWQAP3xUyqXA4RrXLIoaSUGbSt056ZMw==}
@@ -1068,13 +1145,13 @@ snapshots:
 
   '@dimforge/rapier3d-compat@0.20.0': {}
 
-  '@drawcall/physics-rapier@0.5.0(@drawcall/physics@0.5.0(three@0.185.1))(three@0.185.1)':
+  '@drawcall/physics-rapier@0.6.0(@drawcall/physics@0.6.0(three@0.185.1))(three@0.185.1)':
     dependencies:
       '@dimforge/rapier3d-compat': 0.20.0
-      '@drawcall/physics': 0.5.0(three@0.185.1)
+      '@drawcall/physics': 0.6.0(three@0.185.1)
       three: 0.185.1
 
-  '@drawcall/physics@0.5.0(three@0.185.1)':
+  '@drawcall/physics@0.6.0(three@0.185.1)':
     dependencies:
       three: 0.185.1
 
@@ -1156,7 +1233,32 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
+  '@foxglove/cdr@3.5.1': {}
+
   '@foxglove/crc@0.0.3': {}
+
+  '@foxglove/message-definition@0.5.0': {}
+
+  '@foxglove/rosmsg2-serialization@3.1.2':
+    dependencies:
+      '@foxglove/cdr': 3.5.1
+      '@foxglove/message-definition': 0.5.0
+      '@foxglove/rostime': 1.1.3
+
+  '@foxglove/rosmsg@5.0.5':
+    dependencies:
+      '@foxglove/message-definition': 0.5.0
+      md5-typescript: 1.0.5
+
+  '@foxglove/rostime@1.1.3': {}
+
+  '@foxglove/wasm-bz2@0.3.0':
+    dependencies:
+      tslib: 2.8.1
+
+  '@foxglove/wasm-lz4@1.0.2': {}
+
+  '@foxglove/wasm-zstd@1.0.1': {}
 
   '@isaacs/fs-minipass@4.0.1':
     dependencies:
@@ -1170,7 +1272,35 @@ snapshots:
       heap-js: 2.7.1
       tslib: 2.8.1
 
+  '@mcap/support@1.1.0':
+    dependencies:
+      '@foxglove/wasm-bz2': 0.3.0
+      '@foxglove/wasm-lz4': 1.0.2
+      '@foxglove/wasm-zstd': 1.0.1
+      protobufjs: 7.6.6
+      tslib: 2.8.1
+
   '@oxc-project/types@0.149.0': {}
+
+  '@protobufjs/aspromise@1.1.2': {}
+
+  '@protobufjs/base64@1.1.2': {}
+
+  '@protobufjs/codegen@2.0.5': {}
+
+  '@protobufjs/eventemitter@1.1.1': {}
+
+  '@protobufjs/fetch@1.1.1':
+    dependencies:
+      '@protobufjs/aspromise': 1.1.2
+
+  '@protobufjs/float@1.0.2': {}
+
+  '@protobufjs/path@1.1.2': {}
+
+  '@protobufjs/pool@1.1.0': {}
+
+  '@protobufjs/utf8@1.1.2': {}
 
   '@rclnodejs/ref-array-di@1.2.2':
     dependencies:
@@ -1585,9 +1715,13 @@ snapshots:
       lightningcss-win32-arm64-msvc: 1.33.0
       lightningcss-win32-x64-msvc: 1.33.0
 
+  long@5.3.2: {}
+
   magic-string@0.30.21:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.6.0
+
+  md5-typescript@1.0.5: {}
 
   meshoptimizer@1.1.1: {}
 
@@ -1670,6 +1804,20 @@ snapshots:
 
   proc-log@6.1.0:
     optional: true
+
+  protobufjs@7.6.6:
+    dependencies:
+      '@protobufjs/aspromise': 1.1.2
+      '@protobufjs/base64': 1.1.2
+      '@protobufjs/codegen': 2.0.5
+      '@protobufjs/eventemitter': 1.1.1
+      '@protobufjs/fetch': 1.1.1
+      '@protobufjs/float': 1.0.2
+      '@protobufjs/path': 1.1.2
+      '@protobufjs/pool': 1.1.0
+      '@protobufjs/utf8': 1.1.2
+      '@types/node': 26.6.0
+      long: 5.3.2
 
   range-parser@1.3.0: {}
 

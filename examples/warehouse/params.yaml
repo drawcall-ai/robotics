@@ -243,6 +243,8 @@ foxglove_bridge:
         "^/map$",
         "^/robot/.*",
         "^/robot_description$",
+        "^/sim/score$",
+        "^/sim/evaluation$",
         "^/diff_drive_controller/.*",
         "^/plan$",
         "^/local_plan$",

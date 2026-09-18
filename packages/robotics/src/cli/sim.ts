@@ -7,6 +7,10 @@ import { rollPitchYaw, rosPosition, rosRotation } from "../coordinates.js";
 import { CameraSensor } from "../devices/camera.js";
 import { LaserSensor } from "../devices/laser.js";
 import { findRobot } from "../devices/robot.js";
+import { Evaluator } from "../evaluation.js";
+import { Recorder } from "./recorder.js";
+import type { PhysicsWorld } from "@drawcall/physics";
+import { stamp } from "../messages.js";
 import { ROS2 } from "../runtime.js";
 import { defaultLayout } from "./layout.js";
 import { serveLichtblick } from "./lichtblick.js";
@@ -25,10 +29,21 @@ export const sim = new Command("sim")
     "serve Lichtblick with a layout for the scene's topics and open it (BROWSER=none: serve only)",
   )
   .option("--no-viewer", "run without a viewer (default)")
+  .option("--wait-for-start", "wait for /sim/start before evaluating")
+  .option(
+    "--record [directory]",
+    "record one evaluation episode and verify its final result",
+  )
   .action(
     async (
       scene: string,
-      options: { namespace: string; robot?: string; viewer?: boolean },
+      options: {
+        namespace: string;
+        robot?: string;
+        viewer?: boolean;
+        waitForStart?: boolean;
+        record?: string | boolean;
+      },
     ) => {
       await run(scene, options);
       // Dawn keeps process-lifetime native handles; exit only after scoped cleanup.
@@ -38,7 +53,13 @@ export const sim = new Command("sim")
 
 async function run(
   scene: string,
-  options: { namespace: string; robot?: string; viewer?: boolean },
+  options: {
+    namespace: string;
+    robot?: string;
+    viewer?: boolean;
+    waitForStart?: boolean;
+    record?: string | boolean;
+  },
 ): Promise<void> {
   // Rapier and Dawn load here, not at import: the other commands never need them.
   // Physics first: instantiating Rapier's wasm after the Dawn renderer exists crashes the process.
@@ -51,6 +72,14 @@ async function run(
     solverIterations: 12,
   });
   await using resources = new AsyncDisposableStack();
+  const interruption = new AbortController();
+  const interrupt = () => interruption.abort();
+  process.on("SIGINT", interrupt);
+  process.on("SIGTERM", interrupt);
+  resources.defer(() => {
+    process.off("SIGINT", interrupt);
+    process.off("SIGTERM", interrupt);
+  });
   resources.defer(() => world.dispose());
   const renderer = await createRenderer();
   resources.defer(() => renderer.dispose());
@@ -68,7 +97,31 @@ async function run(
   }
   // The scene builds against the current runtime and registers its devices there.
   await import(pathToFileURL(resolve(scene)).href);
+  if (interruption.signal.aborted) return;
   const base = findRobot(ros, options.robot).base;
+  const [evaluation] = ros.find(Evaluator);
+  if ((options.record || options.waitForStart) && !evaluation)
+    throw new Error(
+      "Recording and deferred evaluation require an Evaluator in the scene",
+    );
+  const recorder = options.record
+    ? new Recorder(
+        typeof options.record === "string"
+          ? options.record
+          : `rosbag2_${new Date().toISOString().replaceAll(":", "-")}`,
+      )
+    : undefined;
+  if (recorder) {
+    resources.defer(() => recorder.stop());
+    world.update(world.fixedDelta);
+    await recorder.ready(connection, world.time, interruption.signal);
+    if (interruption.signal.aborted) return;
+  }
+  ros.publish("/clock", "rosgraph_msgs/msg/Clock", {
+    clock: stamp(world.time),
+  });
+  if (!options.waitForStart) evaluation?.start();
+  const stepping = new Stepping(world, () => evaluation?.finished ?? false);
   console.error(`Simulating ${scene} under ${ros.namespace}`);
 
   // Pause, resume, step and reset plus a ground-truth state topic, the way other simulators expose them.
@@ -78,21 +131,49 @@ async function run(
     name: string,
     run: () => { success: boolean; message: string },
   ) => connection.service("std_srvs/srv/Trigger", `/sim/${name}`, run);
+  trigger("start", () => {
+    if (!evaluation)
+      return { success: false, message: "scene has no evaluator" };
+    if (evaluation.result)
+      return {
+        success: false,
+        message: "episode already started; launch a new episode",
+      };
+    try {
+      evaluation.start();
+      return { success: true, message: "evaluation started" };
+    } catch (error) {
+      ros.fail(error);
+      return { success: false, message: String(error) };
+    }
+  });
   trigger("pause", () => {
+    stepping.clear();
     paused = true;
     return { success: true, message: "paused" };
   });
   trigger("resume", () => {
+    if (evaluation?.finished)
+      return { success: false, message: "episode finished" };
     paused = false;
     pendingSteps = 0;
     return { success: true, message: "running" };
   });
   trigger("step", () => {
+    if (evaluation?.finished)
+      return { success: false, message: "episode finished" };
     if (!paused) return { success: false, message: "running; pause first" };
     pendingSteps++;
     return { success: true, message: `stepping ${world.fixedDelta} s` };
   });
   trigger("reset", () => {
+    if (evaluation)
+      return {
+        success: false,
+        message: "launch a new episode to reset evaluation and recording",
+      };
+    stepping.clear();
+    pendingSteps = 0;
     world.reset();
     return {
       success: true,
@@ -115,43 +196,89 @@ async function run(
   }
 
   using activity = new DisposableStack();
+  let ended = false;
+  let rejectStopped: ((error: unknown) => void) | undefined;
   const stopped = new Promise<void>((resolve, reject) => {
-    const stop = () => resolve();
-    process.once("SIGINT", stop);
-    process.once("SIGTERM", stop);
-    activity.defer(() => {
-      process.off("SIGINT", stop);
-      process.off("SIGTERM", stop);
-    });
+    rejectStopped = reject;
+    const stop = () => {
+      ended = true;
+      try {
+        evaluation?.end("aborted", "interrupted");
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
+    };
+    interruption.signal.addEventListener("abort", stop, { once: true });
+    activity.defer(() =>
+      interruption.signal.removeEventListener("abort", stop),
+    );
     let last = performance.now();
     let reported = last;
     /** Advances the world by the wall time passed unless paused, when only single steps run; state reports on wall time so a paused world still reports. */
     function tick(): void {
+      if (ended) return;
       const now = performance.now();
       const delta = (now - last) / 1000;
       last = now;
       try {
-        if (!paused) world.update(delta);
-        while (paused && pendingSteps > 0) {
+        recorder?.check();
+        if (!paused) stepping.update(delta);
+        while (paused && pendingSteps > 0 && !evaluation?.finished) {
           pendingSteps--;
           world.update(world.fixedDelta);
+        }
+        if (evaluation?.finished) {
+          paused = true;
+          publishState();
+          ended = true;
+          resolve();
+          return;
         }
         if (now - reported >= 100) {
           publishState();
           reported = now;
         }
       } catch (error) {
+        ended = true;
         reject(ros.error ?? error);
         return;
       }
-      if (!ros.connected) reject(ros.error ?? new Error("ROS connection lost"));
+      if (!ros.connected) {
+        ended = true;
+        reject(ros.error ?? new Error("ROS connection lost"));
+      }
     }
     const timer = setInterval(tick, 1000 / 60);
     activity.defer(() => clearInterval(timer));
   });
 
+  const finish = async () => {
+    if (recorder && evaluation?.finished)
+      await recorder.finish(connection, evaluation);
+    if (evaluation?.result)
+      console.error(
+        `Evaluation ${evaluation.result.status}: ${evaluation.result.reason}`,
+      );
+  };
+  const fail = async (error: unknown) => {
+    try {
+      evaluation?.end(
+        "error",
+        error instanceof Error ? error.message : String(error),
+      );
+      await finish();
+    } catch (finalization) {
+      throw new AggregateError(
+        [error, finalization],
+        "Simulation and evaluation finalization failed",
+      );
+    }
+    throw error;
+  };
+  const completed = stopped.then(finish, fail);
   if (!options.viewer) {
-    await stopped;
+    await completed;
     return;
   }
   const viewer = new AbortController();
@@ -159,10 +286,18 @@ async function run(
     defaultLayout(
       ros.find(LaserSensor).map((laser) => laser.topic),
       ros.find(CameraSensor).map((camera) => camera.imageTopic),
+      evaluation !== undefined,
     ),
     undefined,
     viewer.signal,
-  );
+  ).catch(async (error: unknown) => {
+    if (viewer.signal.aborted) throw error;
+    ended = true;
+    if (!rejectStopped) throw error;
+    rejectStopped(error);
+    await completed;
+    throw error;
+  });
   let failure: { error: unknown } | undefined;
   resources.defer(async () => {
     viewer.abort();
@@ -177,9 +312,34 @@ async function run(
     }
   });
   try {
-    await Promise.race([startup.then(() => stopped), stopped]);
+    await Promise.race([startup.then(() => completed), completed]);
   } catch (error) {
     failure = { error };
     throw error;
+  }
+}
+
+/** Keep the accumulator outside physics so a terminal step interrupts catch-up immediately. */
+export class Stepping {
+  private accumulated = 0;
+  constructor(
+    private readonly world: PhysicsWorld,
+    private readonly finished: () => boolean,
+  ) {}
+  update(delta: number): void {
+    this.accumulated = Math.min(
+      this.accumulated + delta,
+      this.world.fixedDelta * 16,
+    );
+    while (
+      this.accumulated + 1e-12 >= this.world.fixedDelta &&
+      !this.finished()
+    ) {
+      this.accumulated = Math.max(0, this.accumulated - this.world.fixedDelta);
+      this.world.update(this.world.fixedDelta);
+    }
+  }
+  clear(): void {
+    this.accumulated = 0;
   }
 }

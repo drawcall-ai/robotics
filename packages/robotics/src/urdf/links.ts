@@ -81,17 +81,14 @@ export function buildLinkTree(
 
 function link(body: RigidBody, origin: Matrix4, restPose: Matrix4): Link {
   identifier("link", body.name);
-  const colliders = body
-    .getColliders()
-    .filter((collider) => !collider.sensor)
-    .map((collider) => {
-      const { matrix, shape } = resolveCollider(body, collider);
-      return {
-        shape,
-        matrix: inLinkFrame(origin, matrix),
-        where: `${body.name}/${collider.name || collider.type}`,
-      };
-    });
+  const colliders = body.getColliders().map((collider) => {
+    const { matrix, shape } = resolveCollider(body, collider);
+    return {
+      shape,
+      matrix: inLinkFrame(origin, matrix),
+      where: `${body.name}/${collider.name || collider.type}`,
+    };
+  });
   return { name: body.name, body, origin, restPose, colliders };
 }
 

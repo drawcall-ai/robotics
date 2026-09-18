@@ -1,6 +1,6 @@
 import { Ros, Topic, WebSocketTransportFactory } from "roslib";
 import { runAll } from "../cleanup.js";
-import type { Connection } from "../runtime.js";
+import type { Connection, PublishOptions } from "../runtime.js";
 
 export class RosbridgeConnection implements Connection {
   private readonly ros: Ros;
@@ -75,13 +75,18 @@ export class RosbridgeConnection implements Connection {
       throw cause;
     });
   }
-  private topic(name: string, type: string): Topic<unknown> {
+  private topic(
+    name: string,
+    type: string,
+    options?: PublishOptions,
+  ): Topic<unknown> {
     const current = this.topics.get(name);
     if (current) return current;
     const topic = new Topic({
       ros: this.ros,
       name,
       messageType: type,
+      latch: options?.retain ?? false,
       queue_size: 1,
       queue_length: 1,
       reconnect_on_close: false,
@@ -89,9 +94,14 @@ export class RosbridgeConnection implements Connection {
     this.topics.set(name, topic);
     return topic;
   }
-  publish(name: string, type: string, message: unknown): void {
+  publish(
+    name: string,
+    type: string,
+    message: unknown,
+    options?: PublishOptions,
+  ): void {
     if (!this.connected) throw new Error("ROS bridge is disconnected");
-    this.topic(name, type).publish(base64Bytes(message));
+    this.topic(name, type, options).publish(base64Bytes(message));
   }
   subscribe(
     name: string,

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { Command } from "commander";
+import { results } from "./recording.js";
 import { sim } from "./sim.js";
 import { snapshot } from "./snapshot.js";
 import { urdf } from "./urdf.js";
@@ -12,7 +13,10 @@ const prefix = process.env.CONDA_PREFIX;
 if (process.platform === "darwin" && prefix && !process.env.DYLD_LIBRARY_PATH) {
   const child = spawn(process.execPath, process.argv.slice(1), {
     stdio: "inherit",
-    env: { ...process.env, DYLD_LIBRARY_PATH: `${prefix}/lib` },
+    env: {
+      ...process.env,
+      DYLD_LIBRARY_PATH: `${prefix}/lib`,
+    },
   });
   for (const signal of ["SIGINT", "SIGTERM"] as const)
     process.on(signal, () => child.kill(signal));
@@ -23,6 +27,7 @@ if (process.platform === "darwin" && prefix && !process.env.DYLD_LIBRARY_PATH) {
 new Command("drawcall-robotics")
   .showHelpAfterError()
   .addCommand(sim)
+  .addCommand(results)
   .addCommand(urdf)
   .addCommand(view)
   .addCommand(snapshot)

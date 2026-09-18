@@ -89,3 +89,7 @@ Devices register with the runtime they are given, by default the current runtime
 ## Custom devices
 
 Implement the `Device` interface: `beforeStep(time, delta)` for commands, `afterStep(time, delta)` for measurements, `stop()` for faults and `dispose()` as needed, then call `ros.register(this)`, which returns the unregister function; `dispose()` calls it. `ros.publish` and `ros.subscribe` are the building blocks. Runtime disposal synchronously calls every device's disposal, releases hooks and the transport, and reports an `AggregateError` if any synchronous release throws. Devices with asynchronous work return a promise from `dispose()`. Runtime `disposeAsync()` waits for every such promise and reports synchronous and asynchronous release failures together. It also works after `dispose()`, and repeated calls report the original failures; repeated synchronous `dispose()` calls remain no-ops.
+
+## Evaluation
+
+`Evaluator` is exported from `@drawcall/robotics`. It registers with the default runtime; it is not a scene object or sensor. See the [evaluation guide](../../README.md#evaluation-and-results) for the API, standard ROS topics, recording lifecycle and offline results command. The runner starts one evaluation per recording, checks named conditions after physics/device updates, and freezes the final numeric metrics.

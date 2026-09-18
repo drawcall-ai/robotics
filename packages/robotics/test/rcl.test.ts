@@ -1,13 +1,22 @@
 import { beforeEach, expect, it, vi } from "vitest";
 const native = vi.hoisted(() => ({
   init: vi.fn(),
+  removeSignalHandlers: vi.fn(),
   shutdown: vi.fn(),
   spin: vi.fn(),
   destroy: vi.fn(),
 }));
 vi.mock("rclnodejs", () => ({
   default: {
+    QoS: class {
+      static HistoryPolicy = { RMW_QOS_POLICY_HISTORY_KEEP_LAST: 1 };
+      static ReliabilityPolicy = { RMW_QOS_POLICY_RELIABILITY_RELIABLE: 1 };
+      static DurabilityPolicy = {
+        RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL: 1,
+      };
+    },
     init: native.init,
+    removeSignalHandlers: native.removeSignalHandlers,
     shutdown: native.shutdown,
     Node: class {
       spin = native.spin;
@@ -49,5 +58,13 @@ it("preserves spinning and destruction failures and still shuts ROS down", async
     error: destroy,
     suppressed: spin,
   });
+  expect(native.shutdown).toHaveBeenCalledOnce();
+});
+
+it("lets the runner finalize recordings before native shutdown", async () => {
+  const connection = await RclConnection.create("test");
+  expect(native.removeSignalHandlers).toHaveBeenCalledOnce();
+  expect(native.shutdown).not.toHaveBeenCalled();
+  connection.dispose();
   expect(native.shutdown).toHaveBeenCalledOnce();
 });

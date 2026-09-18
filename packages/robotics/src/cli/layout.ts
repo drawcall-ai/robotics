@@ -1,7 +1,11 @@
 const IMAGE = /\/image\/compressed$/;
 
 /** A layout for the standard topics: map, scans, costmap, plan and robot in 3D, one image panel per camera. */
-export function defaultLayout(scans: string[], images: string[]) {
+export function defaultLayout(
+  scans: string[],
+  images: string[],
+  evaluation = false,
+) {
   const scene = {
     cameraState: {
       perspective: true,
@@ -67,6 +71,34 @@ export function defaultLayout(scans: string[], images: string[]) {
       scene: { transforms: { enablePreloading: true } },
     };
   }
+  const evaluationPanels = {
+    "Plot!score": {
+      paths: [
+        {
+          value: "/sim/score.data",
+          enabled: true,
+          timestampMethod: "receiveTime",
+          showLine: false,
+          lineSize: 3,
+          label: "Score",
+          color: "#f7ab39",
+        },
+      ],
+      xAxisVal: "timestamp",
+      xAxisLabel: "Recording time (s)",
+      yAxisLabel: "Score",
+      minYValue: 0,
+      showXAxisLabels: true,
+      showYAxisLabels: true,
+      showLegend: true,
+      showPlotValuesInLegend: true,
+      isSynced: true,
+    },
+    "RawMessages!evaluation": {
+      topicPath: "/sim/evaluation",
+      diffEnabled: false,
+    },
+  };
   let column: Panel | undefined;
   for (const image of [...images].reverse()) {
     const panel = `Image!${image}`;
@@ -75,8 +107,27 @@ export function defaultLayout(scans: string[], images: string[]) {
         ? panel
         : { direction: "column", first: panel, second: column };
   }
+  if (evaluation) {
+    const details: Panel = column
+      ? {
+          direction: "column",
+          first: column,
+          second: "RawMessages!evaluation",
+          splitPercentage: 60,
+        }
+      : "RawMessages!evaluation";
+    column = {
+      direction: "column",
+      first: "Plot!score",
+      second: details,
+      splitPercentage: 40,
+    };
+  }
+  const evaluated: Partial<typeof evaluationPanels> = evaluation
+    ? evaluationPanels
+    : {};
   return {
-    configById: Object.assign({ "3D!scene": scene }, imagePanels),
+    configById: Object.assign({ "3D!scene": scene }, imagePanels, evaluated),
     globalVariables: {},
     userNodes: {},
     playbackConfig: { speed: 1 },
@@ -92,4 +143,11 @@ export function defaultLayout(scans: string[], images: string[]) {
   };
 }
 
-type Panel = string | { direction: "column"; first: Panel; second: Panel };
+type Panel =
+  | string
+  | {
+      direction: "column";
+      first: Panel;
+      second: Panel;
+      splitPercentage?: number;
+    };

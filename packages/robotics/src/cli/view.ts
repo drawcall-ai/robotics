@@ -1,8 +1,7 @@
-import { McapIndexedReader } from "@mcap/core";
 import { once } from "node:events";
 import { Command } from "commander";
-import { open, readdir, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { recordingFiles, openRecording } from "./recording.js";
+import { EVALUATION_TOPIC } from "../evaluation.js";
 import { defaultLayout } from "./layout.js";
 import { serveLichtblick } from "./lichtblick.js";
 
@@ -27,32 +26,19 @@ async function run(path: string): Promise<void> {
 
 /** The MCAP file of a recording: the file itself, or the one inside a rosbag2 directory. */
 async function recordingFile(path: string): Promise<string> {
-  if (!(await stat(path)).isDirectory()) return path;
-  const files = (await readdir(path)).filter((name) => name.endsWith(".mcap"));
+  const files = await recordingFiles(path);
   const [file] = files;
   if (!file || files.length !== 1)
-    throw new Error(`${path} must hold one .mcap file, found ${files.length}`);
-  return join(path, file);
+    throw new Error(
+      "Viewer requires one MCAP file; results supports split recordings",
+    );
+  return file;
 }
 
 /** The default layout for the scans and images a recording holds. */
 async function recordingLayout(file: string): Promise<unknown> {
-  await using handle = await open(file);
-  const reader = await McapIndexedReader.Initialize({
-    readable: {
-      size: async () => BigInt((await handle.stat()).size),
-      read: async (offset, size) => {
-        const buffer = new Uint8Array(Number(size));
-        const { bytesRead } = await handle.read(
-          buffer,
-          0,
-          buffer.length,
-          Number(offset),
-        );
-        return buffer.subarray(0, bytesRead);
-      },
-    },
-  });
+  await using recording = await openRecording(file);
+  const { reader } = recording;
   const topics = (schema: string): string[] =>
     [...reader.channelsById.values()]
       .filter(
@@ -62,5 +48,8 @@ async function recordingLayout(file: string): Promise<unknown> {
   return defaultLayout(
     topics("sensor_msgs/msg/LaserScan"),
     topics("sensor_msgs/msg/CompressedImage"),
+    [...reader.channelsById.values()].some(
+      (channel) => channel.topic === EVALUATION_TOPIC,
+    ),
   );
 }

@@ -4,11 +4,12 @@ const mocks = vi.hoisted(() => ({
   connection: { dispose: vi.fn(), subscribe: vi.fn(), service: vi.fn() },
   createConnection: vi.fn(),
   createRuntime: vi.fn(),
-  world: { dispose: vi.fn(), fixedDelta: 1 / 120, update: vi.fn() },
+  world: { time: 0, dispose: vi.fn(), fixedDelta: 1 / 120, update: vi.fn() },
   renderer: { dispose: vi.fn() },
   runtime: {
     disposeAsync: vi.fn<() => Promise<void>>(),
     connected: true,
+    publish: vi.fn(),
     find: vi.fn<() => { dispose(): Promise<void> }[]>(() => []),
   },
   serve: vi.fn(),

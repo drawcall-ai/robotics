@@ -42,3 +42,19 @@ it("puts a single image beside the 3D panel without an empty split", () => {
     splitPercentage: 65,
   });
 });
+
+it("plots numeric score on the shared recording timeline and shows final status", () => {
+  const { configById, layout } = defaultLayout([], [], true);
+  expect(configById["Plot!score"]).toMatchObject({
+    xAxisVal: "timestamp",
+    isSynced: true,
+    paths: [
+      {
+        value: "/sim/score.data",
+        showLine: false,
+      },
+    ],
+  });
+  expect(JSON.stringify(layout)).toContain("Plot!score");
+  expect(JSON.stringify(layout)).toContain("RawMessages!evaluation");
+});

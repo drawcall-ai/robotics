@@ -1,5 +1,6 @@
 import {
   BoxCollider,
+  Trigger,
   CylinderCollider,
   RevoluteJoint,
   RigidBody,
@@ -8,6 +9,7 @@ import {
 } from "@drawcall/physics";
 import {
   CameraSensor,
+  Evaluator,
   JointActuator,
   LaserSensor,
   Robot,
@@ -28,6 +30,7 @@ import {
 } from "three";
 
 const scene = new Scene();
+const obstacles = new Set<RigidBody>();
 const bot = new Robot();
 bot.name = "warehouse";
 scene.add(bot);
@@ -61,6 +64,7 @@ function block(
 ) {
   const body = new RigidBody({ type: "static" });
   body.position.set(...position);
+  if (position[1] >= 0) obstacles.add(body);
   const mesh = new Mesh(new BoxGeometry(...size), material);
   mesh.castShadow = mesh.receiveShadow = true;
   body.add(new BoxCollider({ size }), mesh);
@@ -191,14 +195,60 @@ const camera = new CameraSensor({
 });
 camera.position.set(0, 0.28, -0.38);
 chassis.add(laser, camera);
-const overview = new CameraSensor({
-  name: "overview",
-  frameId: "overview",
-  width: 640,
-  height: 360,
-  fov: 43,
-  rate: 5,
+// ROS (x, y) becomes Three.js (-y, height, -x). Each checkpoint scores once, in mission order.
+const checkpoints = [
+  [4, 0],
+  [4, 3],
+  [0, 3],
+  [0, 0],
+] as const;
+let reached = 0;
+let bestScore = 0;
+let collisions = 0;
+for (const [index, [x, y]] of checkpoints.entries()) {
+  const checkpoint = new Trigger();
+  checkpoint.name = `checkpoint_${index + 1}`;
+  checkpoint.position.set(-y, 0.4, -x);
+  checkpoint.add(new BoxCollider({ size: [0.6, 0.8, 0.6] }));
+  const material = new MeshStandardMaterial({
+    color: "#37a9db",
+    transparent: true,
+    opacity: 0.25,
+    depthWrite: false,
+  });
+  checkpoint.add(new Mesh(new BoxGeometry(0.6, 0.8, 0.6), material));
+  checkpoint.addEventListener("enter", ({ body }) => {
+    if (!evaluation.active || body !== chassis || index !== reached) return;
+    reached++;
+    material.color.set("#45cf7c");
+  });
+  scene.add(checkpoint);
+}
+chassis.addEventListener("contactbegin", ({ otherBody }) => {
+  if (evaluation.active && obstacles.has(otherBody)) collisions++;
 });
-overview.position.set(10, 11, 12);
-overview.lookAt(-1.4, 0.25, -2.4);
-scene.add(overview);
+const evaluation = new Evaluator({
+  timeout: 180,
+  metrics: { checkpoints: () => reached, collisions: () => collisions },
+  success: { completedPatrol: () => reached === checkpoints.length },
+  failure: {
+    collision: () => collisions > 0,
+    fell: () => chassis.position.y < 0,
+  },
+  score: () => {
+    const target = checkpoints[reached];
+    if (!target) return 100;
+    const start = checkpoints[reached - 1] ?? [0, 0];
+    const length = Math.hypot(target[0] - start[0], target[1] - start[1]);
+    const distance = Math.hypot(
+      target[0] + chassis.position.z,
+      target[1] + chassis.position.x,
+    );
+    const progress = Math.min(0.99, Math.max(0, 1 - distance / length));
+    bestScore = Math.max(
+      bestScore,
+      (100 * (reached + progress)) / checkpoints.length,
+    );
+    return bestScore;
+  },
+});

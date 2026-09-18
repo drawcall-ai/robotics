@@ -48,6 +48,12 @@ export async function serveLichtblick(
       response.end(index);
       return;
     }
+    if (path === "/layout.json") {
+      response.setHeader("content-type", "application/json");
+      response.setHeader("cache-control", "no-store");
+      response.end(JSON.stringify(layout));
+      return;
+    }
     // `send` answers the range requests Lichtblick reads a recording with.
     if (recording && path === RECORDING)
       send(request, recording).pipe(response);
@@ -77,7 +83,7 @@ export async function serveLichtblick(
   const source = recording
     ? `ds=remote-file&ds.url=${encodeURIComponent(`http://127.0.0.1:${PORT}${RECORDING}`)}`
     : `ds=foxglove-websocket&ds.url=${encodeURIComponent(FOXGLOVE)}`;
-  const url = `http://127.0.0.1:${PORT}/?${source}`;
+  const url = `http://127.0.0.1:${PORT}/?${source}&layoutUrl=${encodeURIComponent(`http://127.0.0.1:${PORT}/layout.json`)}`;
   console.error(`Lichtblick: ${url}`);
   await openBrowser(url);
   signal?.throwIfAborted();
