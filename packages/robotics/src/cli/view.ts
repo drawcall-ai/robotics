@@ -1,3 +1,6 @@
+import { MessageReader } from "@foxglove/rosmsg2-serialization";
+import { parse } from "@foxglove/rosmsg";
+import { descriptionView, type ModelView } from "../urdf/view.js";
 import { once } from "node:events";
 import { Command } from "commander";
 import { recordingFiles, openRecording } from "./recording.js";
@@ -45,11 +48,39 @@ async function recordingLayout(file: string): Promise<unknown> {
         (channel) => reader.schemasById.get(channel.schemaId)?.name === schema,
       )
       .map((channel) => channel.topic);
+  let model: ModelView | undefined;
+  const descriptions = topics("std_msgs/msg/String").filter((topic) =>
+    topic.endsWith("/robot_description"),
+  );
+  for await (const message of reader.readMessages({ topics: descriptions })) {
+    const channel = reader.channelsById.get(message.channelId);
+    const schema = channel && reader.schemasById.get(channel.schemaId);
+    if (
+      !schema ||
+      channel.messageEncoding !== "cdr" ||
+      schema.encoding !== "ros2msg"
+    )
+      throw new Error("Unsupported robot description encoding");
+    const decoder = new MessageReader(
+      parse(new TextDecoder().decode(schema.data), { ros2: true }),
+    );
+    const envelope: unknown = decoder.readMessage(message.data);
+    if (
+      typeof envelope !== "object" ||
+      envelope === null ||
+      !("data" in envelope) ||
+      typeof envelope.data !== "string"
+    )
+      throw new Error("Invalid robot description");
+    model = descriptionView(envelope.data);
+    if (model) break;
+  }
   return defaultLayout(
     topics("sensor_msgs/msg/LaserScan"),
     topics("sensor_msgs/msg/CompressedImage"),
     [...reader.channelsById.values()].some(
       (channel) => channel.topic === EVALUATION_TOPIC,
     ),
+    model,
   );
 }

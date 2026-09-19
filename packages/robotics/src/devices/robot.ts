@@ -1,8 +1,9 @@
-import { AxisJoint, Joint, RigidBody } from "@drawcall/physics";
+import { AxisJoint, FixedJoint, Joint, RigidBody } from "@drawcall/physics";
 import { Group, type Object3D } from "three";
 import { header, identifier } from "../messages.js";
 import { getROS2, type ROS2 } from "../runtime.js";
 import { JointActuator } from "./actuator.js";
+import { Model } from "./model.js";
 import { Schedule } from "./schedule.js";
 
 /** Joint state publication rate in Hz. */
@@ -13,6 +14,7 @@ interface Structure {
   base: RigidBody;
   joints: Map<string, AxisJoint>;
   frames: Map<string, Object3D>;
+  links: Map<string, AxisJoint | FixedJoint>;
 }
 
 /** Any object with a frame id is a fixed frame of the robot it sits in. */
@@ -32,6 +34,7 @@ export class Robot extends Group {
   private readonly unregister: () => void;
   private resolved?: Structure;
   private disposed = false;
+  private model?: Model;
   constructor(options: { ros?: ROS2 } = {}) {
     super();
     this.ros = options.ros ?? getROS2();
@@ -45,6 +48,13 @@ export class Robot extends Group {
   get joints(): ReadonlyMap<string, AxisJoint> {
     return this.structure().joints;
   }
+  get descriptionTopic(): string {
+    return this.ros.topic("robot_description");
+  }
+  get linkJoints(): ReadonlyMap<string, AxisJoint | FixedJoint> {
+    return this.structure().links;
+  }
+
   /** The actuators ROS commands, by joint name. */
   get actuators(): ReadonlyMap<string, JointActuator> {
     const actuators = new Map<string, JointActuator>();
@@ -64,15 +74,17 @@ export class Robot extends Group {
     const bodies: RigidBody[] = [];
     const allJoints: Joint[] = [];
     const joints = new Map<string, AxisJoint>();
+    const links = new Map<string, AxisJoint | FixedJoint>();
     const frames = new Map<string, Object3D>();
     this.traverse((object) => {
       if (object instanceof RigidBody) bodies.push(object);
       if (object instanceof Joint) allJoints.push(object);
-      if (object instanceof AxisJoint) {
+      if (object instanceof AxisJoint || object instanceof FixedJoint) {
         identifier("joint", object.name);
-        if (joints.has(object.name))
+        if (links.has(object.name))
           throw new Error(`${this.name} has two joints named ${object.name}`);
-        joints.set(object.name, object);
+        links.set(object.name, object);
+        if (object instanceof AxisJoint) joints.set(object.name, object);
       }
       if (isFrame(object)) {
         if (frames.has(object.frameId))
@@ -90,12 +102,18 @@ export class Robot extends Group {
       throw new Error(
         `${this.name} needs exactly one body that no joint hangs from, found ${roots.length}`,
       );
-    this.resolved = { base, joints, frames };
+    this.resolved = { base, joints, frames, links };
     return this.resolved;
+  }
+  /** Called after authoring, before the first physics step; also usable while paused at startup. */
+  beforeStep(time: number): void {
+    this.model ??= new Model(this, time);
   }
   afterStep(time: number): void {
     const { joints } = this.structure();
-    if (!joints.size || !this.schedule.due(time)) return;
+    if (!this.schedule.due(time)) return;
+    this.model?.publish(time);
+    if (!joints.size) return;
     const states = [...joints.values()].map((joint) => joint.getState());
     this.ros.publish("joint_states", "sensor_msgs/msg/JointState", {
       header: header(time, ""),

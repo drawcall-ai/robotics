@@ -1,5 +1,6 @@
 <?xml version="1.0"?>
 <robot name="warehouse">
+  <!-- drawcall-view: {"topic":"/robot/robot_description","frame":"base_footprint","distance":2.8936482119732707,"target":[3.5762786898541066e-9,0,0.29999999787658455]} -->
   <material name="warehouse_material">
     <color rgba="0.603922 0.647059 0.670588 1"/>
   </material>
@@ -11,9 +12,12 @@
   </joint>
   <link name="base_link">
     <visual>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><box size="0.82 0.66 0.22"/></geometry>
-      <material name="warehouse_material"/>
+      <geometry><mesh filename="embedded-stl"/></geometry>
+      <material name="base_link_visual_0"><color rgba="0.9686279454020671 0.670592580857491 0.22353534681454112 1"/></material>
+    </visual>
+    <visual>
+      <geometry><mesh filename="embedded-stl"/></geometry>
+      <material name="base_link_visual_4"><color rgba="0.1490249714224664 0.20392738828211215 0.23137852395241176 1"/></material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -22,9 +26,8 @@
   </link>
   <link name="left_wheel">
     <visual>
-      <origin xyz="0 0 0" rpy="-1.570796 0 -3.141593"/>
-      <geometry><cylinder radius="0.22" length="0.13"/></geometry>
-      <material name="warehouse_material"/>
+      <geometry><mesh filename="embedded-stl"/></geometry>
+      <material name="left_wheel_visual_0"><color rgba="0.1490249714224664 0.20392738828211215 0.23137852395241176 1"/></material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="-1.570796 0 -3.141593"/>
@@ -33,9 +36,8 @@
   </link>
   <link name="right_wheel">
     <visual>
-      <origin xyz="0 0 0" rpy="-1.570796 0 -3.141593"/>
-      <geometry><cylinder radius="0.22" length="0.13"/></geometry>
-      <material name="warehouse_material"/>
+      <geometry><mesh filename="embedded-stl"/></geometry>
+      <material name="right_wheel_visual_0"><color rgba="0.1490249714224664 0.20392738828211215 0.23137852395241176 1"/></material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="-1.570796 0 -3.141593"/>

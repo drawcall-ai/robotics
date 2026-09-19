@@ -10,16 +10,19 @@ import { offline } from "./fixture.js";
 // The example imports the published package; test it against the sources instead of dist.
 vi.mock("@drawcall/robotics", () => import("../src/index.js"));
 
-// Regenerate the golden from examples/warehouse: node ../../packages/robotics/dist/cli/main.js urdf scene.ts > ../../packages/robotics/test/warehouse.urdf
+// Golden omits binary mesh payloads; mesh geometry is decoded and checked in model.test.ts.
 it("exports the warehouse example as its golden URDF and scans on /robot/scan", async () => {
   const ros = offline();
   await import("../../../examples/warehouse/scene.js");
   expect(ros.find(CameraSensor).map((camera) => camera.imageTopic)).toEqual([
     "/robot/camera/image/compressed",
   ]);
-  expect(exportURDF({ ros })).toBe(
-    readFileSync(new URL("./warehouse.urdf", import.meta.url), "utf8"),
-  );
+  expect(
+    exportURDF({ ros }).replace(
+      /data:model\/stl;base64,[^" ]+/g,
+      "embedded-stl",
+    ),
+  ).toBe(readFileSync(new URL("./warehouse.urdf", import.meta.url), "utf8"));
   expect(ros.find(LaserSensor).map((laser) => laser.topic)).toEqual([
     "/robot/scan",
   ]);

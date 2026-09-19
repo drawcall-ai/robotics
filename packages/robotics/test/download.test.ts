@@ -24,6 +24,7 @@ vi.mock("node:http", () => ({
     listen(_options: unknown, ready: () => void) {
       ready();
     },
+    address: () => ({ port: 8080 }),
     closeAllConnections() {},
     close() {},
   }),

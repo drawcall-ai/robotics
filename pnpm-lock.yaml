@@ -29,6 +29,31 @@ importers:
         specifier: ^4.0.17
         version: 4.1.11(@types/node@26.6.0)(vite@8.3.0(@types/node@26.6.0)(esbuild@0.28.2))
 
+  examples/so101:
+    dependencies:
+      '@drawcall/physics':
+        specifier: 0.6.0
+        version: 0.6.0(three@0.185.1)
+      '@drawcall/robotics':
+        specifier: workspace:*
+        version: link:../../packages/robotics
+      three:
+        specifier: ^0.185.1
+        version: 0.185.1
+    devDependencies:
+      '@drawcall/physics-rapier':
+        specifier: 0.6.0
+        version: 0.6.0(@drawcall/physics@0.6.0(three@0.185.1))(three@0.185.1)
+      '@types/node':
+        specifier: ^26.6.0
+        version: 26.6.0
+      '@types/three':
+        specifier: ^0.185.0
+        version: 0.185.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   examples/warehouse:
     dependencies:
       '@drawcall/physics':

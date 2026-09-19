@@ -12,6 +12,7 @@ import { Recorder } from "./recorder.js";
 import type { PhysicsWorld } from "@drawcall/physics";
 import { stamp } from "../messages.js";
 import { ROS2 } from "../runtime.js";
+import { modelView } from "../urdf/view.js";
 import { defaultLayout } from "./layout.js";
 import { serveLichtblick } from "./lichtblick.js";
 
@@ -98,7 +99,10 @@ async function run(
   // The scene builds against the current runtime and registers its devices there.
   await import(pathToFileURL(resolve(scene)).href);
   if (interruption.signal.aborted) return;
-  const base = findRobot(ros, options.robot).base;
+  const robot = findRobot(ros, options.robot);
+  robot.beforeStep(world.time);
+  const view = modelView(robot);
+  const base = robot.base;
   const [evaluation] = ros.find(Evaluator);
   if ((options.record || options.waitForStart) && !evaluation)
     throw new Error(
@@ -114,7 +118,10 @@ async function run(
   if (recorder) {
     resources.defer(() => recorder.stop());
     world.update(world.fixedDelta);
-    await recorder.ready(connection, world.time, interruption.signal);
+    await recorder.ready(connection, world.time, interruption.signal, [
+      robot.descriptionTopic,
+      "/tf_static",
+    ]);
     if (interruption.signal.aborted) return;
   }
   ros.publish("/clock", "rosgraph_msgs/msg/Clock", {
@@ -287,6 +294,7 @@ async function run(
       ros.find(LaserSensor).map((laser) => laser.topic),
       ros.find(CameraSensor).map((camera) => camera.imageTopic),
       evaluation !== undefined,
+      view,
     ),
     undefined,
     viewer.signal,

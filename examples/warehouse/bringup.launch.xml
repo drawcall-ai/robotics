@@ -1,4 +1,4 @@
-<!-- The warehouse: simulator node, robot model, ros2_control, SLAM, Nav2 and a four-goal mission.
+<!-- The warehouse: simulator node, ros2_control, SLAM, Nav2 and a four-goal mission.
      Every process ends the launch when it exits, so one launch is one episode. -->
 <launch>
   <arg name="viewer" default="false" description="Serve Lichtblick and open it"/>
@@ -8,12 +8,10 @@
 
   <executable cmd="drawcall-robotics sim $(var scene) --wait-for-start $(if $(var viewer) --viewer --no-viewer)" on_exit="shutdown" unless="$(var record)"/>
   <executable cmd="drawcall-robotics sim $(var scene) --wait-for-start --record $(if $(var viewer) --viewer --no-viewer)" cwd="$(dirname)" on_exit="shutdown" if="$(var record)"/>
-  <!-- The URDF is exported from the scene the simulator runs, like xacro: it exists only in memory. -->
-  <node pkg="robot_state_publisher" exec="robot_state_publisher" on_exit="shutdown">
+  <node pkg="controller_manager" exec="ros2_control_node" on_exit="shutdown">
     <param from="$(var params)"/>
-    <param name="robot_description" value="$(command 'drawcall-robotics urdf $(var scene)')"/>
+    <remap from="robot_description" to="/robot/robot_description"/>
   </node>
-  <node pkg="controller_manager" exec="ros2_control_node" on_exit="shutdown"><param from="$(var params)"/></node>
   <!-- The controller manager runs on sim time, so its first cycle waits for the simulator's clock. -->
   <node pkg="controller_manager" exec="spawner" args="joint_state_broadcaster diff_drive_controller --switch-timeout 30"/>
   <node pkg="nav2_controller" exec="controller_server" on_exit="shutdown">

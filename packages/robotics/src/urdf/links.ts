@@ -4,6 +4,7 @@ import {
   RigidBody,
   resolveCollider,
   type AxisJoint,
+  type FixedJoint,
   type Shape,
 } from "@drawcall/physics";
 
@@ -25,7 +26,7 @@ export interface Link {
 }
 export interface LinkJoint {
   name: string;
-  joint: AxisJoint;
+  joint: AxisJoint | FixedJoint;
   parent: Link;
   child: Link;
   /** Joint frame in parent link coordinates. */
@@ -38,7 +39,7 @@ export interface LinkJoint {
  */
 export function buildLinkTree(
   root: RigidBody,
-  axes: ReadonlyMap<string, AxisJoint>,
+  axes: ReadonlyMap<string, AxisJoint | FixedJoint>,
 ): { base: Link; links: Map<RigidBody, Link>; joints: LinkJoint[] } {
   const base = link(root, new Matrix4(), new Matrix4());
   const links = new Map<RigidBody, Link>([[root, base]]);
@@ -117,14 +118,43 @@ export function lowestPoint(
         (Math.abs(up.y) * shape.height) / 2 -
         Math.hypot(up.x, up.z) * shape.radius
       );
-    default:
-      throw new Error(
-        `Footprint needs primitive colliders; ${where} is a ${shape.kind}`,
-      );
+    case "mesh": {
+      const vertices = shape.geometry.getAttribute("position");
+      let lowest = Infinity;
+      for (let i = 0; i < vertices.count; i++)
+        lowest = Math.min(
+          lowest,
+          new Vector3().fromBufferAttribute(vertices, i).applyMatrix4(pose).y,
+        );
+      if (!Number.isFinite(lowest))
+        throw new Error(`Empty collision mesh ${where}`);
+      return lowest;
+    }
+    case "capsule":
+      return center.y - (Math.abs(up.y) * shape.height) / 2 - shape.radius;
   }
 }
 
 /** A body-local pose expressed in the frame of the link with `origin`. */
 export function inLinkFrame(origin: Matrix4, bodyLocal: Matrix4): Matrix4 {
   return origin.clone().invert().multiply(bodyLocal);
+}
+
+export function footprintPose(base: Link, links: Link[]): Matrix4 {
+  const rotation = new Matrix4().makeRotationFromQuaternion(
+    base.body.getWorldQuaternion(new Quaternion()),
+  );
+  const lowest = Math.min(
+    0,
+    ...links.flatMap((link) =>
+      link.colliders.map(({ shape, matrix, where }) =>
+        lowestPoint(
+          shape,
+          rotation.clone().multiply(link.restPose).multiply(matrix),
+          where,
+        ),
+      ),
+    ),
+  );
+  return rotation.setPosition(0, -lowest, 0);
 }

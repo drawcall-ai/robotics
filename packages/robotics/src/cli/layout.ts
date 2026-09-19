@@ -1,3 +1,4 @@
+import type { ModelView } from "../urdf/view.js";
 const IMAGE = /\/image\/compressed$/;
 
 /** A layout for the standard topics: map, scans, costmap, plan and robot in 3D, one image panel per camera. */
@@ -5,17 +6,27 @@ export function defaultLayout(
   scans: string[],
   images: string[],
   evaluation = false,
+  model?: ModelView,
 ) {
   const scene = {
     cameraState: {
       perspective: true,
-      distance: 16,
+      distance: scans.length ? 16 : (model?.distance ?? 2),
+      targetOffset: scans.length ? [0, 0, 0] : (model?.target ?? [0, 0, 0]),
       phi: 55,
       thetaOffset: 40,
     },
     followMode: "follow-pose",
-    followTf: "map",
-    scene: { transforms: { enablePreloading: true } },
+    followTf: scans.length ? "map" : (model?.frame ?? "base_footprint"),
+    scene: {
+      meshUpAxis: "z_up",
+      transforms: {
+        enablePreloading: true,
+        showLabel: false,
+        axisScale: 0,
+        lineWidth: 0,
+      },
+    },
     topics: {
       "/map": { visible: true, colorMode: "costmap" },
       ...Object.fromEntries(
@@ -40,7 +51,7 @@ export function defaultLayout(
         label: "Robot",
         visible: true,
         sourceType: "topic",
-        topic: "/robot_description",
+        topic: model?.topic ?? "/robot_description",
         displayMode: "visual",
         order: 1,
       },
@@ -56,7 +67,7 @@ export function defaultLayout(
     `Image!${string}`,
     {
       imageMode: { imageTopic: string; calibrationTopic?: string };
-      scene: { transforms: { enablePreloading: boolean } };
+      scene: typeof scene.scene;
     }
   > = {};
   for (const image of images) {
@@ -68,7 +79,15 @@ export function defaultLayout(
       imageMode.calibrationTopic = image.replace(IMAGE, "/camera_info");
     imagePanels[`Image!${image}`] = {
       imageMode,
-      scene: { transforms: { enablePreloading: true } },
+      scene: {
+        meshUpAxis: "z_up",
+        transforms: {
+          enablePreloading: true,
+          showLabel: false,
+          axisScale: 0,
+          lineWidth: 0,
+        },
+      },
     };
   }
   const evaluationPanels = {

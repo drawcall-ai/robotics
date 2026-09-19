@@ -149,7 +149,7 @@ it("rejects a robot without a name, an ambiguous base and an unnamed joint", () 
   );
 });
 
-it("rejects disconnected joints, mesh colliders and a frame that reuses a link name", () => {
+it("rejects disconnected joints and duplicate frames, and exports mesh colliders", () => {
   const ros = offline();
   const orphaned = rover("orphaned");
   const loose = new RigidBody({ mass: 1 });
@@ -169,7 +169,9 @@ it("rejects disconnected joints, mesh colliders and a frame that reuses a link n
   const mesh = new MeshCollider();
   mesh.setGeometry(new BoxGeometry(1, 1, 1));
   meshed.base.add(mesh);
-  expect(() => exportURDF({ ros, name: "meshed" })).toThrow("mesh");
+  expect(exportURDF({ ros, name: "meshed" })).toContain(
+    "data:model/stl;base64,",
+  );
 });
 
 it("rejects two joints or two frames with one name, and a frame off a link", () => {

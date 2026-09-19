@@ -2,10 +2,11 @@
 
 Connect a Three.js physics scene to ROS 2. Declare a robot with cameras, lidar and motors as ordinary objects, export it as URDF from the same model, and run it as a native ROS 2 node next to a standard ros2_control, SLAM Toolbox and Nav2 stack. The simulator is a process in your launch file, the way Gazebo or Webots would be.
 
-| Directory                                          | Purpose                                                                              |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| [packages/robotics](packages/robotics/README.md)   | `@drawcall/robotics`: devices, URDF export, the `drawcall-robotics` simulator CLI    |
-| [examples/warehouse](examples/warehouse/README.md) | A warehouse scene and differential-drive robot with its ROS Jazzy stack through pixi |
+| Directory                                          | Purpose                                                                                 |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| [packages/robotics](packages/robotics/README.md)   | `@drawcall/robotics`: devices, URDF export, the `drawcall-robotics` simulator CLI       |
+| [examples/warehouse](examples/warehouse/README.md) | A warehouse scene and differential-drive robot with its ROS Jazzy stack through pixi    |
+| [examples/so101](examples/so101/README.md)         | Randomized desk cleanup with an SO101 wrist camera, movable bowl and in-scene evaluator |
 
 The workspace uses `@drawcall/physics` and its Rapier backend **0.6.0**. `JointDrive` belongs to physics; robotics extends it as `JointActuator`, the drive ros2_control commands.
 
@@ -21,7 +22,7 @@ pnpm dev                # ros2 launch with the simulator and Lichtblick; Ctrl+C 
 
 Install inside `pixi run` so that rclnodejs finds the ROS libraries it compiles against. That is the same rule as for any ROS client library: source the environment first.
 
-`pnpm dev` builds the package and runs `pixi run launch viewer:=true`; the `dev`, `launch`, `record` and `replay` scripts live in `examples/warehouse`. The XML launch file obtains the URDF from the CLI through a `Command` substitution, as xacro-based launches do, starts the simulator as a node with `--viewer`, and brings up robot_state_publisher, ros2_control, SLAM Toolbox, Nav2, foxglove_bridge and the mission. The first run downloads the Lichtblick web build into `~/.cache/drawcall-robotics`. Lichtblick opens already connected, showing the robot model, map, scan, costmap, plan, the onboard camera, score versus recording time, evaluation status and a goal tool. The mission starts evaluation when Nav2 is ready and drives four goals. The scene evaluator scores ground-truth checkpoints and ends the episode. The runner closes and verifies the recording before exiting and ending the launch.
+`pnpm dev` builds the package and runs `pixi run launch viewer:=true`; the `dev`, `launch`, `record` and `replay` scripts live in `examples/warehouse`. The XML launch file starts the simulator with `--viewer`, ros2_control, SLAM Toolbox, Nav2, foxglove_bridge and the mission. The simulator automatically publishes the robot description and internal link transforms; ros2_control subscribes to `/robot/robot_description`. The first run downloads the Lichtblick web build into `~/.cache/drawcall-robotics`. Lichtblick opens already connected, showing the robot model, map, scan, costmap, plan, the onboard camera, score versus recording time, evaluation status and a goal tool. The mission starts evaluation when Nav2 is ready and drives four goals. The scene evaluator scores ground-truth checkpoints and ends the episode. The runner closes and verifies the recording before exiting and ending the launch.
 
 `pnpm launch` runs the same without a viewer. `pnpm record` asks the simulator to manage `ros2 bag record`, writing every topic to a `rosbag2_*` directory in `examples/warehouse` as MCAP, and `pnpm replay rosbag2_<date>` opens that recording in Lichtblick with a layout built from the sensors it holds.
 
@@ -74,7 +75,7 @@ Defaults under namespace `/robot`:
 
 ROS-internal topics follow upstream conventions: `/diff_drive_controller/cmd_vel` and `/odom`, `/joint_states` from the broadcaster, `/tf`, `/map`, `/plan`. Absolute names such as `/clock` bypass the namespace. Use one clock publisher per ROS graph.
 
-Three.js forward `-Z`, left `-X`, up `+Y` map to ROS `+X`, `+Y`, `+Z`. Camera optical frames use `+Z` forward, `+X` right and `+Y` down. The simulation publishes no TF: `map → odom → base_footprint → base_link → wheels, sensors` come from SLAM, the drive controller and the generated URDF.
+Three.js forward `-Z`, left `-X`, up `+Y` map to ROS `+X`, `+Y`, `+Z`. Camera optical frames use `+Z` forward, `+X` right and `+Y` down. The simulator publishes `base_footprint → base_link → wheels, sensors` automatically on `/tf` and `/tf_static`. SLAM owns `map → odom`; the drive controller owns `odom → base_footprint`. Visual meshes and colors are embedded in the retained `/robot/robot_description` message, so new recordings replay the model without access to the original asset files.
 
 ## Timing and limits
 

@@ -1,2 +1,2 @@
 pnpm-lock.yaml
-examples/warehouse/pixi.lock
+examples/*/pixi.lock

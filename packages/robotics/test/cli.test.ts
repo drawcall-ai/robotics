@@ -30,7 +30,17 @@ vi.mock("../src/runtime.js", () => ({
     }
   },
 }));
-vi.mock("../src/devices/robot.js", () => ({ findRobot: () => ({ base: {} }) }));
+vi.mock("../src/devices/robot.js", () => ({
+  findRobot: () => ({ base: {}, beforeStep() {} }),
+}));
+vi.mock("../src/urdf/view.js", () => ({
+  modelView: () => ({
+    topic: "/robot/robot_description",
+    frame: "base_footprint",
+    distance: 2,
+    target: [0, 0, 0],
+  }),
+}));
 vi.mock("../src/cli/lichtblick.js", () => ({ serveLichtblick: mocks.serve }));
 import { sim } from "../src/cli/sim.js";
 import { snapshot } from "../src/cli/snapshot.js";

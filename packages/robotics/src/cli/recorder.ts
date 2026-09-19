@@ -59,6 +59,7 @@ export class Recorder {
     connection: RclConnection,
     time: number,
     signal: AbortSignal,
+    retainedTopics: string[] = [],
   ): Promise<void> {
     connection.advertise(EVALUATION_TOPIC, EVALUATION_TYPE, { retain: true });
     connection.advertise("/sim/score", "std_msgs/msg/Float64", {
@@ -71,10 +72,15 @@ export class Recorder {
         });
         return (
           connection.hasSubscriber(EVALUATION_TOPIC, "rosbag2_recorder") &&
-          connection.hasSubscriber("/sim/score", "rosbag2_recorder")
+          connection.hasSubscriber("/sim/score", "rosbag2_recorder") &&
+          retainedTopics.every(
+            (topic) =>
+              connection.hasSubscriber(topic, "rosbag2_recorder") &&
+              connection.acknowledged(topic),
+          )
         );
       },
-      "Recorder did not subscribe to evaluation",
+      "Recorder did not acknowledge scene metadata and evaluation",
       signal,
     );
   }

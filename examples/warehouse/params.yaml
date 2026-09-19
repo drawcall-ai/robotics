@@ -234,6 +234,7 @@ lifecycle_manager_slam:
 foxglove_bridge:
   ros__parameters:
     address: 127.0.0.1
+    send_buffer_limit: 100000000
     # Only what the viewer layout uses. Everything else is noise there: the 120 Hz clock trips
     # Lichtblick's rate alert, and Nav2 and SLAM services disagree on the Marker schema.
     topic_whitelist:
@@ -242,7 +243,6 @@ foxglove_bridge:
         "^/tf_static$",
         "^/map$",
         "^/robot/.*",
-        "^/robot_description$",
         "^/sim/score$",
         "^/sim/evaluation$",
         "^/diff_drive_controller/.*",

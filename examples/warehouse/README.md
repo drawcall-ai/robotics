@@ -1,6 +1,6 @@
 # Warehouse example
 
-A warehouse and a differential-drive robot in [scene.ts](scene.ts), driven by a standard ROS 2 stack: [bringup.launch.xml](bringup.launch.xml) starts the simulator node, robot_state_publisher with the URDF exported from the scene, ros2_control, SLAM Toolbox, Nav2 and a mission that drives four goals and a ground-truth evaluator that ends the launch. [params.yaml](params.yaml) holds every node's parameters, [pixi.toml](pixi.toml) the ROS installation.
+A warehouse and a differential-drive robot in [scene.ts](scene.ts), driven by a standard ROS 2 stack: [bringup.launch.xml](bringup.launch.xml) starts the simulator node, ros2_control, SLAM Toolbox, Nav2 and a mission that drives four goals and a ground-truth evaluator that ends the launch. The simulator supplies `/robot/robot_description`, `/tf` and `/tf_static`; the controller manager consumes the description directly. [params.yaml](params.yaml) holds every node's parameters, [pixi.toml](pixi.toml) the ROS installation.
 
 ```sh
 curl -fsSL https://pixi.sh/install.sh | sh   # once: pixi installs ROS from RoboStack

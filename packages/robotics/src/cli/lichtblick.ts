@@ -17,7 +17,6 @@ const DIR = join(
   "drawcall-robotics",
   `lichtblick-${VERSION}`,
 );
-const PORT = 8080;
 /** The launch file's foxglove_bridge. */
 const FOXGLOVE = "ws://127.0.0.1:8765";
 /** Where a recording is served; the extension tells Lichtblick the format. */
@@ -77,13 +76,17 @@ export async function serveLichtblick(
     const abort = () => finish(signal?.reason);
     signal?.addEventListener("abort", abort, { once: true });
     server.once("error", finish);
-    server.listen({ port: PORT, host: "127.0.0.1", signal }, finish);
+    server.listen({ port: 0, host: "127.0.0.1", signal }, finish);
   });
   signal?.throwIfAborted();
+  const address = server.address();
+  if (!address || typeof address === "string")
+    throw new Error("Viewer has no TCP address");
+  const port = address.port;
   const source = recording
-    ? `ds=remote-file&ds.url=${encodeURIComponent(`http://127.0.0.1:${PORT}${RECORDING}`)}`
+    ? `ds=remote-file&ds.url=${encodeURIComponent(`http://127.0.0.1:${port}${RECORDING}`)}`
     : `ds=foxglove-websocket&ds.url=${encodeURIComponent(FOXGLOVE)}`;
-  const url = `http://127.0.0.1:${PORT}/?${source}&layoutUrl=${encodeURIComponent(`http://127.0.0.1:${PORT}/layout.json`)}`;
+  const url = `http://127.0.0.1:${port}/?${source}&layoutUrl=${encodeURIComponent(`http://127.0.0.1:${port}/layout.json`)}`;
   console.error(`Lichtblick: ${url}`);
   await openBrowser(url);
   signal?.throwIfAborted();

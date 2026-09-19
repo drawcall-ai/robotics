@@ -1,0 +1,25 @@
+{
+  "name": "@drawcall/example-so101",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter @drawcall/robotics build && pixi run launch viewer:=true",
+    "launch": "pnpm --filter @drawcall/robotics build && pixi run launch",
+    "record": "pnpm --filter @drawcall/robotics build && pixi run launch record:=true",
+    "replay": "pnpm --filter @drawcall/robotics build && drawcall-robotics view",
+    "typecheck": "tsc --noEmit",
+    "results": "pnpm --filter @drawcall/robotics build && drawcall-robotics results",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@drawcall/physics": "0.6.0",
+    "@drawcall/robotics": "workspace:*",
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@types/three": "^0.185.0",
+    "typescript": "^5.9.3",
+    "@types/node": "^26.6.0",
+    "@drawcall/physics-rapier": "0.6.0"
+  }
+}
