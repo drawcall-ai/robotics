@@ -63,8 +63,12 @@ export class CameraSensor extends PerspectiveCamera {
   get infoTopic(): string {
     return this.ros.topic(`${this.name}/camera_info`);
   }
+  get busy(): boolean {
+    return this.pending !== undefined;
+  }
   afterStep(time: number): void {
     // A capture still being read back means the GPU is behind; this sample is skipped rather than queued.
+    // The simulator waits while a device is busy, so only loops that step regardless skip samples.
     if (this.disposed || !this.schedule.due(time) || this.pending) return;
     const renderer = this.ros.renderer;
     if (!renderer) throw new Error(`Camera ${this.name} needs a renderer`);

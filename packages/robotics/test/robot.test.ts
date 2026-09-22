@@ -60,7 +60,6 @@ it("requires the gains its interface acts through", async () => {
 });
 
 it("holds its joint up until commanded, then releases once a command expires", async () => {
-  vi.spyOn(performance, "now").mockReturnValue(0);
   const { world, ros, connection } = await simulation({
     gravity: [0, -9.81, 0],
   });
@@ -81,7 +80,6 @@ it("holds its joint up until commanded, then releases once a command expires", a
 });
 
 it("lets a command expire by simulation time and accepts a repeated one", async () => {
-  vi.spyOn(performance, "now").mockReturnValue(0);
   const { world, ros, connection } = await simulation();
   const { actuator } = cart(ros);
   connection.receive(COMMANDS, jointCommand("velocity", 3));
@@ -92,7 +90,7 @@ it("lets a command expire by simulation time and accepts a repeated one", async 
   expect(actuator.target?.velocity).toBe(3);
 });
 
-it("lets a command expire by wall time across a pause", async () => {
+it("keeps a command across a pause, as a sim-time controller stops publishing while paused", async () => {
   const clock = vi.spyOn(performance, "now").mockReturnValue(0);
   const { world, ros, connection } = await simulation();
   const { actuator } = cart(ros);
@@ -100,7 +98,7 @@ it("lets a command expire by wall time across a pause", async () => {
   world.update(0.01);
   clock.mockReturnValue(1000);
   world.update(0.01);
-  expect(actuator.target).toBeUndefined();
+  expect(actuator.target?.velocity).toBe(2);
 });
 
 it("goes passive before the next step once disconnected", async () => {

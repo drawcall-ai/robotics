@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { decode } from "jpeg-js";
 import { RenderTarget, Scene, Vector3 } from "three";
+import { Stepping } from "../src/cli/sim.js";
 import { CameraSensor } from "../src/devices/camera.js";
 import { defer, simulation } from "./fixture.js";
 
@@ -171,4 +172,26 @@ it("joins pending camera work through runtime disposal before its target is rele
   await completion;
   expect(release).toHaveBeenCalledOnce();
   expect(messages).toHaveLength(0);
+});
+
+it("holds simulation stepping until each capture is published", async () => {
+  const { world, ros, renderer, messages } = await fixture();
+  const stepping = new Stepping(world, () => ros.busy);
+  stepping.update(0.1);
+  expect(world.time).toBeCloseTo(0.01);
+  expect(ros.busy).toBe(true);
+  stepping.update(0.1);
+  expect(world.time).toBeCloseTo(0.01);
+  await renderer.flush();
+  expect(ros.busy).toBe(false);
+  stepping.update(0.3);
+  expect(world.time).toBeCloseTo(0.2);
+  await renderer.flush();
+  const stamps = messages
+    .filter((message) => message.name === IMAGE)
+    .map((message) => field(field(message.message, "header"), "stamp"));
+  expect(stamps).toEqual([
+    { sec: 0, nanosec: 10_000_000 },
+    { sec: 0, nanosec: 200_000_000 },
+  ]);
 });

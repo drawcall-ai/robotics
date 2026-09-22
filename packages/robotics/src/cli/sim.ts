@@ -1,9 +1,7 @@
 import { Command } from "commander";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { Quaternion, Vector3 } from "three";
 import { RclConnection } from "../connections/rcl.js";
-import { rollPitchYaw, rosPosition, rosRotation } from "../coordinates.js";
 import { CameraSensor } from "../devices/camera.js";
 import { LaserSensor } from "../devices/laser.js";
 import { findRobot } from "../devices/robot.js";
@@ -23,7 +21,7 @@ export const sim = new Command("sim")
   .option("--namespace <ns>", "topic namespace", "/robot")
   .option(
     "--robot <name>",
-    "the robot to report on /sim/state, if the scene has several",
+    "the robot to show and record, if the scene has several",
   )
   .option(
     "--viewer",
@@ -113,7 +111,6 @@ async function run(
   const robot = findRobot(ros, options.robot);
   robot.beforeStep(world.time);
   const view = modelView(robot);
-  const base = robot.base;
   const [evaluation] = ros.find(Evaluator);
   if ((options.record || options.waitForStart) && !evaluation)
     throw new Error(
@@ -139,10 +136,14 @@ async function run(
     clock: stamp(world.time),
   });
   if (!options.waitForStart) evaluation?.start();
-  const stepping = new Stepping(world, () => evaluation?.finished ?? false);
+  // Physics waits for camera readbacks, so every frame is captured and published at its own simulation time.
+  const stepping = new Stepping(
+    world,
+    () => (evaluation?.finished ?? false) || ros.busy,
+  );
   console.error(`Simulating ${scene} under ${ros.namespace}`);
 
-  // Pause, resume, step and reset plus a ground-truth state topic, the way other simulators expose them.
+  // Pause, resume, step and reset, the way other simulators expose them.
   let paused = false;
   let pendingSteps = 0;
   const trigger = (
@@ -198,21 +199,6 @@ async function run(
       message: "world reset; the clock restarts at zero",
     };
   });
-  /** Ground truth for episode logic; navigation must never subscribe to it. */
-  function publishState(): void {
-    const position = rosPosition(base.getWorldPosition(new Vector3()));
-    const [, , yaw] = rollPitchYaw(
-      rosRotation(base.getWorldQuaternion(new Quaternion())),
-    );
-    ros.publish("/sim/state", "std_msgs/msg/String", {
-      data: JSON.stringify({
-        time: world.time,
-        paused,
-        base: { x: position.x, y: position.y, yaw },
-      }),
-    });
-  }
-
   using activity = new DisposableStack();
   let ended = false;
   let rejectStopped: ((error: unknown) => void) | undefined;
@@ -232,8 +218,7 @@ async function run(
       interruption.signal.removeEventListener("abort", stop),
     );
     let last = performance.now();
-    let reported = last;
-    /** Advances the world by the wall time passed unless paused, when only single steps run; state reports on wall time so a paused world still reports. */
+    /** Advances the world by the wall time passed unless paused, when only single steps run. */
     function tick(): void {
       if (ended) return;
       const now = performance.now();
@@ -242,20 +227,19 @@ async function run(
       try {
         recorder?.check();
         if (!paused) stepping.update(delta);
-        while (paused && pendingSteps > 0 && !evaluation?.finished) {
+        while (
+          paused &&
+          pendingSteps > 0 &&
+          !evaluation?.finished &&
+          !ros.busy
+        ) {
           pendingSteps--;
           world.update(world.fixedDelta);
         }
         if (evaluation?.finished) {
-          paused = true;
-          publishState();
           ended = true;
           resolve();
           return;
-        }
-        if (now - reported >= 100) {
-          publishState();
-          reported = now;
         }
       } catch (error) {
         ended = true;
@@ -343,12 +327,12 @@ async function run(
   }
 }
 
-/** Keep the accumulator outside physics so a terminal step interrupts catch-up immediately. */
+/** Keep the accumulator outside physics so a terminal step or a busy device interrupts catch-up immediately. */
 export class Stepping {
   private accumulated = 0;
   constructor(
     private readonly world: PhysicsWorld,
-    private readonly finished: () => boolean,
+    private readonly halted: () => boolean,
   ) {}
   update(delta: number): void {
     this.accumulated = Math.min(
@@ -357,7 +341,7 @@ export class Stepping {
     );
     while (
       this.accumulated + 1e-12 >= this.world.fixedDelta &&
-      !this.finished()
+      !this.halted()
     ) {
       this.accumulated = Math.max(0, this.accumulated - this.world.fixedDelta);
       this.world.update(this.world.fixedDelta);

@@ -28,6 +28,8 @@ export interface Device {
   beforeStep?(time: number, delta: number): void;
   afterStep?(time: number, delta: number): void;
   evaluate?(): void;
+  /** True while the device still works on a past step, such as a camera reading back its frame. */
+  readonly busy?: boolean;
   stop?(): void;
   dispose(): void | Promise<void>;
 }
@@ -103,6 +105,10 @@ export class ROS2 {
   }
   get connected(): boolean {
     return !this.disposed && !this.fault && this.connection.connected;
+  }
+  /** True while any device still works on a past step; a runner that waits for it keeps sensor output deterministic. */
+  get busy(): boolean {
+    return [...this.devices].some((device) => device.busy);
   }
   get error(): Error | undefined {
     return this.fault ?? this.connection.error;

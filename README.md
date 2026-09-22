@@ -26,7 +26,7 @@ Install inside `pixi run` so that rclnodejs finds the ROS libraries it compiles 
 
 `pnpm launch` runs the same without a viewer. `pnpm record` asks the simulator to manage `ros2 bag record`, writing every topic to a `rosbag2_*` directory in `examples/warehouse` as MCAP, and `pnpm replay rosbag2_<date>` opens that recording in Lichtblick with a layout built from the sensors it holds.
 
-While it runs, the simulator answers `/sim/pause`, `/sim/resume`, `/sim/step` and `/sim/reset` (`std_srvs/Trigger`) and publishes ground truth on `/sim/state`. Because every node runs on `use_sim_time`, pausing the simulator pauses the whole stack and one step advances it by exactly one physics substep. `drawcall-robotics snapshot /robot/camera/image/compressed --out frame.jpg` saves what a camera sees.
+While it runs, the simulator answers `/sim/pause`, `/sim/resume`, `/sim/step` and `/sim/reset` (`std_srvs/Trigger`). Because every node runs on `use_sim_time`, pausing the simulator pauses the whole stack and one step advances it by exactly one physics substep. `drawcall-robotics snapshot /robot/camera/image/compressed --out frame.jpg` saves what a camera sees.
 
 ## API shape
 
@@ -64,14 +64,14 @@ The base is the body no joint hangs from, every named axis joint becomes a URDF 
 
 Defaults under namespace `/robot`:
 
-| Topic                                                                | Type                                          | Direction          |
-| -------------------------------------------------------------------- | --------------------------------------------- | ------------------ |
-| `/robot/joint_commands`                                              | `sensor_msgs/msg/JointState`                  | ros2_control → sim |
-| `/robot/joint_states`                                                | `sensor_msgs/msg/JointState`                  | sim → ros2_control |
-| `/robot/scan`                                                        | `sensor_msgs/msg/LaserScan`                   | sim → ROS          |
-| `/robot/camera/image/compressed`, `/robot/camera/camera_info`        | `CompressedImage`, `CameraInfo`               | sim → ROS          |
-| `/clock`                                                             | `rosgraph_msgs/msg/Clock`                     | sim → ROS          |
-| `/sim/state`, `/sim/pause`, `/sim/resume`, `/sim/step`, `/sim/reset` | `std_msgs/msg/String`, `std_srvs/srv/Trigger` | sim → agents       |
+| Topic                                                         | Type                            | Direction          |
+| ------------------------------------------------------------- | ------------------------------- | ------------------ |
+| `/robot/joint_commands`                                       | `sensor_msgs/msg/JointState`    | ros2_control → sim |
+| `/robot/joint_states`                                         | `sensor_msgs/msg/JointState`    | sim → ros2_control |
+| `/robot/scan`                                                 | `sensor_msgs/msg/LaserScan`     | sim → ROS          |
+| `/robot/camera/image/compressed`, `/robot/camera/camera_info` | `CompressedImage`, `CameraInfo` | sim → ROS          |
+| `/clock`                                                      | `rosgraph_msgs/msg/Clock`       | sim → ROS          |
+| `/sim/pause`, `/sim/resume`, `/sim/step`, `/sim/reset`        | `std_srvs/srv/Trigger`          | agents → sim       |
 
 ROS-internal topics follow upstream conventions: `/diff_drive_controller/cmd_vel` and `/odom`, `/joint_states` from the broadcaster, `/tf`, `/map`, `/plan`. Absolute names such as `/clock` bypass the namespace. Use one clock publisher per ROS graph.
 
@@ -81,14 +81,14 @@ Three.js forward `-Z`, left `-X`, up `+Y` map to ROS `+X`, `+Y`, `+Z`. Camera op
 
 Every ROS node runs on `use_sim_time`. Simulation time counts completed fixed substeps at 120 Hz and is published on `/clock`; there is no lockstep, and pausing the simulator pauses the clock and with it every node.
 
-Joint commands are unstamped `JointState` messages republished at the controller manager's rate. Each actuator keeps the latest value for its joint and expires it after 0.5 seconds of simulation or wall time. **Expiry removes actuation; the robot can coast. It does not brake or hold position.**
+Joint commands are unstamped `JointState` messages republished at the controller manager's rate. Each actuator keeps the latest value for its joint and expires it after 0.5 seconds of simulation time, so a pause never expires a command. **Expiry removes actuation; the robot can coast. It does not brake or hold position.**
 
 Current scope:
 
 - Topic-based ros2_control hardware, not a compiled hardware plugin or trajectory action server.
-- Encoder odometry, SLAM Toolbox mapping and localization, Nav2 navigation; ground truth only on `/sim/state`.
+- Encoder odometry, SLAM Toolbox mapping and localization, Nav2 navigation; ground truth only inside the scene's evaluator.
 - A configurable planar lidar, 360° by default, that sees everything including its own robot; no-hit rays and returns inside `minRange` use `range_max + 1`.
-- Cameras render into targets and read back asynchronously; a sample is skipped while a readback is in flight. Defaults are 320×180 at 5 Hz.
+- Cameras render into targets and read back asynchronously. The simulator does not step while a readback is in flight, so every frame is published at its own simulation time and a slow GPU slows the simulation instead of dropping frames; a page stepping its own world skips a sample instead. Defaults are 320×180 at 5 Hz.
 - `/sim/reset` restarts the clock only in scenes without an evaluator. Evaluated scenes require a new launch, keeping one episode per recording and resetting ROS state together.
 
 ## Validation

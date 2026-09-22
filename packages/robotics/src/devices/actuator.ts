@@ -8,7 +8,7 @@ import {
 import { getROS2, type Device, type ROS2 } from "../runtime.js";
 import { runAll } from "../cleanup.js";
 
-/** Seconds after which a joint command expires and the actuator goes passive. */
+/** Simulation seconds after which a joint command expires and the actuator goes passive; a pause never expires one. */
 const COMMAND_TIMEOUT = 0.5;
 
 export type CommandInterface = "position" | "velocity" | "effort";
@@ -19,7 +19,6 @@ export interface JointActuatorOptions extends JointDriveOptions {
 interface Command {
   value: number;
   time: number;
-  wall: number;
 }
 
 /**
@@ -65,21 +64,12 @@ export class JointActuator
       throw new Error(
         `Joint command for ${name} needs a finite ${this.options.interface}`,
       );
-    this.command = {
-      value,
-      time: this.ros.world.time,
-      wall: performance.now() / 1000,
-    };
+    this.command = { value, time: this.ros.world.time };
     this.commanded = true;
   }
   beforeStep(time: number): void {
     const command = this.command;
-    const wall = performance.now() / 1000;
-    if (
-      !command ||
-      time - command.time > COMMAND_TIMEOUT ||
-      wall - command.wall > COMMAND_TIMEOUT
-    ) {
+    if (!command || time - command.time > COMMAND_TIMEOUT) {
       if (this.commanded) this.stop();
       else this.hold(time);
       return;
