@@ -8,7 +8,7 @@ Connect a Three.js physics scene to ROS 2. Declare a robot with cameras, lidar a
 | [examples/warehouse](examples/warehouse/README.md) | A warehouse scene and differential-drive robot with its ROS Jazzy stack through pixi    |
 | [examples/so101](examples/so101/README.md)         | Randomized desk cleanup with an SO101 wrist camera, movable bowl and in-scene evaluator |
 
-The workspace uses `@drawcall/physics` and its Rapier backend **0.6.0**. `JointDrive` belongs to physics; robotics extends it as `JointActuator`, the drive ros2_control commands.
+The workspace uses `@drawcall/physics` and its MuJoCo backend **0.7.1**. `JointDrive` belongs to physics; robotics extends it as `JointActuator`, the drive ros2_control commands.
 
 ## Run the warehouse
 

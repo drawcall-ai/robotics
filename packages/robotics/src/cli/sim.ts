@@ -9,7 +9,7 @@ import { LaserSensor } from "../devices/laser.js";
 import { findRobot } from "../devices/robot.js";
 import { Evaluator } from "../evaluation.js";
 import { Recorder } from "./recorder.js";
-import type { PhysicsWorld } from "@drawcall/physics";
+import { registry, type PhysicsWorld } from "@drawcall/physics";
 import { stamp } from "../messages.js";
 import { ROS2 } from "../runtime.js";
 import { modelView } from "../urdf/view.js";
@@ -32,6 +32,10 @@ export const sim = new Command("sim")
   .option("--no-viewer", "run without a viewer (default)")
   .option("--wait-for-start", "wait for /sim/start before evaluating")
   .option(
+    "--perception",
+    "add an image panel for the controller's own view, <namespace>/perception/image/compressed",
+  )
+  .option(
     "--record [directory]",
     "record one evaluation episode and verify its final result",
   )
@@ -43,6 +47,7 @@ export const sim = new Command("sim")
         robot?: string;
         viewer?: boolean;
         waitForStart?: boolean;
+        perception?: boolean;
         record?: string | boolean;
       },
     ) => {
@@ -59,19 +64,13 @@ async function run(
     robot?: string;
     viewer?: boolean;
     waitForStart?: boolean;
+    perception?: boolean;
     record?: string | boolean;
   },
 ): Promise<void> {
-  // Rapier and Dawn load here, not at import: the other commands never need them.
-  // Physics first: instantiating Rapier's wasm after the Dawn renderer exists crashes the process.
-  const { setupWorld } = await import("@drawcall/physics-rapier");
+  // MuJoCo and Dawn load here, not at import: the other commands never need them.
+  const { buildWorld } = await import("@drawcall/physics-mujoco");
   const { createRenderer } = await import("./webgpu.js");
-  const world = await setupWorld({
-    gravity: [0, -9.81, 0],
-    fixedDelta: 1 / 120,
-    maxSubsteps: 16,
-    solverIterations: 12,
-  });
   await using resources = new AsyncDisposableStack();
   const interruption = new AbortController();
   const interrupt = () => interruption.abort();
@@ -81,7 +80,8 @@ async function run(
     process.off("SIGINT", interrupt);
     process.off("SIGTERM", interrupt);
   });
-  resources.defer(() => world.dispose());
+  resources.defer(() => registry.clear());
+  resources.defer(() => registry.world?.dispose());
   const renderer = await createRenderer();
   resources.defer(() => renderer.dispose());
   const connection = await RclConnection.create("sim");
@@ -98,6 +98,17 @@ async function run(
   }
   // The scene builds against the current runtime and registers its devices there.
   await import(pathToFileURL(resolve(scene)).href);
+  const world = await buildWorld({
+    gravity: [0, -9.81, 0],
+    fixedDelta: 1 / 1000,
+    maxSubsteps: 32,
+    solverIterations: 50,
+    // Friction constraints stiffer than penetration ones, as MuJoCo Menagerie grippers
+    // set them; at the default 1 a grasped object creeps down the pads.
+    frictionImpedanceRatio: 10,
+    frictionCone: "elliptic",
+  });
+  ros.attachWorld(world);
   if (interruption.signal.aborted) return;
   const robot = findRobot(ros, options.robot);
   robot.beforeStep(world.time);
@@ -289,12 +300,17 @@ async function run(
     return;
   }
   const viewer = new AbortController();
+  const perception = options.perception ? ros.topic("perception") : undefined;
   const startup = serveLichtblick(
     defaultLayout(
       ros.find(LaserSensor).map((laser) => laser.topic),
-      ros.find(CameraSensor).map((camera) => camera.imageTopic),
+      [
+        ...ros.find(CameraSensor).map((camera) => camera.imageTopic),
+        ...(perception ? [`${perception}/image/compressed`] : []),
+      ],
       evaluation !== undefined,
       view,
+      ros.find(CameraSensor).map((camera) => camera.infoTopic),
     ),
     undefined,
     viewer.signal,
@@ -337,7 +353,7 @@ export class Stepping {
   update(delta: number): void {
     this.accumulated = Math.min(
       this.accumulated + delta,
-      this.world.fixedDelta * 16,
+      this.world.fixedDelta * 32,
     );
     while (
       this.accumulated + 1e-12 >= this.world.fixedDelta &&

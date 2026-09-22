@@ -75,36 +75,38 @@ def fk(q):
 
 
 def ik(position, seed=None, roll=0):
-    """Position and downward finger direction, with preferred wrist roll."""
+    """Joints placing the tool point with the fingers down and the wrist at `roll`.
+
+    The roll is exact: it barely moves the tool point, and squaring the jaws to
+    a cube face depends on it. The four other joints trade the downward finger
+    direction for position where both cannot be met.
+    """
     target = np.array(position)
     best = None
     seeds = [
-        np.array(seed[:5]) if seed is not None else np.array([0, -0.4, 0.7, 0.9, roll]),
-        np.array([0, -0.8, 1.2, 0.8, roll]),
+        np.array(seed[:4]) if seed is not None else np.array([0, -0.4, 0.7, 0.9]),
+        np.array([0, -0.8, 1.2, 0.8]),
     ]
     for q in seeds:
-        q = q.copy()
 
         def residual(a):
-            t = fk(a)
+            t = fk(np.r_[a, roll])
             return np.r_[
                 (t @ TCP)[:3] - target,
                 (0.10 if target[2] < 0.04 else 0.025)
                 * (t[:3, 2] - np.array([0, 0, 1])),
-                0.02 * (a[4] - roll),
             ]
 
         fit = least_squares(
             residual,
-            np.clip(q, LIMITS[:, 0] + 1e-5, LIMITS[:, 1] - 1e-5),
-            bounds=(LIMITS[:, 0], LIMITS[:, 1]),
+            np.clip(q, LIMITS[:4, 0] + 1e-5, LIMITS[:4, 1] - 1e-5),
+            bounds=(LIMITS[:4, 0], LIMITS[:4, 1]),
             max_nfev=100,
             ftol=1e-8,
             gtol=1e-8,
             xtol=1e-8,
         )
-        q = fit.x
-        score = np.linalg.norm(residual(q))
+        score = np.linalg.norm(residual(fit.x))
         if best is None or score < best[0]:
-            best = (score, q)
+            best = (score, np.r_[fit.x, roll])
     return best[1], best[0]

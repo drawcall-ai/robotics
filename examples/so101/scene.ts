@@ -1,4 +1,4 @@
-import { BoxCollider, CylinderCollider, RigidBody } from "@drawcall/physics";
+import { BoxCollider, RigidBody } from "@drawcall/physics";
 import { Evaluator } from "@drawcall/robotics";
 import {
   AmbientLight,
@@ -65,16 +65,23 @@ bowl.name = "bowl";
 bowl.position.set(bowlPlacement.x, deskHeight, bowlPlacement.z);
 bowl.rotation.y = Math.random() * Math.PI * 2;
 bowl.setMaterial({ staticFriction: 0.5, dynamicFriction: 0.5, restitution: 0 });
-const floor = new CylinderCollider({
-  radius: bowlRadius + 0.004,
-  height: bowlFloor,
-});
 const floorMesh = new Mesh(
   new CylinderGeometry(bowlRadius + 0.004, bowlRadius + 0.004, bowlFloor, 32),
   blue,
 );
-floor.position.y = floorMesh.position.y = bowlFloor / 2;
-bowl.add(floor, floorMesh);
+floorMesh.position.y = bowlFloor / 2;
+bowl.add(floorMesh);
+// The floor collides as an octagon of boxes. MuJoCo resolves a box against a
+// cylinder through a single contact point, so a cube landing on an edge would
+// kick the bowl centimetres; box pairs get a full contact patch.
+for (let strip = 0; strip < 4; strip++) {
+  const collider = new BoxCollider({
+    size: [0.14, bowlFloor, 0.14 * Math.tan(Math.PI / 8)],
+  });
+  collider.position.y = bowlFloor / 2;
+  collider.rotation.y = (strip * Math.PI) / 4;
+  bowl.add(collider);
+}
 for (let side = 0; side < 32; side++) {
   const angle = (side * Math.PI) / 16;
   const radius = bowlRadius + 0.004;

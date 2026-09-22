@@ -1,4 +1,4 @@
-import { getDefaultWorld, type PhysicsWorld } from "@drawcall/physics";
+import { registry, type PhysicsWorld } from "@drawcall/physics";
 import { runAll } from "./cleanup.js";
 import { SEGMENT, stamp } from "./messages.js";
 import type { Camera, Object3D, RenderTarget, Texture } from "three";
@@ -46,7 +46,7 @@ export interface CaptureRenderer {
   ): Promise<ArrayBufferView>;
 }
 export interface ROS2Options {
-  /** The world the scene builds in; the physics default world unless given. */
+  /** The simulation to attach; defaults to the registry’s built world, if any. */
   world?: PhysicsWorld;
   /** Needed by cameras; a runtime that only builds a scene, as for URDF export, has none. */
   renderer?: CaptureRenderer;
@@ -59,11 +59,11 @@ let current: ROS2 | undefined;
 
 /** The runtime devices register with. Creating one makes it the default that `getROS2()` returns to a scene. */
 export class ROS2 {
-  readonly world: PhysicsWorld;
+  private simulation?: PhysicsWorld;
   readonly renderer?: CaptureRenderer;
   readonly namespace: string;
   private readonly devices = new Set<Device>();
-  private readonly hooks: (() => void)[];
+  private readonly hooks: (() => void)[] = [];
   private fault?: Error;
   private disposed = false;
   private disposal?: Promise<unknown[]>;
@@ -80,14 +80,26 @@ export class ROS2 {
     const namespace = options.namespace ?? "/robot";
     if (namespace !== "/" && !TOPIC.test(namespace))
       throw new Error(`Invalid ROS namespace: ${namespace}`);
-    this.world = options.world ?? getDefaultWorld();
     this.renderer = options.renderer;
     this.namespace = namespace;
-    this.hooks = [
-      this.world.onBeforeStep((dt) => this.update("beforeStep", dt)),
-      this.world.onAfterStep((dt) => this.update("afterStep", dt)),
-    ];
+    const world = options.world ?? registry.world;
+    if (world) this.attachWorld(world);
     current = this;
+  }
+  /** Attaches simulation callbacks after the initial scene has been authored and built. */
+  attachWorld(world: PhysicsWorld): void {
+    if (this.disposed) throw new Error("ROS runtime is disposed");
+    if (this.simulation) throw new Error("ROS runtime already has a world");
+    this.simulation = world;
+    this.hooks.push(
+      world.onBeforeStep((dt) => this.update("beforeStep", dt)),
+      world.onAfterStep((dt) => this.update("afterStep", dt)),
+    );
+  }
+  get world(): PhysicsWorld {
+    if (!this.simulation)
+      throw new Error("Build and attach a physics world before simulation");
+    return this.simulation;
   }
   get connected(): boolean {
     return !this.disposed && !this.fault && this.connection.connected;

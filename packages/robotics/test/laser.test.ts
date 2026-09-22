@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { Object3D } from "three";
-import { BoxCollider, RigidBody, type PhysicsWorld } from "@drawcall/physics";
+import { BoxCollider, RigidBody } from "@drawcall/physics";
 import { LaserSensor } from "../src/devices/laser.js";
 import { simulation } from "./fixture.js";
 
@@ -9,18 +9,17 @@ const SAMPLES = 5;
 const CLEAR = 7; // beyond the default range of 6
 
 function wall(
-  world: PhysicsWorld,
   position: [number, number, number],
   size: [number, number, number],
 ): void {
-  const body = new RigidBody({ world, type: "static" });
+  const body = new RigidBody({ type: "static" });
   body.position.set(...position);
   body.add(new BoxCollider({ size }));
 }
 /** A wall 2.9 m ahead (Three -Z) and one 1.9 m to the left (Three -X). */
-function room(world: PhysicsWorld): void {
-  wall(world, [0, 0, -3], [4, 4, 0.2]);
-  wall(world, [-2, 0, 0], [0.2, 4, 4]);
+function room(): void {
+  wall([0, 0, -3], [4, 4, 0.2]);
+  wall([-2, 0, 0], [0.2, 4, 4]);
 }
 function scan(ranges: unknown[]) {
   return {
@@ -32,7 +31,7 @@ function scan(ranges: unknown[]) {
 
 it("measures each wall at its bearing and reports clear directions beyond range", async () => {
   const { world, ros, connection } = await simulation();
-  room(world);
+  room();
   new LaserSensor({ ros, samples: SAMPLES });
   world.update(0.01);
   expect(connection.messages).toContainEqual(
@@ -42,7 +41,7 @@ it("measures each wall at its bearing and reports clear directions beyond range"
 
 it("scans in the frame of the body it sits on", async () => {
   const { world, ros, connection } = await simulation();
-  room(world);
+  room();
   const mount = new Object3D();
   mount.rotation.y = Math.PI / 2;
   mount.add(new LaserSensor({ ros, samples: SAMPLES }));
@@ -54,7 +53,7 @@ it("scans in the frame of the body it sits on", async () => {
 
 it("drops returns closer than the minimum range like a real scanner", async () => {
   const { world, ros, connection } = await simulation();
-  room(world);
+  room();
   new LaserSensor({ ros, samples: SAMPLES, minRange: 2 });
   world.update(0.01);
   expect(connection.messages).toContainEqual(

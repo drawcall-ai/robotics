@@ -1,25 +1,23 @@
 import { afterEach, expect, it, vi } from "vitest";
 import type { ROS2 } from "@drawcall/robotics";
-import type { AuthoringWorld } from "@drawcall/physics";
+import type { PhysicsWorld } from "@drawcall/physics";
 import { Vector3 } from "three";
 
 let runtime: ROS2 | undefined;
-let world: AuthoringWorld | undefined;
-afterEach(() => {
+let world: PhysicsWorld | undefined;
+afterEach(async () => {
   runtime?.dispose();
   world?.dispose();
+  const { registry } = await import("@drawcall/physics");
+  registry.clear();
+  vi.restoreAllMocks();
 });
 
 async function episode() {
   vi.resetModules();
-  const { AuthoringWorld, RigidBody, setDefaultWorld } =
-    await import("@drawcall/physics");
+  const { RigidBody } = await import("@drawcall/physics");
   const { ROS2, Evaluator, Robot } = await import("@drawcall/robotics");
-  const clock = new AuthoringWorld();
   let elapsed = 0;
-  Object.defineProperty(clock, "time", { get: () => elapsed });
-  world = clock;
-  setDefaultWorld(clock);
   const ros = new ROS2({
     connected: true,
     publish() {},
@@ -28,6 +26,11 @@ async function episode() {
   });
   runtime = ros;
   await import("./scene.ts");
+  const { buildWorld } = await import("@drawcall/physics-mujoco");
+  const clock = await buildWorld();
+  Object.defineProperty(clock, "time", { get: () => elapsed });
+  world = clock;
+  ros.attachWorld(clock);
   const evaluator = ros.find(Evaluator)[0];
   const robot = ros.find(Robot)[0];
   if (!evaluator || !robot?.parent) throw new Error("Incomplete task scene");

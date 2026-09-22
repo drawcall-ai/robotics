@@ -4,7 +4,14 @@ import { defaultLayout } from "../src/cli/layout.js";
 it("shows every scan in the 3D panel and gives each image its own panel", () => {
   const { configById, layout } = defaultLayout(
     ["/robot/scan", "/rear/scan"],
-    ["/robot/camera/image/compressed", "/other/image"],
+    [
+      "/robot/camera/image/compressed",
+      "/other/image",
+      "/robot/perception/image/compressed",
+    ],
+    false,
+    undefined,
+    ["/robot/camera/camera_info"],
   );
   expect(layout).toEqual({
     direction: "row",
@@ -12,7 +19,11 @@ it("shows every scan in the 3D panel and gives each image its own panel", () => 
     second: {
       direction: "column",
       first: "Image!/robot/camera/image/compressed",
-      second: "Image!/other/image",
+      second: {
+        direction: "column",
+        first: "Image!/other/image",
+        second: "Image!/robot/perception/image/compressed",
+      },
     },
     splitPercentage: 65,
   });
@@ -28,6 +39,10 @@ it("shows every scan in the 3D panel and gives each image its own panel", () => 
   expect(configById["Image!/other/image"]?.imageMode).toEqual({
     imageTopic: "/other/image",
   });
+  // An annotated image without its own CameraInfo must not wait for calibration.
+  expect(
+    configById["Image!/robot/perception/image/compressed"]?.imageMode,
+  ).toEqual({ imageTopic: "/robot/perception/image/compressed" });
 });
 
 it("is the single 3D panel without images", () => {

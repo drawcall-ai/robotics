@@ -1,4 +1,4 @@
-import { AuthoringWorld, setDefaultWorld } from "@drawcall/physics";
+import { registry } from "@drawcall/physics";
 import { Command } from "commander";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -14,10 +14,8 @@ export const urdf = new Command("urdf")
   .option("--robot <name>", "the robot, if the scene has several")
   .action(
     async (scene: string, options: { namespace: string; robot?: string }) => {
-      const world = new AuthoringWorld();
-      setDefaultWorld(world);
       using resources = new DisposableStack();
-      resources.defer(() => world.dispose());
+      resources.defer(() => registry.clear());
       const ros = new ROS2(new OfflineConnection(), {
         namespace: options.namespace,
       });

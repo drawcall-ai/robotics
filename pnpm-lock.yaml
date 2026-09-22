@@ -32,8 +32,8 @@ importers:
   examples/so101:
     dependencies:
       '@drawcall/physics':
-        specifier: 0.6.0
-        version: 0.6.0(three@0.185.1)
+        specifier: 0.8.0
+        version: 0.8.0(three@0.185.1)
       '@drawcall/robotics':
         specifier: workspace:*
         version: link:../../packages/robotics
@@ -41,9 +41,9 @@ importers:
         specifier: ^0.185.1
         version: 0.185.1
     devDependencies:
-      '@drawcall/physics-rapier':
-        specifier: 0.6.0
-        version: 0.6.0(@drawcall/physics@0.6.0(three@0.185.1))(three@0.185.1)
+      '@drawcall/physics-mujoco':
+        specifier: 0.8.0
+        version: 0.8.0(@drawcall/physics@0.8.0(three@0.185.1))(three@0.185.1)
       '@types/node':
         specifier: ^26.6.0
         version: 26.6.0
@@ -57,8 +57,8 @@ importers:
   examples/warehouse:
     dependencies:
       '@drawcall/physics':
-        specifier: 0.6.0
-        version: 0.6.0(three@0.185.1)
+        specifier: 0.8.0
+        version: 0.8.0(three@0.185.1)
       '@drawcall/robotics':
         specifier: workspace:*
         version: link:../../packages/robotics
@@ -75,9 +75,9 @@ importers:
 
   packages/robotics:
     dependencies:
-      '@drawcall/physics-rapier':
-        specifier: 0.6.0
-        version: 0.6.0(@drawcall/physics@0.6.0(three@0.185.1))(three@0.185.1)
+      '@drawcall/physics-mujoco':
+        specifier: 0.8.0
+        version: 0.8.0(@drawcall/physics@0.8.0(three@0.185.1))(three@0.185.1)
       '@foxglove/rosmsg':
         specifier: ^5.0.5
         version: 5.0.5
@@ -113,8 +113,8 @@ importers:
         version: 0.185.1
     devDependencies:
       '@drawcall/physics':
-        specifier: 0.6.0
-        version: 0.6.0(three@0.185.1)
+        specifier: 0.8.0
+        version: 0.8.0(three@0.185.1)
       '@types/node':
         specifier: ^26.6.0
         version: 26.6.0
@@ -138,17 +138,14 @@ packages:
   '@dimforge/rapier3d-compat@0.12.0':
     resolution: {integrity: sha512-uekIGetywIgopfD97oDL5PfeezkFpNhwlzlaEYNOA0N6ghdsOvh/HYjSMek5Q2O1PYvRSDFcqFVJl4r4ZBwOow==}
 
-  '@dimforge/rapier3d-compat@0.20.0':
-    resolution: {integrity: sha512-X4W9pJBdGRX5CO3c/gUNjBFEFG2fn4nYxp9k8STdBDaLa0/w5XTW2ArpayS+9jGFojTi3uFSOWAElCd4rkpekA==}
-
-  '@drawcall/physics-rapier@0.6.0':
-    resolution: {integrity: sha512-Fzsx6RmqUgpgG6/NYhT9IQkDVYkEpHC7j97ZI37ds0Y8jCmLX0r++KjZ/d/uwpkY0sIHYgGo6JMierh1Kh16Tg==}
+  '@drawcall/physics-mujoco@0.8.0':
+    resolution: {integrity: sha512-T6uZk1Ynv3Lj/czgG0Mz3pdaJxYcnxO0kQAE1UpdDUdyV2+k3s5M9Lzy8iyO6FvbDsP2mGGgO65an64uNOD95w==}
     peerDependencies:
-      '@drawcall/physics': ^0.6.0
+      '@drawcall/physics': ^0.8.0
       three: '>=0.180.0'
 
-  '@drawcall/physics@0.6.0':
-    resolution: {integrity: sha512-3agQxvIGEN9TTcC7n9OtGnNTaMjjfULrQvbAhmNPSjHaJ5BbTDggZW94yQkO+9r3vMvqH4oWgX0PmzYPOen+bA==}
+  '@drawcall/physics@0.8.0':
+    resolution: {integrity: sha512-ScfQxiXo/3LDWpl6bPfZKxfp11xpryo8KUW9DduzvEGuvExT4FYBoqcXG9bAyka7XzrJXL6q/QzikAuFEI8QgA==}
     peerDependencies:
       three: '>=0.185.0'
 
@@ -351,6 +348,9 @@ packages:
 
   '@mcap/support@1.1.0':
     resolution: {integrity: sha512-ykO32FKP6vjYcjU/KyMTNOMC2CErsV3Wr7hKGNEcop8HWAoi6rlex0nH86QIKn54BoFAM97Rqqs/w0SOJiikKg==}
+
+  '@mujoco/mujoco@3.13.0':
+    resolution: {integrity: sha512-9OAp3i2pR9U8SnJfr+/UcmxpbIOcUUSBjNGY79XS4NYcyYjztqHmx1kl/83yoEpxDd40WBcDOKZqNhEmhN1+Sg==}
 
   '@oxc-project/types@0.149.0':
     resolution: {integrity: sha512-Efcc+iF0j3Bf67YjEqIqWXbX5XddXoK/Mw4K1/JuXwRCZ8N16VR7iT23nlCc9XrveFVh/E5Rqs2StT0V8v9LdA==}
@@ -1168,15 +1168,13 @@ snapshots:
 
   '@dimforge/rapier3d-compat@0.12.0': {}
 
-  '@dimforge/rapier3d-compat@0.20.0': {}
-
-  '@drawcall/physics-rapier@0.6.0(@drawcall/physics@0.6.0(three@0.185.1))(three@0.185.1)':
+  '@drawcall/physics-mujoco@0.8.0(@drawcall/physics@0.8.0(three@0.185.1))(three@0.185.1)':
     dependencies:
-      '@dimforge/rapier3d-compat': 0.20.0
-      '@drawcall/physics': 0.6.0(three@0.185.1)
+      '@drawcall/physics': 0.8.0(three@0.185.1)
+      '@mujoco/mujoco': 3.13.0
       three: 0.185.1
 
-  '@drawcall/physics@0.6.0(three@0.185.1)':
+  '@drawcall/physics@0.8.0(three@0.185.1)':
     dependencies:
       three: 0.185.1
 
@@ -1304,6 +1302,8 @@ snapshots:
       '@foxglove/wasm-zstd': 1.0.1
       protobufjs: 7.6.6
       tslib: 2.8.1
+
+  '@mujoco/mujoco@3.13.0': {}
 
   '@oxc-project/types@0.149.0': {}
 

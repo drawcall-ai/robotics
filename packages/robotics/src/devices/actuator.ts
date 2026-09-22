@@ -15,8 +15,6 @@ export type CommandInterface = "position" | "velocity" | "effort";
 export interface JointActuatorOptions extends JointDriveOptions {
   /** The ros2_control command interface: a position servo, a velocity motor, or a torque input. */
   readonly interface: CommandInterface;
-  /** URDF velocity limit for controllers; no physics engine enforces it. */
-  readonly maxVelocity?: number;
 }
 interface Command {
   value: number;
@@ -35,16 +33,13 @@ export class JointActuator
 {
   readonly ros: ROS2;
   private command?: Command;
+  private commanded = false;
+  private resting?: number;
   private readonly unsubscribe: () => void;
   private readonly unregister: () => void;
   constructor({ ros, ...options }: JointActuatorOptions & { ros?: ROS2 }) {
     super(options);
     validateGains(options);
-    if (
-      options.maxVelocity !== undefined &&
-      (!Number.isFinite(options.maxVelocity) || options.maxVelocity < 0)
-    )
-      throw new Error("Actuator velocity limit must be finite and nonnegative");
     this.ros = ros ?? getROS2();
     this.unsubscribe = this.ros.subscribe(
       "joint_commands",
@@ -75,6 +70,7 @@ export class JointActuator
       time: this.ros.world.time,
       wall: performance.now() / 1000,
     };
+    this.commanded = true;
   }
   beforeStep(time: number): void {
     const command = this.command;
@@ -84,7 +80,8 @@ export class JointActuator
       time - command.time > COMMAND_TIMEOUT ||
       wall - command.wall > COMMAND_TIMEOUT
     ) {
-      this.stop();
+      if (this.commanded) this.stop();
+      else this.hold(time);
       return;
     }
     const target: JointDriveTarget = {
@@ -94,6 +91,36 @@ export class JointActuator
       [this.options.interface]: command.value,
     };
     if (!sameTarget(this.target, target)) super.setTarget(target);
+  }
+  /**
+   * Holds the pose the scene authored, as a powered servo does before its controller connects.
+   * Once commanded, an expiry releases the joint instead: a controller that stops talking lets go.
+   */
+  private hold(time: number): void {
+    if (this.options.interface === "effort") return;
+    // A joint only measures itself once the backend has built it, one step in.
+    if (this.resting === undefined && time > 0)
+      this.resting = this.restingPosition();
+    if (this.resting === undefined) return;
+    const target: JointDriveTarget = {
+      position: this.options.interface === "position" ? this.resting : 0,
+      velocity: 0,
+      effort: 0,
+    };
+    if (!sameTarget(this.target, target)) super.setTarget(target);
+  }
+  private restingPosition(): number | undefined {
+    const joint = this.joint;
+    // A joint measures itself from world matrices, which authoring leaves stale.
+    for (const body of [joint?.options.body0, joint?.options.body1])
+      body?.updateWorldMatrix(true, false);
+    if (joint instanceof GenericJoint) {
+      const dof = [...joint.drives].find(([, drive]) => drive === this)?.[0];
+      return dof === undefined ? undefined : joint.getState(dof).position;
+    }
+    if (!(joint instanceof ScalarJoint)) return undefined;
+    const state = joint.getState();
+    return "position" in state ? state.position : undefined;
   }
   /** Drops the command and exerts no force, without braking. */
   stop(): void {

@@ -56,7 +56,28 @@ it("requires the gains its interface acts through", async () => {
   ).toThrow("no gains");
   expect(
     () => new JointActuator({ ros, interface: "effort", maxVelocity: -1 }),
-  ).toThrow("velocity limit");
+  ).toThrow("maximum velocity must be finite and positive");
+});
+
+it("holds its joint up until commanded, then releases once a command expires", async () => {
+  vi.spyOn(performance, "now").mockReturnValue(0);
+  const { world, ros, connection } = await simulation({
+    gravity: [0, -9.81, 0],
+  });
+  const { joint, actuator } = cart(ros, { stiffness: 100 });
+  // An arm whose controller has not connected yet is still powered, so it holds.
+  for (let step = 0; step < 100; step++) world.update(0.01);
+  expect(actuator.target).toBeDefined();
+  expect(Math.abs(joint.getState().position)).toBeLessThan(0.05);
+  connection.receive(COMMANDS, jointCommand("position", 0.5));
+  for (let step = 0; step < 20; step++) {
+    connection.receive(COMMANDS, jointCommand("position", 0.5));
+    world.update(0.01);
+  }
+  expect(joint.getState().position).toBeGreaterThan(0.3);
+  // A controller that stops talking lets go, rather than reverting to the old pose.
+  for (let step = 0; step < 100; step++) world.update(0.01);
+  expect(actuator.target).toBeUndefined();
 });
 
 it("lets a command expire by simulation time and accepts a repeated one", async () => {

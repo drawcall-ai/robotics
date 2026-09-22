@@ -60,6 +60,9 @@ export class CameraSensor extends PerspectiveCamera {
   get imageTopic(): string {
     return this.ros.topic(`${this.name}/image/compressed`);
   }
+  get infoTopic(): string {
+    return this.ros.topic(`${this.name}/camera_info`);
+  }
   afterStep(time: number): void {
     // A capture still being read back means the GPU is behind; this sample is skipped rather than queued.
     if (this.disposed || !this.schedule.due(time) || this.pending) return;

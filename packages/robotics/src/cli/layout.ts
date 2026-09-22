@@ -1,12 +1,16 @@
 import type { ModelView } from "../urdf/view.js";
 const IMAGE = /\/image\/compressed$/;
 
-/** A layout for the standard topics: map, scans, costmap, plan and robot in 3D, one image panel per camera. */
+/**
+ * A layout for the standard topics: map, scans, costmap, plan and robot in 3D, one image panel
+ * per image topic, calibrated when its camera publishes a `CameraInfo` in `calibrations`.
+ */
 export function defaultLayout(
   scans: string[],
   images: string[],
   evaluation = false,
   model?: ModelView,
+  calibrations: string[] = [],
 ) {
   const scene = {
     cameraState: {
@@ -75,8 +79,9 @@ export function defaultLayout(
       imageTopic: image,
     };
     // The topic pair `CameraSensor` publishes; an image from elsewhere shows without calibration.
-    if (IMAGE.test(image))
-      imageMode.calibrationTopic = image.replace(IMAGE, "/camera_info");
+    const calibration = image.replace(IMAGE, "/camera_info");
+    if (IMAGE.test(image) && calibrations.includes(calibration))
+      imageMode.calibrationTopic = calibration;
     imagePanels[`Image!${image}`] = {
       imageMode,
       scene: {

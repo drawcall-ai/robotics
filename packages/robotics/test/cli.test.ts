@@ -4,10 +4,12 @@ const mocks = vi.hoisted(() => ({
   connection: { dispose: vi.fn(), subscribe: vi.fn(), service: vi.fn() },
   createConnection: vi.fn(),
   createRuntime: vi.fn(),
+  built: false,
   world: { time: 0, dispose: vi.fn(), fixedDelta: 1 / 120, update: vi.fn() },
   renderer: { dispose: vi.fn() },
   runtime: {
     disposeAsync: vi.fn<() => Promise<void>>(),
+    attachWorld: vi.fn(),
     connected: true,
     publish: vi.fn(),
     find: vi.fn<() => { dispose(): Promise<void> }[]>(() => []),
@@ -17,8 +19,19 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../src/connections/rcl.js", () => ({
   RclConnection: { create: mocks.createConnection },
 }));
-vi.mock("@drawcall/physics-rapier", () => ({
-  setupWorld: async () => mocks.world,
+vi.mock("@drawcall/physics-mujoco", () => ({
+  buildWorld: async () => {
+    mocks.built = true;
+    return mocks.world;
+  },
+}));
+vi.mock("@drawcall/physics", () => ({
+  registry: {
+    get world() {
+      return mocks.built ? mocks.world : undefined;
+    },
+    clear: vi.fn(),
+  },
 }));
 vi.mock("../src/cli/webgpu.js", () => ({
   createRenderer: async () => mocks.renderer,
@@ -47,6 +60,7 @@ import { snapshot } from "../src/cli/snapshot.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.built = false;
   vi.useFakeTimers();
   mocks.createConnection.mockResolvedValue(mocks.connection);
   mocks.createRuntime.mockReturnValue(mocks.runtime);
@@ -82,13 +96,13 @@ it("disposes the snapshot connection on timeout", async () => {
   expect(mocks.connection.dispose).toHaveBeenCalledOnce();
 });
 
-it("releases physics and rendering when native connection setup fails", async () => {
+it("releases rendering before physics is built when native connection setup fails", async () => {
   mocks.createConnection.mockRejectedValueOnce(new Error("native failed"));
   await expect(
     sim.parseAsync(["missing-scene.ts"], { from: "user" }),
   ).rejects.toThrow("native failed");
   expect(mocks.renderer.dispose).toHaveBeenCalledOnce();
-  expect(mocks.world.dispose).toHaveBeenCalledOnce();
+  expect(mocks.world.dispose).not.toHaveBeenCalled();
 });
 
 it("releases the connection when runtime construction fails before taking ownership", async () => {
@@ -101,7 +115,7 @@ it("releases the connection when runtime construction fails before taking owners
   expect(mocks.connection.dispose).toHaveBeenCalledOnce();
   expect(mocks.runtime.disposeAsync).not.toHaveBeenCalled();
   expect(mocks.renderer.dispose).toHaveBeenCalledOnce();
-  expect(mocks.world.dispose).toHaveBeenCalledOnce();
+  expect(mocks.world.dispose).not.toHaveBeenCalled();
 });
 
 it("releases acquired resources when the scene cannot be imported", async () => {
@@ -111,7 +125,7 @@ it("releases acquired resources when the scene cannot be imported", async () => 
   expect(mocks.runtime.disposeAsync).toHaveBeenCalledOnce();
   expect(mocks.connection.dispose).not.toHaveBeenCalled();
   expect(mocks.renderer.dispose).toHaveBeenCalledOnce();
-  expect(mocks.world.dispose).toHaveBeenCalledOnce();
+  expect(mocks.world.dispose).not.toHaveBeenCalled();
 });
 
 it("stops during viewer startup and removes timers and signal listeners", async () => {
@@ -160,7 +174,7 @@ it("preserves setup and cleanup failures while releasing all resources", async (
   await expect(
     sim.parseAsync(["missing-scene.ts"], { from: "user" }),
   ).rejects.toMatchObject({ error: cleanup, suppressed: setup });
-  expect(mocks.world.dispose).toHaveBeenCalledOnce();
+  expect(mocks.world.dispose).not.toHaveBeenCalled();
 });
 
 it("preserves snapshot subscription and disposal failures", async () => {
@@ -197,7 +211,7 @@ it("waits for runtime cleanup before releasing the renderer, including on failur
   reject(disposal);
   await failure;
   expect(mocks.renderer.dispose).toHaveBeenCalledOnce();
-  expect(mocks.world.dispose).toHaveBeenCalledOnce();
+  expect(mocks.world.dispose).not.toHaveBeenCalled();
 });
 
 it("reports viewer startup failure once while disposing the simulation", async () => {

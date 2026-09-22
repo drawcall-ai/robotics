@@ -1,5 +1,7 @@
 # Warehouse example
 
+MuJoCo simulates the chassis, driven wheels, free-rolling support balls and their contacts.
+
 A warehouse and a differential-drive robot in [scene.ts](scene.ts), driven by a standard ROS 2 stack: [bringup.launch.xml](bringup.launch.xml) starts the simulator node, ros2_control, SLAM Toolbox, Nav2 and a mission that drives four goals and a ground-truth evaluator that ends the launch. The simulator supplies `/robot/robot_description`, `/tf` and `/tf_static`; the controller manager consumes the description directly. [params.yaml](params.yaml) holds every node's parameters, [pixi.toml](pixi.toml) the ROS installation.
 
 ```sh

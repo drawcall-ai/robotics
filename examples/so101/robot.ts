@@ -154,8 +154,13 @@ export function arm(height: number) {
               ? gripperDrive
               : {
                   interface: "position",
-                  stiffness: 8000,
-                  damping: 20,
+                  // Damping is the servo's torque-speed slope, maxForce over
+                  // maxVelocity, so the motor brakes itself towards its rated
+                  // speed. The old value of 20 spent the whole 3Nm budget on
+                  // damping past 0.15rad/s, leaving nothing to hold a pose, and
+                  // only a relay-stiff gain of 8000 hid that.
+                  stiffness: 500,
+                  damping: 2,
                   maxForce: 3,
                   maxVelocity: 1.5,
                 },

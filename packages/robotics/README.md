@@ -42,11 +42,12 @@ From that structure the robot derives everything ROS needs: the base link is the
 ```sh
 drawcall-robotics urdf scene.ts > robot.urdf      # links, colliders, joints, mounts, ros2_control block
 drawcall-robotics sim scene.ts --viewer               # serves and opens Lichtblick with a layout for the scene's sensors
+drawcall-robotics sim scene.ts --viewer --perception  # also the controller's own view of the world, see below
 drawcall-robotics view rosbag2_2026_09_16-14_50_26    # a rosbag2 directory or .mcap file, layout from its sensors
 drawcall-robotics snapshot /robot/camera/image/compressed --out frame.jpg
 ```
 
-`sim` is a ROS 2 node through [rclnodejs](https://github.com/RobotWebTools/rclnodejs). It publishes `/clock`, retained `<namespace>/robot_description`, `/tf`, `/tf_static`, `<namespace>/joint_states`, one `LaserScan` per lidar and a `CompressedImage` plus `CameraInfo` per camera, and actuators apply `<namespace>/joint_commands` as published by the [topic-based ros2_control hardware interface](https://github.com/PickNikRobotics/topic_based_ros2_control) the URDF declares. It offers `/sim/pause`, `/sim/resume`, `/sim/step` and `/sim/reset` as `std_srvs/Trigger` and publishes ground truth on `/sim/state`. Start it from a launch file like any simulator:
+`sim` is a ROS 2 node through [rclnodejs](https://github.com/RobotWebTools/rclnodejs). It publishes `/clock`, retained `<namespace>/robot_description`, `/tf`, `/tf_static`, `<namespace>/joint_states`, one `LaserScan` per lidar and a `CompressedImage` plus `CameraInfo` per camera, and actuators apply `<namespace>/joint_commands` as published by the [topic-based ros2_control hardware interface](https://github.com/PickNikRobotics/topic_based_ros2_control) the URDF declares. It offers `/sim/pause`, `/sim/resume`, `/sim/step` and `/sim/reset` as `std_srvs/Trigger` and publishes ground truth on `/sim/state`. A controller can publish what it saw, as perception nodes usually do for RViz and Foxglove: with `--perception`, the viewer layout adds an image panel for `<namespace>/perception/image/compressed`, a `CompressedImage` with the controller's detections drawn on it. It stays out of the 3D panel, where it could be mistaken for ground truth. Recordings capture it, and `view` gives every recorded image topic a panel. Start it from a launch file like any simulator:
 
 ```python
 ExecuteProcess(cmd=["drawcall-robotics", "sim", "scene.ts"])  # node_modules/.bin on PATH, e.g. through pixi.toml
@@ -56,15 +57,19 @@ Install the package with the ROS environment sourced, for example `pixi run pnpm
 
 ## In the browser
 
-The same devices work against rosbridge, for a page that simulates while ROS runs elsewhere. The page owns the physics world (`setupWorld` makes it the default) and steps it in its own loop:
+The same devices work against rosbridge, for a page that simulates while ROS runs elsewhere. The page authors the scene, builds its MuJoCo world, and steps it in its own loop:
 
 ```ts
 import { ROS2, RosbridgeConnection } from "@drawcall/robotics";
+import { buildWorld } from "@drawcall/physics-mujoco";
 
 const connection = new RosbridgeConnection();
 await connection.connect("ws://localhost:9090", 10_000);
-const ros = new ROS2(connection, { renderer, namespace: "/robot" }); // in the default physics world
+const ros = new ROS2(connection, { renderer, namespace: "/robot" });
 await import("./scene.ts"); // the same script the CLI runs
+const world = await buildWorld({ gravity: [0, -9.81, 0] });
+ros.attachWorld(world);
+// In the render loop: world.update(deltaSeconds);
 ```
 
 `renderer` is a `CaptureRenderer`: a Three.js `WebGPURenderer`, or anything with `render`, `getRenderTarget`, `setRenderTarget` and `readRenderTargetPixelsAsync`. Byte arrays are `Uint8Array` everywhere; the rosbridge transport encodes them as base64 on the wire.

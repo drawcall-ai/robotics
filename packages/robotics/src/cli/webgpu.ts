@@ -16,7 +16,7 @@ const gpu: { instance: GPU; adapter?: GPUAdapter; device?: GPUDevice } = {
   instance: create([]),
 };
 
-/** A Three.js renderer on Dawn. Call it only after Rapier is instantiated: the reverse order crashes Node. */
+/** A Three.js renderer on Dawn. */
 export async function createRenderer(): Promise<WebGPURenderer> {
   const adapter = await gpu.instance.requestAdapter();
   if (!adapter)

@@ -9,11 +9,15 @@ export const movingPads = [
   { size: [0.008, 0.045, 0.012], position: [-0.0083, -0.0595, 0.0189] },
 ] as const;
 
-// A gentle current-limited grip avoids ejecting a 12g cube with an impulsive closure.
+/**
+ * A current-limited grip: a fifteenth of the servo's 3Nm stall torque, enough that it will not
+ * crush what it picks up. At 0.05Nm the jaws gave way at 2.6 times the cube's weight and let it
+ * slide out of a carry; this holds it at about nine times.
+ */
 export const gripperDrive: JointActuatorOptions = {
   interface: "position",
   stiffness: 20,
   damping: 0.2,
-  maxForce: 0.05,
+  maxForce: 0.2,
   maxVelocity: 1.5,
 };

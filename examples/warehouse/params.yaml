@@ -194,7 +194,7 @@ diff_drive_controller:
     odom_frame_id: odom
     base_frame_id: base_footprint
     enable_odom_tf: true
-    # Encoder velocities integrate cleanly; positions wrap at ±π in the simulation's joint state.
+    # Integrate measured wheel velocities for encoder odometry.
     position_feedback: false
     open_loop: false
     cmd_vel_timeout: 0.5

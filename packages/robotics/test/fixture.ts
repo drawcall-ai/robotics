@@ -1,12 +1,7 @@
 import { afterEach, vi } from "vitest";
 import type { RenderTarget, Texture } from "three";
-import {
-  AuthoringWorld,
-  RevoluteJoint,
-  RigidBody,
-  setDefaultWorld,
-} from "@drawcall/physics";
-import { setupWorld } from "@drawcall/physics-rapier";
+import { RevoluteJoint, RigidBody, registry } from "@drawcall/physics";
+import { buildWorld } from "@drawcall/physics-mujoco";
 import type { Connection } from "../src/runtime.js";
 import { OfflineConnection } from "../src/connections/offline.js";
 import { JointActuator } from "../src/devices/actuator.js";
@@ -18,6 +13,7 @@ import { ROS2 } from "../src/runtime.js";
 const cleanup: (() => void)[] = [];
 afterEach(() => {
   for (const release of cleanup.splice(0).reverse()) release();
+  registry.clear();
   vi.restoreAllMocks();
 });
 export function defer(release: () => void): void {
@@ -93,9 +89,12 @@ export class RendererStub implements CaptureRenderer {
   }
 }
 
-/** A runtime over a stepping Rapier world without gravity. */
-export async function simulation({ namespace }: { namespace?: string } = {}) {
-  const world = await setupWorld({ gravity: [0, 0, 0], fixedDelta: 0.01 });
+/** A runtime over a stepping MuJoCo world without gravity. */
+export async function simulation({
+  namespace,
+  gravity = [0, 0, 0],
+}: { namespace?: string; gravity?: [number, number, number] } = {}) {
+  const world = await buildWorld({ gravity, fixedDelta: 0.01 });
   defer(() => world.dispose());
   const connection = new ConnectionStub();
   const renderer = new RendererStub();
@@ -106,7 +105,6 @@ export async function simulation({ namespace }: { namespace?: string } = {}) {
 
 /** A runtime that only builds a scene, as URDF export does. */
 export function offline(namespace?: string): ROS2 {
-  setDefaultWorld(new AuthoringWorld());
   const ros = new ROS2(new OfflineConnection(), { namespace });
   defer(() => ros.dispose());
   return ros;
@@ -123,11 +121,9 @@ export function cart(
     interface?: "position" | "velocity" | "effort";
   } = {},
 ) {
-  const { world } = ros;
-  const base = new RigidBody({ world, type: "static" });
+  const base = new RigidBody({ type: "static" });
   base.name = "base_link";
   const wheel = new RigidBody({
-    world,
     mass: 1,
     centerOfMass: [0, 0, 0],
     diagonalInertia: [1, 1, 1],

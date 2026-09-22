@@ -1,161 +1,143 @@
-"""Nominal finger geometry and collision checks against the visually located bowl."""
+"""Grasp geometry and Cartesian paths for the SO101 gripper."""
 
 import math
-import itertools
-
-import cv2
 
 import numpy as np
 
-from kinematics import fk, transform
+from kinematics import LIMITS, TCP, fk, ik, transform
 
-# Hardware pad boxes, subdivided along their lengths for tighter clearance tests.
-FIXED = np.array([-0.0119, 0.0, -0.080])
+OPEN = 0.4
+CLOSED = -0.174
+GRASP_Z = 0.015
+# Cube-top centre in gripper coordinates, midway between the open pads: the pad
+# faces bracket a 22mm cube from 0.0031 to 0.0228, so the closing jaw slides the
+# cube against the fixed pad from either side.
+GRASP_TOP = np.array([0.0129, 0.0, -0.086])
+# The moving pad's centre in the jaw frame, and that frame in the gripper frame.
 MOVING = np.array([-0.0083, -0.0595, 0.0189])
 JAW = transform((0.0202, 0.0188, -0.0234), (math.pi / 2, 0.0, 0.0))
+# Tool speed the drives follow without trailing, and the fastest any joint is
+# asked to turn: past the servo's rated 1.5rad/s there is no torque left.
+TOOL_SPEED = 0.05
+JOINT_RATE = 0.6
 
 
-def pad_boxes(q):
-    gripper = fk(q)
-    jaw = gripper @ JAW @ transform((0.0, 0.0, 0.0), (0.0, 0.0, float(q[5])))
-    yield gripper, np.array([-0.018, 0.0, -0.05]), np.array([0.020, 0.020, 0.022])
-    for i in range(5):
-        fixed_offset = (i - 2) * (0.0488 / 5)
-        moving_offset = (i - 2) * (0.045 / 5)
-        yield (
-            gripper,
-            FIXED + (0.0, 0.0, fixed_offset),
-            np.array([0.008, 0.012, 0.0488 / 5]),
-        )
-        yield (
-            jaw,
-            MOVING + (0.0, moving_offset, 0.0),
-            np.array([0.008, 0.045 / 5, 0.012]),
-        )
+def grasp_tool(xy, q):
+    """Tool point that puts a cube seen at xy between the open pads."""
+    return np.asarray(xy) - (GRASP_TOP[0] - TCP[0]) * fk(q)[:2, 0]
 
 
-CORNERS = np.array(list(itertools.product((-1.0, 1.0), repeat=3)))
-EDGES = [
-    (i, j)
-    for i in range(8)
-    for j in range(i + 1, 8)
-    if np.count_nonzero(CORNERS[i] != CORNERS[j]) == 1
-]
+def pad_bearing(q):
+    """World bearing the pad faces look along."""
+    axis = fk(q)[:3, 0]
+    return math.atan2(float(axis[1]), float(axis[0]))
 
 
-def clears_bowl(q, bowl):
-    """Exact projected pad polygon below the guarded rim height.
+def face_gap(bearing, yaw):
+    """Signed angle from the pads to the nearest cube face, within +-45deg."""
+    return (yaw - bearing + math.pi / 4) % (math.pi / 2) - math.pi / 4
 
-    An AABB quickly rejects distant boxes. Intersecting boxes are clipped at
-    rim height before testing the circular bowl, avoiding false corner alarms.
+
+def grasp_pose(xy, roll):
+    """Joints with the open pads bracketing a cube top seen at xy."""
+    q, _ = ik((*xy, GRASP_Z), roll=roll)
+    for _ in range(3):
+        q, _ = ik((*grasp_tool(xy, q), GRASP_Z), q, roll=roll)
+    return q
+
+
+def square_roll(xy, yaw, seed=0.0):
+    """Wrist roll that squares the pads to a cube face at the grasp itself.
+
+    The bearing the pads look along is set by the whole arm, not the wrist
+    alone, so it is solved where the grasp happens. Jaws that close between a
+    face and a diagonal tip the cube as they take its weight.
     """
-    if bowl is None:
-        return True
-    for frame, center, size in pad_boxes(q):
-        world = frame[:3, :3] @ center + frame[:3, 3]
-        half = np.abs(frame[:3, :3]) @ (size / 2)
-        nearest = np.maximum(np.abs(world[:2] - bowl) - half[:2], 0.0)
-        if np.linalg.norm(nearest) >= 0.085 or world[2] - half[2] >= 0.055:
+    roll = seed
+    for _ in range(6):
+        gap = face_gap(pad_bearing(grasp_pose(xy, roll)), yaw)
+        if abs(gap) < math.radians(0.25):
+            break
+        roll += gap
+    return roll
+
+
+# Corners of everything that reaches below the bowl rim at a grasp, in the
+# gripper frame around the tool point: the fixed pad and its block on one side
+# and the open jaw's pad on the other.
+LOW = np.array(
+    [[x, y] for x in (-0.031, 0.045) for y in (-0.012, 0.012)]
+    + [[0.007, -0.012], [0.007, 0.012]]
+) + TCP[:2]
+# Outer bowl wall, and a margin for arm and vision errors.
+BOWL_WALL = 0.076
+GUARD = 0.006
+
+
+def low_corners(q):
+    """World xy of the low gripper corners at joints q."""
+    frame = fk(q)
+    return LOW @ frame[:2, :2].T + frame[:2, 3]
+
+
+def clearance(q, bowl, cubes):
+    """Least gap from the low corners to the bowl wall and to the other cubes."""
+    corners = low_corners(q)
+    gaps = [np.min(np.linalg.norm(corners - bowl, axis=1)) - BOWL_WALL]
+    for cube in cubes:
+        gaps.append(np.min(np.linalg.norm(corners - cube, axis=1)) - 0.016)
+    return float(min(gaps))
+
+
+def choose_roll(xy, yaw, bowl, cubes):
+    """Square-face roll that keeps the low gripper corners clear of the bowl and cubes."""
+    squared = square_roll(xy, yaw)
+    best = None
+    for offset in (0.0, math.pi / 2, -math.pi / 2, math.pi, -math.pi):
+        roll = square_roll(xy, yaw, squared + offset)
+        if not LIMITS[4, 0] + 0.05 < roll < LIMITS[4, 1] - 0.05:
             continue
-        vertices = (center + CORNERS * (size / 2)) @ frame[:3, :3].T + frame[:3, 3]
-        clipped = list(vertices[vertices[:, 2] <= 0.055])
-        for i, j in EDGES:
-            first, second = vertices[i], vertices[j]
-            if (first[2] - 0.055) * (second[2] - 0.055) < 0:
-                clipped.append(
-                    first
-                    + (0.055 - first[2]) / (second[2] - first[2]) * (second - first)
-                )
-        polygon = cv2.convexHull(np.asarray(clipped, dtype=np.float32)[:, :2].copy())
-        if cv2.pointPolygonTest(polygon, tuple(map(float, bowl)), True) > -0.085:
-            return False
-    return True
+        q = grasp_pose(xy, roll)
+        if np.linalg.norm((fk(q) @ TCP)[:2] - grasp_tool(xy, q)) > 0.003:
+            continue
+        gap = clearance(q, bowl, cubes)
+        if best is None or gap > best[0] + 1e-6:
+            best = (gap, roll)
+    if best is None:
+        raise ValueError(f"No square grasp roll within the wrist limits at {xy}")
+    if best[0] < GUARD:
+        raise ValueError(f"Grasp at {xy} comes within {best[0] * 1000:.0f}mm of the bowl")
+    return best[1]
 
 
-def edge_clears_bowl(start, end, bowl):
-    return all(
-        clears_bowl(start + t * (end - start), bowl) for t in np.linspace(0.0, 1.0, 17)
-    )
+def duration(start, end, seconds):
+    """Stretch a segment until no joint outruns JOINT_RATE at its eased peak."""
+    travel = float(np.max(np.abs(np.asarray(end) - np.asarray(start))))
+    return max(seconds, 1.5 * travel / JOINT_RATE)
 
 
-class PlanningError(ValueError):
-    pass
+def path(start, destination, grip, roll, seconds=1.0):
+    """Joint waypoints along a straight tool line, and how long to take.
 
-
-def plan_move(start, destination, grip, bowl, duration, roll=0.0):
-    """Cartesian segments whose interpolated joint edges clear the bowl."""
-    from kinematics import TCP, ik
-
-    destination = np.asarray(destination)
+    Interpolating joints between two distant poses sweeps the tool through an
+    arc; a centimetre of waypoints keeps it on the line the caller checked.
+    """
+    destination = np.asarray(destination, dtype=float)
     origin = (fk(start) @ TCP)[:3]
-    count = max(1, int(np.ceil(np.linalg.norm(destination - origin) / 0.025)))
-    if bowl is None:
-        count = 1
-    result = []
-    previous = start.copy()
+    span = float(np.linalg.norm(destination - origin))
+    count = max(1, int(np.ceil(span / 0.01)))
+    points = [np.array(start, dtype=float)]
     for fraction in np.linspace(0.0, 1.0, count + 1)[1:]:
         point = origin + fraction * (destination - origin)
-        q, _ = ik(point, previous, roll=roll)
-        command = np.r_[q, start[5] + fraction * (grip - start[5])]
-        error = np.linalg.norm((fk(q) @ TCP)[:3] - point)
+        turn = start[4] + fraction * (roll - start[4])
+        q, _ = ik(point, points[-1], roll=turn)
+        error = float(np.linalg.norm((fk(q) @ TCP)[:3] - point))
         if error > 0.008:
-            raise PlanningError(
-                f"Unreachable waypoint {point.round(3)}: {error * 1000:.1f}mm error"
+            raise ValueError(
+                f"Unreachable waypoint {point.round(3)}: {error * 1000:.1f}mm off"
             )
-        if not edge_clears_bowl(previous, command, bowl):
-            raise PlanningError(f"Finger/bowl clearance rejected at {point.round(3)}")
-        result.append((command, max(0.16, duration / count)))
-        previous = command
-    return result
-
-
-def lowest_finger(q):
-    return min(
-        (frame[:3, :3] @ center + frame[:3, 3])[2]
-        - (np.abs(frame[:3, :3]) @ (size / 2))[2]
-        for frame, center, size in pad_boxes(q)
-    )
-
-
-def closure_floor_clearance(q):
-    """Full closing sweep, evaluated from measured arm joint positions."""
-    return (
-        min(lowest_finger(np.r_[q[:5], grip]) for grip in np.linspace(-0.174, 0.4, 17))
-        + 0.003
-    )
-
-
-def choose_grasp_roll(start, xy, preferred, bowl):
-    """Square faces admit quarter-turn alternatives; choose a clear jaw opening."""
-    from kinematics import LIMITS
-
-    errors = []
-    for offset in (0.0, math.pi / 2, -math.pi / 2, math.pi, -math.pi):
-        roll = preferred + offset
-        if not LIMITS[4, 0] < roll < LIMITS[4, 1]:
-            continue
-        try:
-            aligned = plan_move(start, (*xy, 0.08), 0.4, bowl, 1.0, roll)[-1][0]
-            target = np.r_[np.asarray(xy) - 0.002 * fk(aligned)[:2, 0], 0.015]
-            low = plan_move(aligned, target, 0.4, bowl, 2.0, roll)[-1][0]
-            closed = plan_move(low, target, -0.174, bowl, 1.2, roll)[-1][0]
-            plan_move(closed, (*target[:2], 0.085), -0.174, bowl, 2.0, roll)
-            return roll
-        except PlanningError as error:
-            errors.append(str(error))
-    raise PlanningError("No clear square-face grasp: " + "; ".join(errors))
-
-
-def camera_floor_clearance(q, top, normal):
-    """Jaw sweep above the table inferred from a horizontal 22mm cube."""
-    gripper = fk(q)
-    floor = gripper[:3, 3] + gripper[:3, :3] @ (top - 0.022 * normal)
-    up = gripper[:3, :3] @ normal
-    clearance = float("inf")
-    for angle in np.linspace(-0.174, 0.4, 17):
-        pose = np.array(q, copy=True)
-        pose[5] = angle
-        for frame, center, size in pad_boxes(pose):
-            corners = (center + CORNERS * (size / 2)) @ frame[:3, :3].T + frame[:3, 3]
-            clearance = min(clearance, float(np.min((corners - floor) @ up)))
-    return clearance
+        points.append(np.r_[q, start[5] + fraction * (grip - start[5])])
+    seconds = max(seconds, span / TOOL_SPEED)
+    for a, b in zip(points, points[1:]):
+        seconds = max(seconds, count * duration(a, b, 0.0))
+    return points, seconds

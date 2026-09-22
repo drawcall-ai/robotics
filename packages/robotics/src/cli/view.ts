@@ -82,5 +82,6 @@ async function recordingLayout(file: string): Promise<unknown> {
       (channel) => channel.topic === EVALUATION_TOPIC,
     ),
     model,
+    topics("sensor_msgs/msg/CameraInfo"),
   );
 }

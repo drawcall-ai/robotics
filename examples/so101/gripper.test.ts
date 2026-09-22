@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
-import { setupWorld } from "@drawcall/physics-rapier";
+import { buildWorld } from "@drawcall/physics-mujoco";
 import {
+  registry,
   BoxCollider,
   JointDrive,
   RevoluteJoint,
@@ -13,10 +14,12 @@ it.each([0, Math.PI / 4])(
   "physically retains a cube at yaw %s after its support is removed",
   async (yaw) => {
     // Isolated gripper in its local CAD coordinates (+Z up), with no robot/controller assistance.
-    const world = await setupWorld({
+    const world = await buildWorld({
       gravity: [0, 0, -9.81],
-      fixedDelta: 1 / 120,
-      solverIterations: 12,
+      fixedDelta: 1 / 1000,
+      solverIterations: 50,
+      frictionImpedanceRatio: 10,
+      frictionCone: "elliptic",
     });
     try {
       const scene = new Group();
@@ -72,21 +75,22 @@ it.each([0, Math.PI / 4])(
       floor.position.z = -0.113;
       box(floor, [0.2, 0.2, 0.01], [0, 0, 0]);
       scene.add(fixed, jaw, joint, cube, floor);
-      for (let step = 0; step < 240; step++) {
-        const fraction = Math.min(1, step / 120);
+      for (let step = 0; step < 2000; step++) {
+        const fraction = Math.min(1, step / 1000);
         const blend = fraction * fraction * (3 - 2 * fraction);
         drive.setTarget({ position: 0.4 - 0.574 * blend });
-        world.update(1 / 120);
+        world.update(1 / 1000);
       }
       floor.dispose();
       scene.remove(floor);
       const held = cube.position.clone();
-      for (let step = 0; step < 1200; step++) world.update(1 / 120);
+      for (let step = 0; step < 10000; step++) world.update(1 / 1000);
       expect(cube.position.distanceTo(held)).toBeLessThan(0.005);
       expect(cube.position.z).toBeGreaterThan(-0.102);
       expect(joint.getState().position).toBeGreaterThan(-0.1);
     } finally {
       world.dispose();
+      registry.clear();
     }
   },
 );

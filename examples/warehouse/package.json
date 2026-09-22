@@ -11,7 +11,7 @@
     "results": "pnpm --filter @drawcall/robotics build && drawcall-robotics results"
   },
   "dependencies": {
-    "@drawcall/physics": "0.6.0",
+    "@drawcall/physics": "0.8.0",
     "@drawcall/robotics": "workspace:*",
     "three": "^0.185.1"
   },

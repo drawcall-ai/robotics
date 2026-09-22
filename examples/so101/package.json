@@ -12,7 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@drawcall/physics": "0.6.0",
+    "@drawcall/physics": "0.8.0",
     "@drawcall/robotics": "workspace:*",
     "three": "^0.185.1"
   },
@@ -20,6 +20,6 @@
     "@types/three": "^0.185.0",
     "typescript": "^5.9.3",
     "@types/node": "^26.6.0",
-    "@drawcall/physics-rapier": "0.6.0"
+    "@drawcall/physics-mujoco": "0.8.0"
   }
 }
