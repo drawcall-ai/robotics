@@ -12,6 +12,13 @@ export function stamp(seconds: number): { sec: number; nanosec: number } {
   const nanoseconds = Math.round(seconds * 1e9);
   return { sec: Math.floor(nanoseconds / 1e9), nanosec: nanoseconds % 1e9 };
 }
+/** Base64 text of `bytes`, in chunks small enough to spread into `String.fromCharCode`. */
+export function base64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000)
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  return btoa(binary);
+}
 export function header(time: number, frame: string) {
   return { stamp: stamp(time), frame_id: frame };
 }

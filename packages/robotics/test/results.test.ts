@@ -32,19 +32,7 @@ function state(
     metrics: { score: elapsed * 10 },
   };
 }
-async function record(
-  file: string,
-  states: (
-    | EvaluationState
-    | {
-        stamp: EvaluationState["stamp"];
-        elapsed: number;
-        status: EvaluationState["status"];
-        reason: string;
-        metrics: { name: string; value: number }[];
-      }
-  )[],
-) {
+async function record(file: string, states: EvaluationState[]) {
   const definition = "string data\n";
   const serializer = new MessageWriter(parse(definition, { ros2: true }));
   const chunks: Uint8Array[] = [];
@@ -106,12 +94,4 @@ it("rejects missing score and changes after completion", async () => {
   await expect(readResult(file)).rejects.toThrow("score is missing");
   await record(file, [state("success"), state("success", 1)]);
   await expect(readResult(file)).rejects.toThrow("after its terminal");
-});
-
-it("reads existing name/value-array recordings without retaining episode identity", async () => {
-  const file = join(await directory(), "run.mcap");
-  await record(file, [
-    { ...state("success", 10), metrics: [{ name: "score", value: 100 }] },
-  ]);
-  expect(await readResult(file)).toEqual(state("success", 10));
 });

@@ -15,12 +15,13 @@ import { arm } from "./robot.ts";
 import {
   bowlFloor,
   bowlHeight,
-  bowlRadius,
   contained,
   count,
   deskHeight,
   layout,
   objectSize,
+  wallRadius,
+  wallSides,
 } from "./task.ts";
 
 const scene = new Scene();
@@ -66,7 +67,7 @@ bowl.position.set(bowlPlacement.x, deskHeight, bowlPlacement.z);
 bowl.rotation.y = Math.random() * Math.PI * 2;
 bowl.setMaterial({ staticFriction: 0.5, dynamicFriction: 0.5, restitution: 0 });
 const floorMesh = new Mesh(
-  new CylinderGeometry(bowlRadius + 0.004, bowlRadius + 0.004, bowlFloor, 32),
+  new CylinderGeometry(wallRadius, wallRadius, bowlFloor, wallSides),
   blue,
 );
 floorMesh.position.y = bowlFloor / 2;
@@ -82,14 +83,17 @@ for (let strip = 0; strip < 4; strip++) {
   collider.rotation.y = (strip * Math.PI) / 4;
   bowl.add(collider);
 }
-for (let side = 0; side < 32; side++) {
-  const angle = (side * Math.PI) / 16;
-  const radius = bowlRadius + 0.004;
+for (let side = 0; side < wallSides; side++) {
+  const angle = (2 * Math.PI * side) / wallSides;
   box(
     bowl,
-    [0.008, bowlHeight, 2 * radius * Math.tan(Math.PI / 32) + 0.001],
+    [0.008, bowlHeight, 2 * wallRadius * Math.tan(Math.PI / wallSides) + 0.001],
     blue,
-    [radius * Math.cos(angle), bowlHeight / 2, radius * Math.sin(angle)],
+    [
+      wallRadius * Math.cos(angle),
+      bowlHeight / 2,
+      wallRadius * Math.sin(angle),
+    ],
     -angle,
   );
 }
@@ -126,6 +130,10 @@ for (const object of objects) {
     contacts.delete(otherBody),
   );
 }
+function still(body: RigidBody): boolean {
+  const { linear, angular } = body.getVelocity();
+  return linear.length() < 0.015 && angular.length() < 0.15;
+}
 const initialPosition = bowl.position.clone();
 const initialRotation = bowl.quaternion.clone();
 let displacement = 0,
@@ -153,17 +161,11 @@ new Evaluator({
   },
   success: {
     allObjectsSettled: ({ elapsed, metrics }) => {
-      const still =
+      const settled =
         metrics.objectsInBowl === count &&
-        bowl.getVelocity().linear.length() < 0.015 &&
-        bowl.getVelocity().angular.length() < 0.15 &&
-        objects.every(
-          (o) =>
-            o.getVelocity().linear.length() < 0.015 &&
-            o.getVelocity().angular.length() < 0.15 &&
-            touchingRobot.get(o)?.size === 0,
-        );
-      if (!still) {
+        still(bowl) &&
+        objects.every((o) => still(o) && touchingRobot.get(o)?.size === 0);
+      if (!settled) {
         settledSince = undefined;
         return false;
       }

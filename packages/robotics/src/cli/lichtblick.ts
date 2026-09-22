@@ -1,3 +1,4 @@
+import { once } from "node:events";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rename, rm } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -66,19 +67,9 @@ export async function serveLichtblick(
   signal?.addEventListener("abort", close, { once: true });
   using resources = new DisposableStack();
   resources.defer(close);
-  await new Promise<void>((resolve, reject) => {
-    const finish = (error?: unknown) => {
-      signal?.removeEventListener("abort", abort);
-      server.off("error", finish);
-      if (error !== undefined) reject(error);
-      else resolve();
-    };
-    const abort = () => finish(signal?.reason);
-    signal?.addEventListener("abort", abort, { once: true });
-    server.once("error", finish);
-    server.listen({ port: 0, host: "127.0.0.1", signal }, finish);
-  });
-  signal?.throwIfAborted();
+  const listening = once(server, "listening", { signal });
+  server.listen({ port: 0, host: "127.0.0.1", signal });
+  await listening;
   const address = server.address();
   if (!address || typeof address === "string")
     throw new Error("Viewer has no TCP address");

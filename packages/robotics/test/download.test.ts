@@ -17,18 +17,20 @@ vi.mock("node:os", async (original) => ({
   ...(await original<typeof import("node:os")>()),
   homedir: () => fixture.home,
 }));
-vi.mock("node:http", () => ({
-  createServer: () => ({
-    once() {},
-    off() {},
-    listen(_options: unknown, ready: () => void) {
-      ready();
+vi.mock("node:http", async () => {
+  const { EventEmitter } = await import("node:events");
+  return {
+    createServer: () => {
+      const server = new EventEmitter();
+      return Object.assign(server, {
+        listen: () => queueMicrotask(() => server.emit("listening")),
+        address: () => ({ port: 8080 }),
+        closeAllConnections() {},
+        close() {},
+      });
     },
-    address: () => ({ port: 8080 }),
-    closeAllConnections() {},
-    close() {},
-  }),
-}));
+  };
+});
 
 vi.mock("open", () => ({ default: vi.fn() }));
 

@@ -41,9 +41,6 @@ importers:
         specifier: ^0.185.1
         version: 0.185.1
     devDependencies:
-      '@drawcall/physics-mujoco':
-        specifier: 0.8.0
-        version: 0.8.0(@drawcall/physics@0.8.0(three@0.185.1))(three@0.185.1)
       '@types/node':
         specifier: ^26.6.0
         version: 26.6.0

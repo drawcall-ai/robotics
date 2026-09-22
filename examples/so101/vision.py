@@ -5,7 +5,15 @@ import math
 import cv2
 import numpy as np
 
-from kinematics import CAMERA, fk
+
+
+# The wrist camera's vertical field of view.
+FOV = math.radians(70)
+
+
+def focal(height):
+    """Focal length in pixels of an image `height` pixels tall."""
+    return height / (2 * math.tan(FOV / 2))
 
 
 def color_masks(rgb):
@@ -20,11 +28,12 @@ def color_masks(rgb):
     }
 
 
-def detect(rgb, q, angles=None):
+def detect(arm, rgb, q, angles=None):
     """Intersect color pixel rays with known tabletop/object-height planes."""
     a = rgb.astype(float) / 255
     masks = color_masks(rgb)
-    camera = fk(q) @ CAMERA
+    camera = arm.fk(q) @ arm.camera
+    f = focal(rgb.shape[0])
     result = {}
     for name, mask in masks.items():
         if name != "bowl":
@@ -35,19 +44,16 @@ def detect(rgb, q, angles=None):
                 continue
             index = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
             mask = labels == index
-        if name != "bowl":
             brightness = np.max(a, axis=2)
             mask &= brightness >= np.percentile(brightness[mask], 90) * 0.94
         yy, xx = np.where(mask)
         if len(xx) < 25:
             continue
-        # Housing +Z is forward; image right is housing -X.
-        f = rgb.shape[0] / (2 * math.tan(math.radians(35)))
         rays = (
             np.stack(
                 [
-                    -(xx - rgb.shape[1] / 2) / f,
-                    -(yy - rgb.shape[0] / 2) / f,
+                    (xx - rgb.shape[1] / 2) / f,
+                    (yy - rgb.shape[0] / 2) / f,
                     np.ones(len(xx)),
                 ],
                 axis=1,
@@ -63,15 +69,11 @@ def detect(rgb, q, angles=None):
         if np.count_nonzero(valid) < 25:
             continue
         xy = points[valid, :2]
-        center = (
-            (np.percentile(xy, 5, axis=0) + np.percentile(xy, 95, axis=0)) / 2
-            if name == "bowl"
-            else np.median(xy, axis=0)
-        )
-        if name != "bowl":
-            rectangle = cv2.minAreaRect(xy.astype(np.float32))
-            center = np.array(rectangle[0])
-            if angles is not None:
-                angles[name] = math.radians(rectangle[2])
-        result[name] = center
+        if name == "bowl":
+            result[name] = (np.percentile(xy, 5, axis=0) + np.percentile(xy, 95, axis=0)) / 2
+            continue
+        rectangle = cv2.minAreaRect(xy.astype(np.float32))
+        result[name] = np.array(rectangle[0])
+        if angles is not None:
+            angles[name] = math.radians(rectangle[2])
     return result

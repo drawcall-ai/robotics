@@ -13,6 +13,7 @@ import {
   JointActuator,
   LaserSensor,
   Robot,
+  rosPosition,
 } from "@drawcall/robotics";
 import {
   AmbientLight,
@@ -31,9 +32,9 @@ import {
 
 const scene = new Scene();
 const obstacles = new Set<RigidBody>();
-const bot = new Robot();
-bot.name = "warehouse";
-scene.add(bot);
+const robot = new Robot();
+robot.name = "warehouse";
+scene.add(robot);
 const concrete = new MeshStandardMaterial({
   color: "#b7b9ad",
   roughness: 0.95,
@@ -123,7 +124,7 @@ function assemble() {
   const lidar = new Mesh(new CylinderGeometry(0.09, 0.09, 0.06, 24), dark);
   lidar.position.set(0, 0.21, -0.32);
   chassis.add(lidar);
-  bot.add(chassis);
+  robot.add(chassis);
   for (const z of [-0.31, 0.31]) {
     const ball = new RigidBody({ mass: 0.2, canSleep: false });
     ball.position.set(0, 0.09, z);
@@ -131,7 +132,7 @@ function assemble() {
       new SphereCollider({ radius: 0.09 }),
       new Mesh(new SphereGeometry(0.09, 16, 12), metal),
     );
-    bot.add(
+    robot.add(
       ball,
       new SphericalJoint({
         body0: chassis,
@@ -167,7 +168,7 @@ function assemble() {
     joint.setDrive(
       new JointActuator({ interface: "velocity", damping: 30, maxForce: 10 }),
     );
-    bot.add(body, joint);
+    robot.add(body, joint);
   }
   wheel("left_wheel", -0.45);
   wheel("right_wheel", 0.45);
@@ -240,10 +241,8 @@ const evaluation = new Evaluator({
     if (!target) return 100;
     const start = checkpoints[reached - 1] ?? [0, 0];
     const length = Math.hypot(target[0] - start[0], target[1] - start[1]);
-    const distance = Math.hypot(
-      target[0] + chassis.position.z,
-      target[1] + chassis.position.x,
-    );
+    const { x, y } = rosPosition(chassis.position);
+    const distance = Math.hypot(target[0] - x, target[1] - y);
     const progress = Math.min(0.99, Math.max(0, 1 - distance / length));
     bestScore = Math.max(
       bestScore,

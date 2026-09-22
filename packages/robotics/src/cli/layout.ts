@@ -1,17 +1,37 @@
+import { EVALUATION_TOPIC, SCORE_TOPIC } from "../evaluation.js";
 import type { ModelView } from "../urdf/view.js";
 const IMAGE = /\/image\/compressed$/;
+const SCENE = {
+  meshUpAxis: "z_up",
+  transforms: {
+    enablePreloading: true,
+    showLabel: false,
+    axisScale: 0,
+    lineWidth: 0,
+  },
+};
+
+export interface LayoutTopics {
+  scans?: string[];
+  images?: string[];
+  /** The `CameraInfo` topics published beside images, for calibrated image panels. */
+  calibrations?: string[];
+  /** Adds the score plot and the evaluation status. */
+  evaluation?: boolean;
+  model?: ModelView;
+}
 
 /**
- * A layout for the standard topics: map, scans, costmap, plan and robot in 3D, one image panel
- * per image topic, calibrated when its camera publishes a `CameraInfo` in `calibrations`.
+ * A layout for the standard topics: map, scans, costmap, plan and robot in 3D, and one image panel
+ * per image topic, calibrated when its camera publishes a `CameraInfo`.
  */
-export function defaultLayout(
-  scans: string[],
-  images: string[],
+export function defaultLayout({
+  scans = [],
+  images = [],
+  calibrations = [],
   evaluation = false,
-  model?: ModelView,
-  calibrations: string[] = [],
-) {
+  model,
+}: LayoutTopics) {
   const scene = {
     cameraState: {
       perspective: true,
@@ -22,15 +42,7 @@ export function defaultLayout(
     },
     followMode: "follow-pose",
     followTf: scans.length ? "map" : (model?.frame ?? "base_footprint"),
-    scene: {
-      meshUpAxis: "z_up",
-      transforms: {
-        enablePreloading: true,
-        showLabel: false,
-        axisScale: 0,
-        lineWidth: 0,
-      },
-    },
+    scene: SCENE,
     topics: {
       "/map": { visible: true, colorMode: "costmap" },
       ...Object.fromEntries(
@@ -67,39 +79,29 @@ export function defaultLayout(
       poseEstimateTopic: "/initialpose",
     },
   };
-  const imagePanels: Record<
-    `Image!${string}`,
-    {
-      imageMode: { imageTopic: string; calibrationTopic?: string };
-      scene: typeof scene.scene;
-    }
-  > = {};
-  for (const image of images) {
-    const imageMode: { imageTopic: string; calibrationTopic?: string } = {
-      imageTopic: image,
-    };
-    // The topic pair `CameraSensor` publishes; an image from elsewhere shows without calibration.
-    const calibration = image.replace(IMAGE, "/camera_info");
-    if (IMAGE.test(image) && calibrations.includes(calibration))
-      imageMode.calibrationTopic = calibration;
-    imagePanels[`Image!${image}`] = {
-      imageMode,
-      scene: {
-        meshUpAxis: "z_up",
-        transforms: {
-          enablePreloading: true,
-          showLabel: false,
-          axisScale: 0,
-          lineWidth: 0,
+  const imagePanels = Object.fromEntries(
+    images.map((image) => {
+      // The topic pair `CameraSensor` publishes; an image from elsewhere shows without calibration.
+      const calibration = image.replace(IMAGE, "/camera_info");
+      const calibrated =
+        IMAGE.test(image) && calibrations.includes(calibration);
+      return [
+        `Image!${image}`,
+        {
+          imageMode: {
+            imageTopic: image,
+            ...(calibrated ? { calibrationTopic: calibration } : {}),
+          },
+          scene: SCENE,
         },
-      },
-    };
-  }
+      ];
+    }),
+  );
   const evaluationPanels = {
     "Plot!score": {
       paths: [
         {
-          value: "/sim/score.data",
+          value: `${SCORE_TOPIC}.data`,
           enabled: true,
           timestampMethod: "receiveTime",
           showLine: false,
@@ -119,7 +121,7 @@ export function defaultLayout(
       isSynced: true,
     },
     "RawMessages!evaluation": {
-      topicPath: "/sim/evaluation",
+      topicPath: EVALUATION_TOPIC,
       diffEnabled: false,
     },
   };
@@ -147,11 +149,13 @@ export function defaultLayout(
       splitPercentage: 40,
     };
   }
-  const evaluated: Partial<typeof evaluationPanels> = evaluation
-    ? evaluationPanels
-    : {};
+  const configById: Record<string, unknown> = {
+    "3D!scene": scene,
+    ...imagePanels,
+    ...(evaluation ? evaluationPanels : {}),
+  };
   return {
-    configById: Object.assign({ "3D!scene": scene }, imagePanels, evaluated),
+    configById,
     globalVariables: {},
     userNodes: {},
     playbackConfig: { speed: 1 },

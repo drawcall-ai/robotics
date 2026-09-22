@@ -2,26 +2,9 @@ import { BufferGeometry, Color, Matrix4, Mesh, SRGBColorSpace } from "three";
 import { STLExporter } from "three/addons/exporters/STLExporter.js";
 import { ConvexGeometry } from "three/addons/geometries/ConvexGeometry.js";
 import { Vector3 } from "three";
+import { rosBasis } from "../coordinates.js";
+import { base64 } from "../messages.js";
 import type { Link } from "./links.js";
-
-const basis = new Matrix4().set(
-  0,
-  0,
-  -1,
-  0,
-  -1,
-  0,
-  0,
-  0,
-  0,
-  1,
-  0,
-  0,
-  0,
-  0,
-  0,
-  1,
-);
 
 /** Inline STL keeps the description self-contained in ROS and MCAP, without file URLs or an asset server. */
 export function meshXML(
@@ -29,9 +12,7 @@ export function meshXML(
   pose = new Matrix4(),
   convex = false,
 ): string {
-  const transformed = geometry
-    .clone()
-    .applyMatrix4(basis.clone().multiply(pose));
+  const transformed = geometry.clone().applyMatrix4(rosBasis().multiply(pose));
   let surface = transformed;
   try {
     if (convex) {
@@ -44,10 +25,7 @@ export function meshXML(
     }
     const data = new STLExporter().parse(new Mesh(surface), { binary: true });
     const bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-    let binary = "";
-    for (let offset = 0; offset < bytes.length; offset += 8192)
-      binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
-    return `<mesh filename="data:model/stl;base64,${btoa(binary)}"/>`;
+    return `<mesh filename="data:model/stl;base64,${base64(bytes)}"/>`;
   } finally {
     if (surface !== transformed) surface.dispose();
     transformed.dispose();

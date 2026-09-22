@@ -1,7 +1,6 @@
 import { Box3, Vector3 } from "three";
 import type { Robot } from "../devices/robot.js";
 import { rosPosition } from "../coordinates.js";
-import { buildLinkTree, footprintPose } from "./links.js";
 
 export interface ModelView {
   topic: string;
@@ -13,11 +12,8 @@ export interface ModelView {
 /** Saved in an XML comment so live and recorded descriptions carry identical framing. */
 export function modelView(robot: Robot): ModelView {
   robot.updateWorldMatrix(true, true);
+  const offset = new Vector3().setFromMatrixPosition(robot.tree.footprint);
   const box = new Box3().setFromObject(robot);
-  const { base, links } = buildLinkTree(robot.base, robot.linkJoints);
-  const offset = new Vector3().setFromMatrixPosition(
-    footprintPose(base, [...links.values()]),
-  );
   const center = box.isEmpty()
     ? new Vector3()
     : box

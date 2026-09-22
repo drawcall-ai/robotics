@@ -3,13 +3,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm --filter @drawcall/robotics build && pixi run launch viewer:=true",
-    "launch": "pnpm --filter @drawcall/robotics build && pixi run launch",
-    "record": "pnpm --filter @drawcall/robotics build && pixi run launch record:=true",
-    "replay": "pnpm --filter @drawcall/robotics build && drawcall-robotics view",
+    "lib": "pnpm --filter @drawcall/robotics build",
+    "dev": "pnpm lib && pixi run launch viewer:=true",
+    "launch": "pnpm lib && pixi run launch",
+    "record": "pnpm lib && pixi run launch record:=true",
+    "replay": "pnpm lib && drawcall-robotics view",
     "typecheck": "tsc --noEmit",
-    "results": "pnpm --filter @drawcall/robotics build && drawcall-robotics results",
-    "test": "vitest run"
+    "results": "pnpm lib && drawcall-robotics results"
   },
   "dependencies": {
     "@drawcall/physics": "0.8.0",
@@ -19,7 +19,6 @@
   "devDependencies": {
     "@types/three": "^0.185.0",
     "typescript": "^5.9.3",
-    "@types/node": "^26.6.0",
-    "@drawcall/physics-mujoco": "0.8.0"
+    "@types/node": "^26.6.0"
   }
 }

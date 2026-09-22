@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import {
   BoxCollider,
-  FixedJoint,
   MeshCollider,
   RevoluteJoint,
   RigidBody,
@@ -36,32 +35,101 @@ function transform(
 export function arm(height: number) {
   const robot = new Robot();
   robot.name = "so101";
-  const bodies = new Map<string, RigidBody>();
   const yellow = new MeshStandardMaterial({
     color: "#ffd12e",
     roughness: 0.65,
   });
   const black = new MeshStandardMaterial({ color: "#25272b", roughness: 0.7 });
   const loader = new STLLoader();
+  // Links on fixed joints, the camera mount and housing, are bolted into their parent's body
+  // instead of simulated as tiny fixed-joint chains.
+  const bolted = new Map<string, string>(
+    joints.filter((joint) => !joint.limits).map((j) => [j.child, j.parent]),
+  );
+  const mass = (name: string): number =>
+    (links.find((link) => link.name === name)?.mass ?? 0) +
+    [...bolted]
+      .filter(([, parent]) => parent === name)
+      .reduce((sum, [child]) => sum + mass(child), 0);
+  // Each link's body, and the link frame in that body's coordinates.
+  const frames = new Map<string, { body: RigidBody; frame: Matrix4 }>();
   for (const link of links) {
+    if (bolted.has(link.name)) continue;
     const body = new RigidBody({
       type: link.name === "base_link" ? "static" : "dynamic",
-      mass: link.mass + (link.name === "gripper_link" ? 0.035 : 0),
+      mass: mass(link.name),
       canSleep: false,
     });
     body.name = link.name;
-    // The optional mount replaces overlapping printed wrist parts in the real assembly.
-    // Its simplified collider contacts the environment, not the arm it is bolted to.
-    body.setCollisionGroups(
-      link.name.startsWith("wrist_camera")
-        ? { membership: 4, filter: 2 }
-        : { membership: 1, filter: 3 },
-    );
+    body.setCollisionGroups({ membership: 1, filter: 3 });
     body.setMaterial({
       staticFriction: 0.8,
       dynamicFriction: 0.8,
       restitution: 0,
     });
+    frames.set(link.name, { body, frame: new Matrix4() });
+    robot.add(body);
+  }
+  function place(name: string) {
+    const result = frames.get(name);
+    if (!result) throw new Error(`Missing SO101 link ${name}`);
+    return result;
+  }
+  // ROS +X forward, +Z up maps to Three -Z forward, +Y up.
+  const base = place("base_link").body;
+  base.setRotationFromMatrix(
+    new Matrix4().set(0, -1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 0, 0, 0, 0, 1),
+  );
+  base.position.y = height + 0.003;
+  base.updateMatrix();
+  const placed = new Set(["base_link"]);
+  while (placed.size < links.length) {
+    let progress = false;
+    for (const spec of joints) {
+      if (!placed.has(spec.parent) || placed.has(spec.child)) continue;
+      const parent = place(spec.parent);
+      const frame = parent.frame
+        .clone()
+        .multiply(transform(spec.xyz, spec.rpy));
+      placed.add(spec.child);
+      progress = true;
+      if (!spec.limits) {
+        frames.set(spec.child, { body: parent.body, frame });
+        continue;
+      }
+      const child = place(spec.child).body;
+      child.applyMatrix4(parent.body.matrix.clone().multiply(frame));
+      child.updateMatrix();
+      const joint = new RevoluteJoint({
+        body0: parent.body,
+        body1: child,
+        frame0: frame,
+        frame1: new Matrix4(),
+        axis: "Z",
+        limits: spec.limits,
+      });
+      joint.name = spec.name;
+      joint.setDrive(
+        new JointActuator(
+          spec.name === "gripper"
+            ? gripperDrive
+            : {
+                interface: "position",
+                // The servo's torque-speed slope, maxForce over maxVelocity, so the
+                // motor brakes itself towards its rated speed.
+                stiffness: 500,
+                damping: 2,
+                maxForce: 3,
+                maxVelocity: 1.5,
+              },
+        ),
+      );
+      robot.add(joint);
+    }
+    if (!progress) throw new Error("Disconnected SO101 joint tree");
+  }
+  for (const link of links) {
+    const { body, frame } = place(link.name);
     for (const visual of link.visuals) {
       const bytes = readFileSync(
         new URL(`./assets/${visual.file}`, import.meta.url),
@@ -73,7 +141,7 @@ export function arm(height: number) {
         ),
       );
       geometry.scale(visual.scale[0], visual.scale[1], visual.scale[2]);
-      const pose = transform(visual.xyz, visual.rpy);
+      const pose = frame.clone().multiply(transform(visual.xyz, visual.rpy));
       geometry.applyMatrix4(pose);
       const mesh = new Mesh(
         geometry,
@@ -83,29 +151,27 @@ export function arm(height: number) {
       body.add(mesh);
       // Separate jaw pads keep the grasp cavity open; a convex hull would fill it.
       if (
-        link.name !== "gripper_link" &&
-        link.name !== "moving_jaw_so101_v1_link"
-      ) {
-        const points = hulls[visual.file];
-        if (!points) throw new Error(`Missing collision hull ${visual.file}`);
-        const hull = new BufferGeometry().setAttribute(
-          "position",
-          new Float32BufferAttribute(points, 3),
-        );
-        hull.scale(visual.scale[0], visual.scale[1], visual.scale[2]);
-        hull.applyMatrix4(pose);
-        body.add(
-          new MeshCollider({ approximation: "convexHull" }).setGeometry(hull),
-        );
-      }
+        link.name === "gripper_link" ||
+        link.name === "moving_jaw_so101_v1_link"
+      )
+        continue;
+      const points = hulls[visual.file];
+      if (!points) throw new Error(`Missing collision hull ${visual.file}`);
+      const hull = new BufferGeometry().setAttribute(
+        "position",
+        new Float32BufferAttribute(points, 3),
+      );
+      hull.scale(visual.scale[0], visual.scale[1], visual.scale[2]);
+      hull.applyMatrix4(pose);
+      const collider = new MeshCollider({
+        approximation: "convexHull",
+      }).setGeometry(hull);
+      // The optional mount replaces overlapping printed wrist parts in the real assembly.
+      // Its simplified collider contacts the environment, not the arm it is bolted to.
+      if (bolted.has(link.name))
+        collider.setCollisionGroups({ membership: 4, filter: 2 });
+      body.add(collider);
     }
-    bodies.set(link.name, body);
-    robot.add(body);
-  }
-  function body(name: string) {
-    const result = bodies.get(name);
-    if (!result) throw new Error(`Missing SO101 link ${name}`);
-    return result;
   }
   function box(
     name: string,
@@ -114,64 +180,12 @@ export function arm(height: number) {
   ) {
     const collider = new BoxCollider({ size });
     collider.position.set(...position);
-    body(name).add(collider);
+    place(name).body.add(collider);
   }
   box("gripper_link", [0.04, 0.035, 0.035], [0, 0, -0.022]);
   for (const pad of fixedPads) box("gripper_link", pad.size, pad.position);
   for (const pad of movingPads)
     box("moving_jaw_so101_v1_link", pad.size, pad.position);
-  // ROS +X forward, +Z up maps to Three -Z forward, +Y up.
-  const base = body("base_link");
-  base.setRotationFromMatrix(
-    new Matrix4().set(0, -1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 0, 0, 0, 0, 1),
-  );
-  base.position.y = height + 0.003;
-  base.updateMatrix();
-  const placed = new Set(["base_link"]);
-  while (placed.size < bodies.size) {
-    let progress = false;
-    for (const spec of joints) {
-      if (!placed.has(spec.parent) || placed.has(spec.child)) continue;
-      const parent = body(spec.parent),
-        child = body(spec.child);
-      const frame = transform(spec.xyz, spec.rpy);
-      child.applyMatrix4(parent.matrix.clone().multiply(frame));
-      child.updateMatrix();
-      const options = {
-        body0: parent,
-        body1: child,
-        frame0: frame,
-        frame1: new Matrix4(),
-      };
-      const joint = spec.limits
-        ? new RevoluteJoint({ ...options, axis: "Z", limits: spec.limits })
-        : new FixedJoint(options);
-      joint.name = spec.name;
-      if (joint instanceof RevoluteJoint)
-        joint.setDrive(
-          new JointActuator(
-            spec.name === "gripper"
-              ? gripperDrive
-              : {
-                  interface: "position",
-                  // Damping is the servo's torque-speed slope, maxForce over
-                  // maxVelocity, so the motor brakes itself towards its rated
-                  // speed. The old value of 20 spent the whole 3Nm budget on
-                  // damping past 0.15rad/s, leaving nothing to hold a pose, and
-                  // only a relay-stiff gain of 8000 hid that.
-                  stiffness: 500,
-                  damping: 2,
-                  maxForce: 3,
-                  maxVelocity: 1.5,
-                },
-          ),
-        );
-      robot.add(joint);
-      placed.add(spec.child);
-      progress = true;
-    }
-    if (!progress) throw new Error("Disconnected SO101 joint tree");
-  }
   const camera = new CameraSensor({
     name: "wrist_camera",
     frameId: "wrist_camera_optical",
@@ -185,28 +199,9 @@ export function arm(height: number) {
   camera.position.z = 0.027;
   camera.near = 0.01;
   camera.updateProjectionMatrix();
-  body("wrist_camera_link").add(camera);
-  // Bolt fixed camera parts into the wrist body instead of simulating tiny fixed-joint chains.
-  const gripper = body("gripper_link");
-  for (const name of ["wrist_camera_mount_link", "wrist_camera_link"]) {
-    const part = body(name);
-    const relative = gripper.matrix.clone().invert().multiply(part.matrix);
-    for (const child of [...part.children]) {
-      child.applyMatrix4(relative);
-      if (child instanceof MeshCollider)
-        child.setCollisionGroups({ membership: 4, filter: 2 });
-      gripper.add(child);
-    }
-    for (const joint of [...robot.children])
-      if (
-        joint instanceof FixedJoint &&
-        (joint.options.body1 === part || joint.options.body0 === part)
-      ) {
-        joint.dispose();
-        robot.remove(joint);
-      }
-    part.dispose();
-    robot.remove(part);
-  }
+  const housing = place("wrist_camera_link");
+  camera.updateMatrix();
+  camera.applyMatrix4(housing.frame);
+  housing.body.add(camera);
   return robot;
 }

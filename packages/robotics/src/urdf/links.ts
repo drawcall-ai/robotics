@@ -1,4 +1,4 @@
-import { Matrix4, Quaternion, Vector3 } from "three";
+import { Camera, Matrix4, Quaternion, Vector3, type Object3D } from "three";
 import { identifier } from "../messages.js";
 import {
   RigidBody,
@@ -24,6 +24,23 @@ export interface Link {
   restPose: Matrix4;
   colliders: LinkCollider[];
 }
+/** A fixed frame on a link, such as a sensor mount. */
+export interface LinkFrame {
+  name: string;
+  link: Link;
+  /** Frame pose in link coordinates. */
+  origin: Matrix4;
+  /** A camera, whose frame follows the ROS optical convention. */
+  optical: boolean;
+}
+export interface LinkTree {
+  base: Link;
+  links: Map<RigidBody, Link>;
+  joints: LinkJoint[];
+  frames: LinkFrame[];
+  /** The base link's pose under `base_footprint`, which sits level under the lowest collider. */
+  footprint: Matrix4;
+}
 export interface LinkJoint {
   name: string;
   joint: AxisJoint | FixedJoint;
@@ -35,12 +52,15 @@ export interface LinkJoint {
 
 /**
  * The kinematic tree in link frames: the base and every body an axis joint hangs from, parents before
- * children. Every pose is read relative to its own body; only `restPose` composes across bodies.
+ * children, and the fixed frames on them. Every pose is read relative to its own body; only `restPose`
+ * and `footprint` compose across bodies. World matrices must be current.
  */
 export function buildLinkTree(
+  robot: string,
   root: RigidBody,
   axes: ReadonlyMap<string, AxisJoint | FixedJoint>,
-): { base: Link; links: Map<RigidBody, Link>; joints: LinkJoint[] } {
+  frameObjects: ReadonlyMap<string, Object3D>,
+): LinkTree {
   const base = link(root, new Matrix4(), new Matrix4());
   const links = new Map<RigidBody, Link>([[root, base]]);
   const joints: LinkJoint[] = [];
@@ -77,7 +97,33 @@ export function buildLinkTree(
     throw new Error(
       `Joints ${unreached.join(", ")} do not connect to ${root.name}`,
     );
-  return { base, links, joints };
+  const frames = [...frameObjects].map(([name, object]) => {
+    let body = object.parent;
+    while (body && !(body instanceof RigidBody)) body = body.parent;
+    if (!body) throw new Error(`Frame ${name} does not descend from a body`);
+    const link = links.get(body);
+    if (!link)
+      throw new Error(
+        `Frame ${name} is on ${body.name}, which is not a link of ${robot}`,
+      );
+    const bodyLocal = body.matrixWorld
+      .clone()
+      .invert()
+      .multiply(object.matrixWorld);
+    return {
+      name,
+      link,
+      origin: inLinkFrame(link.origin, bodyLocal),
+      optical: object instanceof Camera,
+    };
+  });
+  return {
+    base,
+    links,
+    joints,
+    frames,
+    footprint: footprintPose(base, [...links.values()]),
+  };
 }
 
 function link(body: RigidBody, origin: Matrix4, restPose: Matrix4): Link {
@@ -94,11 +140,7 @@ function link(body: RigidBody, origin: Matrix4, restPose: Matrix4): Link {
 }
 
 /** Lowest point of a collider along Three.js up, with `pose` relative to the base link. */
-export function lowestPoint(
-  shape: Shape,
-  pose: Matrix4,
-  where: string,
-): number {
+function lowestPoint(shape: Shape, pose: Matrix4, where: string): number {
   const center = new Vector3().setFromMatrixPosition(pose);
   const rotation = new Quaternion().setFromRotationMatrix(pose);
   // World up in shape coordinates; the shape's support point against it is its lowest.
@@ -136,11 +178,11 @@ export function lowestPoint(
 }
 
 /** A body-local pose expressed in the frame of the link with `origin`. */
-export function inLinkFrame(origin: Matrix4, bodyLocal: Matrix4): Matrix4 {
+function inLinkFrame(origin: Matrix4, bodyLocal: Matrix4): Matrix4 {
   return origin.clone().invert().multiply(bodyLocal);
 }
 
-export function footprintPose(base: Link, links: Link[]): Matrix4 {
+function footprintPose(base: Link, links: Link[]): Matrix4 {
   const rotation = new Matrix4().makeRotationFromQuaternion(
     base.body.getWorldQuaternion(new Quaternion()),
   );

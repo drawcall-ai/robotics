@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 import {
   EVALUATION_TOPIC,
   EVALUATION_TYPE,
+  SCORE_TOPIC,
+  SCORE_TYPE,
   type Evaluator,
 } from "../evaluation.js";
 import type { RclConnection } from "../connections/rcl.js";
@@ -59,10 +61,10 @@ export class Recorder {
     connection: RclConnection,
     time: number,
     signal: AbortSignal,
-    retainedTopics: string[] = [],
+    retainedTopics: string[],
   ): Promise<void> {
     connection.advertise(EVALUATION_TOPIC, EVALUATION_TYPE, { retain: true });
-    connection.advertise("/sim/score", "std_msgs/msg/Float64", {
+    connection.advertise(SCORE_TOPIC, SCORE_TYPE, {
       retain: true,
     });
     await this.wait(
@@ -72,7 +74,7 @@ export class Recorder {
         });
         return (
           connection.hasSubscriber(EVALUATION_TOPIC, "rosbag2_recorder") &&
-          connection.hasSubscriber("/sim/score", "rosbag2_recorder") &&
+          connection.hasSubscriber(SCORE_TOPIC, "rosbag2_recorder") &&
           retainedTopics.every(
             (topic) =>
               connection.hasSubscriber(topic, "rosbag2_recorder") &&
@@ -91,7 +93,7 @@ export class Recorder {
     await this.wait(
       () =>
         connection.acknowledged(EVALUATION_TOPIC) &&
-        connection.acknowledged("/sim/score"),
+        connection.acknowledged(SCORE_TOPIC),
       "Evaluation was not acknowledged",
     );
     await this.stop();

@@ -3,8 +3,17 @@ import { identifier, stamp } from "./messages.js";
 
 export const EVALUATION_TOPIC = "/sim/evaluation";
 export const EVALUATION_TYPE = "std_msgs/msg/String";
-export type EvaluationStatus =
-  "running" | "success" | "failure" | "timeout" | "aborted" | "error";
+export const SCORE_TOPIC = "/sim/score";
+export const SCORE_TYPE = "std_msgs/msg/Float64";
+export const EVALUATION_STATUSES = [
+  "running",
+  "success",
+  "failure",
+  "timeout",
+  "aborted",
+  "error",
+] as const;
+export type EvaluationStatus = (typeof EVALUATION_STATUSES)[number];
 export interface EvaluationState {
   readonly stamp: { readonly sec: number; readonly nanosec: number };
   readonly elapsed: number;
@@ -74,10 +83,9 @@ export class Evaluator {
     if (this.active) this.sample(true);
   }
   end(status: "aborted" | "error", reason: string): void {
-    if (!this.active) return;
-    // Preserve the last valid measurements, even if a metric callback caused the error.
     const state = this.state;
-    if (!state) throw new Error("Evaluation has no initial state");
+    if (this.disposed || state?.status !== "running") return;
+    // Preserve the last valid measurements, even if a metric callback caused the error.
     this.state = Object.freeze({
       ...state,
       stamp: Object.freeze(stamp(this.ros.world.time)),
@@ -85,7 +93,7 @@ export class Evaluator {
       status,
       reason,
     });
-    this.publish();
+    this.publish(this.state);
   }
   private get elapsed(): number {
     if (this.started === undefined)
@@ -128,37 +136,36 @@ export class Evaluator {
       }
     }
     const score = finite("score", this.options.score({ ...context, status }));
-    this.state = Object.freeze({
+    const state = Object.freeze({
       stamp: Object.freeze(stamp(this.ros.world.time)),
       elapsed,
       status,
       reason,
       metrics: Object.freeze({ ...metrics, score }),
     });
+    this.state = state;
     const previous = this.published;
     const changed =
       !previous ||
-      Object.entries(this.state.metrics).some(
+      Object.entries(state.metrics).some(
         ([name, value]) => value !== previous.metrics[name],
       );
     if (
       !previous ||
-      this.finished ||
+      status !== "running" ||
       (changed && elapsed - previous.elapsed >= 0.1 - 1e-9)
     )
-      this.publish();
+      this.publish(state);
   }
-  private publish(): void {
-    const state = this.state;
-    if (!state) throw new Error("Evaluation has no state");
+  private publish(state: EvaluationState): void {
     // Runtime faults stop devices, but the final diagnostic must still reach ROS.
     const publisher =
       state.status === "error" && this.ros.error
         ? this.ros.connection
         : this.ros;
     publisher.publish(
-      "/sim/score",
-      "std_msgs/msg/Float64",
+      SCORE_TOPIC,
+      SCORE_TYPE,
       { data: state.metrics.score },
       { retain: true },
     );

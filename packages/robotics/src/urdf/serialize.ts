@@ -1,34 +1,11 @@
-import {
-  Camera,
-  CapsuleGeometry,
-  Matrix4,
-  Object3D,
-  Quaternion,
-  Vector3,
-} from "three";
-import {
-  FixedJoint,
-  PrismaticJoint,
-  RigidBody,
-  type Shape,
-} from "@drawcall/physics";
-import {
-  rollPitchYaw,
-  rosOpticalRotation,
-  rosPosition,
-  rosRotation,
-} from "../coordinates.js";
+import { CapsuleGeometry, Matrix4, Vector3 } from "three";
+import { FixedJoint, PrismaticJoint, type Shape } from "@drawcall/physics";
+import { rollPitchYaw, rosPose, rosPosition } from "../coordinates.js";
 import { modelView } from "./view.js";
 import { meshXML, visualsXML } from "./meshes.js";
 import type { JointActuator } from "../devices/actuator.js";
 import type { Robot } from "../devices/robot.js";
-import {
-  inLinkFrame,
-  footprintPose,
-  buildLinkTree,
-  type Link,
-  type LinkJoint,
-} from "./links.js";
+import type { Link, LinkFrame, LinkJoint } from "./links.js";
 
 const FOOTPRINT = "base_footprint";
 const COLOR = "0.603922 0.647059 0.670588 1";
@@ -40,17 +17,16 @@ const COLOR = "0.603922 0.647059 0.670588 1";
  */
 export function robotURDF(robot: Robot): string {
   robot.updateWorldMatrix(true, true);
-  const { base, links, joints } = buildLinkTree(robot.base, robot.linkJoints);
-  const frames = [...robot.frames];
+  const { base, links, joints, frames, footprint } = robot.tree;
   unique("link", [
     ...[...links.values()].map((link) => link.name),
     FOOTPRINT,
-    ...frames.map(([name]) => name),
+    ...frames.map(({ name }) => name),
   ]);
   unique("joint", [
     ...joints.map((joint) => joint.name),
     `${FOOTPRINT}_joint`,
-    ...frames.map(([name]) => `${name}_joint`),
+    ...frames.map(({ name }) => `${name}_joint`),
   ]);
   const material = `${robot.name}_material`;
   return [
@@ -60,14 +36,12 @@ export function robotURDF(robot: Robot): string {
     `  <material name="${material}">`,
     `    <color rgba="${COLOR}"/>`,
     `  </material>`,
-    ...footprintXML(base, [...links.values()]),
+    ...footprintXML(base, footprint),
     ...[...links.values()].flatMap((link) => linkXML(link, material)),
     ...joints.flatMap((joint) =>
       jointXML(joint, robot.actuators.get(joint.name)),
     ),
-    ...frames.flatMap(([name, object]) =>
-      frameXML(name, object, links, robot.name),
-    ),
+    ...frames.flatMap(frameXML),
     ...(robot.actuators.size ? controlXML(robot, joints) : []),
     "</robot>",
     "",
@@ -143,47 +117,24 @@ function jointXML(
   ];
 }
 
-function frameXML(
-  name: string,
-  object: Object3D,
-  links: Map<RigidBody, Link>,
-  robotName: string,
-): string[] {
-  let ancestor = object.parent;
-  while (ancestor && !(ancestor instanceof RigidBody))
-    ancestor = ancestor.parent;
-  if (!ancestor)
-    throw new Error(`Frame ${name} does not descend from a robot body`);
-  const link = links.get(ancestor);
-  if (!link)
-    throw new Error(
-      `Frame ${name} is on ${ancestor.name}, which is not a link of ${robotName}`,
-    );
-  const bodyLocal = link.body.matrixWorld
-    .clone()
-    .invert()
-    .multiply(object.matrixWorld);
+function frameXML({ name, link, origin, optical }: LinkFrame): string[] {
   return [
     `  <link name="${name}"/>`,
     `  <joint name="${name}_joint" type="fixed">`,
     `    <parent link="${link.name}"/>`,
     `    <child link="${name}"/>`,
-    originXML(
-      "    ",
-      inLinkFrame(link.origin, bodyLocal),
-      object instanceof Camera,
-    ),
+    originXML("    ", origin, optical),
     `  </joint>`,
   ];
 }
 
-function footprintXML(base: Link, links: Link[]): string[] {
+function footprintXML(base: Link, footprint: Matrix4): string[] {
   return [
     `  <link name="${FOOTPRINT}"/>`,
     `  <joint name="${FOOTPRINT}_joint" type="fixed">`,
     `    <parent link="${FOOTPRINT}"/>`,
     `    <child link="${base.name}"/>`,
-    originXML("    ", footprintPose(base, links)),
+    originXML("    ", footprint),
     `  </joint>`,
   ];
 }
@@ -218,16 +169,8 @@ function originXML(
   transform: Matrix4,
   optical = false,
 ): string {
-  const position = new Vector3();
-  const rotation = new Quaternion();
-  const scale = new Vector3();
-  transform.decompose(position, rotation, scale);
-  if ([scale.x, scale.y, scale.z].some((value) => Math.abs(value - 1) > 1e-6))
-    throw new Error("URDF origins must not be scaled");
-  const p = rosPosition(position);
-  const [roll, pitch, yaw] = rollPitchYaw(
-    optical ? rosOpticalRotation(rotation) : rosRotation(rotation),
-  );
+  const { position: p, rotation } = rosPose(transform, optical);
+  const [roll, pitch, yaw] = rollPitchYaw(rotation);
   return `${indent}<origin xyz="${vec(p.x, p.y, p.z)}" rpy="${vec(roll, pitch, yaw)}"/>`;
 }
 

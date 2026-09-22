@@ -14,7 +14,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from kinematics import NAMES, TCP, fk, ik
+from kinematics import TCP, Arm
 from motion import CLOSED, GRASP_Z, OPEN, choose_roll, duration, grasp_tool, path
 from vision import color_masks, detect
 
@@ -73,7 +73,9 @@ class Look:
 def main():
     import rclpy
     from rclpy.node import Node
+    from rclpy.qos import DurabilityPolicy, QoSProfile
     from sensor_msgs.msg import CompressedImage, JointState
+    from std_msgs.msg import String
     from std_srvs.srv import Trigger
 
     class Controller(Node):
@@ -81,6 +83,12 @@ def main():
             super().__init__("so101_pick_place")
             self.commands = self.create_publisher(
                 JointState, "/robot/joint_commands", 10
+            )
+            self.create_subscription(
+                String,
+                "/robot/robot_description",
+                self.description,
+                QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL),
             )
             self.create_subscription(JointState, "/robot/joint_states", self.joints, 10)
             self.create_subscription(
@@ -95,18 +103,27 @@ def main():
             self.start_future = None
             self.debug = os.environ.get("SO101_DEBUG_CAMERAS") == "1"
             self.snapshots = 0
+            self.arm = None
+            self.home = None
             self.q = None
             self.rgb = None
+            self.image_header = None
             self.image_time = None
             self.target = None
             self.action = None
             self.task = None
             self.create_timer(0.02, self.tick)
 
+        def description(self, msg):
+            self.arm = Arm(msg.data)
+            self.home, _ = self.arm.ik(HOME)
+
         def joints(self, msg):
+            if self.arm is None:
+                return
             d = dict(zip(msg.name, msg.position))
-            if all(n in d for n in NAMES):
-                self.q = np.array([d[n] for n in NAMES])
+            if all(n in d for n in self.arm.names):
+                self.q = np.array([d[n] for n in self.arm.names])
 
         def image(self, msg):
             self.image_header = msg.header
@@ -137,7 +154,7 @@ def main():
             if isinstance(self.action, Move):
                 self.target = self.action.target(now)
             msg = JointState()
-            msg.name = NAMES
+            msg.name = self.arm.names
             msg.position = self.target.tolist()
             self.commands.publish(msg)
 
@@ -167,7 +184,7 @@ def main():
             return Move([self.target.copy(), goal], duration(self.target, goal, seconds))
 
         def tool_move(self, xyz, grip, roll, seconds=1.0):
-            return Move(*path(self.target, xyz, grip, roll, seconds))
+            return Move(*path(self.arm, self.target, xyz, grip, roll, seconds))
 
         def grip_move(self, grip, seconds=1.5):
             goal = self.target.copy()
@@ -175,12 +192,12 @@ def main():
             return Move([self.target.copy(), goal], seconds)
 
         def tool(self):
-            return (fk(self.q) @ TCP)[:3]
+            return (self.arm.fk(self.q) @ TCP)[:3]
 
         def look(self, only=None):
             """Colour positions and yaws on the desk from the latest image."""
             yaws = {}
-            seen = detect(self.rgb, self.q, yaws)
+            seen = detect(self.arm, self.rgb, self.q, yaws)
             self.get_logger().info(
                 "vision " + str({k: np.round(v, 3).tolist() for k, v in seen.items()})
             )
@@ -213,8 +230,7 @@ def main():
             self.annotated.publish(msg)
 
         def script(self):
-            home, _ = ik(HOME)
-            yield self.joint_move(home, OPEN, 3.0)
+            yield self.joint_move(self.home, OPEN, 3.0)
             yield self.joint_move(SURVEY, OPEN, 3.0)
             yield Look()
             found = self.look()
@@ -223,7 +239,7 @@ def main():
                 return
             bowl = found["bowl"][0]
             # A second, closer look at the bowl from straight above it.
-            yield self.joint_move(home, OPEN, 3.0)
+            yield self.joint_move(self.home, OPEN, 3.0)
             yield self.tool_move((*bowl, CARRY_Z), OPEN, 0.0)
             yield Look()
             bowl = self.look("bowl").get("bowl", (bowl,))[0]
@@ -243,7 +259,7 @@ def main():
                 xy, yaw = cubes[color]
                 others = [cubes[c][0] for c in cubes if c != color]
                 try:
-                    roll = choose_roll(xy, yaw, bowl, others)
+                    roll = choose_roll(self.arm, xy, yaw, bowl, others)
                 except ValueError as error:
                     self.get_logger().warning(str(error))
                     continue
@@ -257,12 +273,12 @@ def main():
                 cubes[color] = seen[color]
                 xy, yaw = seen[color]
                 try:
-                    roll = choose_roll(xy, yaw, bowl, others)
+                    roll = choose_roll(self.arm, xy, yaw, bowl, others)
                 except ValueError as error:
                     self.get_logger().warning(str(error))
                     continue
                 yield self.tool_move((*xy, LOOK_Z), OPEN, roll)
-                grasp = grasp_tool(xy, self.target)
+                grasp = grasp_tool(self.arm, xy, self.target)
                 self.get_logger().info(f"Picking {color} at {grasp.round(3)}, roll {roll:.2f}")
                 yield self.tool_move((*grasp, GRASP_Z), OPEN, roll, 2.0)
                 yield self.grip_move(CLOSED)
@@ -293,7 +309,7 @@ def main():
             for color in COLORS:
                 if color in found and np.linalg.norm(found[color][0] - bowl) > 0.06:
                     cubes[color] = found[color]
-            yield self.joint_move(ik(HOME)[0], OPEN, 3.0)
+            yield self.joint_move(self.home, OPEN, 3.0)
 
     rclpy.init()
     node = Controller()

@@ -1,4 +1,5 @@
-// Derived from assets/so101.urdf (Apache-2.0). ROS link coordinates, metres and radians.
+// The SO101 model, from TheRobotStudio's so101_new_calib_camera.urdf (Apache-2.0). CAD link
+// coordinates, metres and radians. The simulator publishes the URDF generated from it.
 export const links = [
   {
     name: "base_link",

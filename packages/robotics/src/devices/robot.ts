@@ -1,6 +1,7 @@
 import { AxisJoint, FixedJoint, Joint, RigidBody } from "@drawcall/physics";
 import { Group, type Object3D } from "three";
 import { header, identifier } from "../messages.js";
+import { buildLinkTree, type LinkTree } from "../urdf/links.js";
 import { getROS2, type ROS2 } from "../runtime.js";
 import { JointActuator } from "./actuator.js";
 import { Model } from "./model.js";
@@ -33,6 +34,7 @@ export class Robot extends Group {
   private readonly schedule = new Schedule(STATE_RATE);
   private readonly unregister: () => void;
   private resolved?: Structure;
+  private linkTree?: LinkTree;
   private disposed = false;
   private model?: Model;
   constructor(options: { ros?: ROS2 } = {}) {
@@ -51,8 +53,13 @@ export class Robot extends Group {
   get descriptionTopic(): string {
     return this.ros.topic("robot_description");
   }
-  get linkJoints(): ReadonlyMap<string, AxisJoint | FixedJoint> {
-    return this.structure().links;
+  /** The kinematic tree in link frames, measured at first use and frozen like the structure. */
+  get tree(): LinkTree {
+    if (this.linkTree) return this.linkTree;
+    const { base, links, frames } = this.structure();
+    this.updateWorldMatrix(true, true);
+    this.linkTree = buildLinkTree(this.name, base, links, frames);
+    return this.linkTree;
   }
 
   /** The actuators ROS commands, by joint name. */

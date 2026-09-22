@@ -6,9 +6,10 @@ import { parse } from "@foxglove/rosmsg";
 import { open, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
+  EVALUATION_STATUSES,
   EVALUATION_TOPIC,
-  EVALUATION_TYPE,
   type EvaluationState,
+  type EvaluationStatus,
 } from "../evaluation.js";
 
 export async function recordingFiles(path: string): Promise<string[]> {
@@ -47,42 +48,55 @@ export async function openRecording(path: string) {
   }
 }
 
+/** The text of every `std_msgs/msg/String` recorded on `topics`, in log order. */
+export async function* readStrings(
+  reader: McapIndexedReader,
+  topics: string[],
+): AsyncGenerator<string> {
+  const decoders = new Map<number, MessageReader>();
+  for await (const message of reader.readMessages({
+    topics,
+    validateCrcs: true,
+  })) {
+    const channel = reader.channelsById.get(message.channelId);
+    const schema = channel && reader.schemasById.get(channel.schemaId);
+    if (
+      !schema ||
+      schema.name !== "std_msgs/msg/String" ||
+      schema.encoding !== "ros2msg" ||
+      channel.messageEncoding !== "cdr"
+    )
+      throw new Error(
+        `Unsupported schema or encoding on ${channel?.topic ?? "a channel"}`,
+      );
+    let decoder = decoders.get(schema.id);
+    if (!decoder) {
+      decoder = new MessageReader(
+        parse(new TextDecoder().decode(schema.data), { ros2: true }),
+      );
+      decoders.set(schema.id, decoder);
+    }
+    const envelope: unknown = decoder.readMessage(message.data);
+    if (
+      typeof envelope !== "object" ||
+      envelope === null ||
+      !("data" in envelope) ||
+      typeof envelope.data !== "string"
+    )
+      throw new Error(`Invalid string message on ${channel.topic}`);
+    yield envelope.data;
+  }
+}
+
 /** Read every evaluation snapshot to validate the single-episode contract, including split bags. */
 export async function readResult(path: string): Promise<EvaluationState> {
   let last: EvaluationState | undefined;
   for (const file of await recordingFiles(path)) {
     await using recording = await openRecording(file);
-    const { reader } = recording;
-    const decoders = new Map<number, MessageReader>();
-    for await (const message of reader.readMessages({
-      topics: [EVALUATION_TOPIC],
-      validateCrcs: true,
-    })) {
-      const channel = reader.channelsById.get(message.channelId);
-      const schema = channel && reader.schemasById.get(channel.schemaId);
-      if (
-        !schema ||
-        schema.name !== EVALUATION_TYPE ||
-        schema.encoding !== "ros2msg" ||
-        channel?.messageEncoding !== "cdr"
-      )
-        throw new Error("Unsupported evaluation schema or encoding");
-      let decoder = decoders.get(schema.id);
-      if (!decoder) {
-        decoder = new MessageReader(
-          parse(new TextDecoder().decode(schema.data), { ros2: true }),
-        );
-        decoders.set(schema.id, decoder);
-      }
-      const envelope: unknown = decoder.readMessage(message.data);
-      if (
-        typeof envelope !== "object" ||
-        envelope === null ||
-        !("data" in envelope) ||
-        typeof envelope.data !== "string"
-      )
-        throw new Error("Invalid evaluation message");
-      const next = evaluationState(JSON.parse(envelope.data));
+    for await (const text of readStrings(recording.reader, [
+      EVALUATION_TOPIC,
+    ])) {
+      const next = evaluationState(JSON.parse(text));
       if (last && next.elapsed < last.elapsed)
         throw new Error("Evaluation time moved backwards");
       if (
@@ -100,7 +114,7 @@ export async function readResult(path: string): Promise<EvaluationState> {
   return last;
 }
 
-export function evaluationState(value: unknown): EvaluationState {
+function evaluationState(value: unknown): EvaluationState {
   if (typeof value !== "object" || value === null)
     throw new Error("Invalid evaluation snapshot");
   if (
@@ -126,38 +140,16 @@ export function evaluationState(value: unknown): EvaluationState {
     value.stamp.nanosec >= 1e9 ||
     !("metrics" in value) ||
     typeof value.metrics !== "object" ||
-    value.metrics === null
+    value.metrics === null ||
+    Array.isArray(value.metrics)
   )
     throw new Error("Invalid evaluation snapshot");
-  // Existing JSON recordings used name/value pairs before metrics became a map.
-  const entries: [string, number][] = [];
-  if (Array.isArray(value.metrics)) {
-    const legacy: readonly unknown[] = value.metrics;
-    for (const metric of legacy) {
-      if (
-        typeof metric !== "object" ||
-        metric === null ||
-        !("name" in metric) ||
-        typeof metric.name !== "string" ||
-        !("value" in metric) ||
-        typeof metric.value !== "number"
-      )
-        throw new Error("Invalid evaluation metric");
-      entries.push([metric.name, metric.value]);
-    }
-  } else {
-    for (const [name, metric] of Object.entries(value.metrics)) {
-      if (typeof metric !== "number")
-        throw new Error("Invalid evaluation metric");
-      entries.push([name, metric]);
-    }
+  const metrics: Record<string, number> = {};
+  for (const [name, metric] of Object.entries(value.metrics)) {
+    if (!name || typeof metric !== "number" || !Number.isFinite(metric))
+      throw new Error("Invalid evaluation metric");
+    metrics[name] = metric;
   }
-  const metrics = Object.fromEntries(entries);
-  if (
-    Object.keys(metrics).length !== entries.length ||
-    entries.some(([name, metric]) => !name || !Number.isFinite(metric))
-  )
-    throw new Error("Invalid or duplicate evaluation metric");
   if (!("score" in metrics)) throw new Error("Evaluation score is missing");
   return {
     stamp: { sec: value.stamp.sec, nanosec: value.stamp.nanosec },
@@ -167,15 +159,8 @@ export function evaluationState(value: unknown): EvaluationState {
     metrics,
   };
 }
-function isStatus(value: unknown): value is EvaluationState["status"] {
-  return (
-    value === "running" ||
-    value === "success" ||
-    value === "failure" ||
-    value === "timeout" ||
-    value === "aborted" ||
-    value === "error"
-  );
+function isStatus(value: unknown): value is EvaluationStatus {
+  return EVALUATION_STATUSES.some((status) => status === value);
 }
 
 export const results = new Command("results")

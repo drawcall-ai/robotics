@@ -1,5 +1,6 @@
 import { Ros, Topic, WebSocketTransportFactory } from "roslib";
 import { runAll } from "../cleanup.js";
+import { base64 } from "../messages.js";
 import type { Connection, PublishOptions } from "../runtime.js";
 
 export class RosbridgeConnection implements Connection {
@@ -128,12 +129,7 @@ export class RosbridgeConnection implements Connection {
 
 /** rosbridge's JSON protocol carries `uint8[]` fields as base64 text. */
 function base64Bytes(value: unknown): unknown {
-  if (value instanceof Uint8Array) {
-    let binary = "";
-    for (let offset = 0; offset < value.length; offset += 0x8000)
-      binary += String.fromCharCode(...value.subarray(offset, offset + 0x8000));
-    return btoa(binary);
-  }
+  if (value instanceof Uint8Array) return base64(value);
   if (Array.isArray(value)) return value.map(base64Bytes);
   if (typeof value === "object" && value !== null)
     return Object.fromEntries(

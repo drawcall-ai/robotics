@@ -1,54 +1,28 @@
-import { Camera, Matrix4, Quaternion, Vector3 } from "three";
+import { Matrix4 } from "three";
 import { FixedJoint } from "@drawcall/physics";
-import {
-  rosOpticalRotation,
-  rosPosition,
-  rosRotation,
-} from "../coordinates.js";
+import { rosPose } from "../coordinates.js";
 import { header } from "../messages.js";
 import { robotURDF } from "../urdf/serialize.js";
-import { buildLinkTree, footprintPose } from "../urdf/links.js";
 import type { Robot } from "./robot.js";
 
 /** Frozen model metadata, with live transforms measured in exactly the same link frames as URDF. */
 export class Model {
-  private readonly tree;
   constructor(
     private readonly robot: Robot,
     time: number,
   ) {
-    robot.updateWorldMatrix(true, true);
-    this.tree = buildLinkTree(robot.base, robot.linkJoints);
-    const { base, links, joints } = this.tree;
+    const { base, joints, frames, footprint } = robot.tree;
     const fixed = [
-      transform(
-        "base_footprint",
-        base.name,
-        footprintPose(base, [...links.values()]),
-        time,
+      transform("base_footprint", base.name, footprint, time),
+      ...joints
+        .filter(({ joint }) => joint instanceof FixedJoint)
+        .map(({ parent, child, origin }) =>
+          transform(parent.name, child.name, origin, time),
+        ),
+      ...frames.map(({ name, link, origin, optical }) =>
+        transform(link.name, name, origin, time, optical),
       ),
     ];
-    for (const { name, joint, parent, child, origin } of joints) {
-      if (joint instanceof FixedJoint)
-        fixed.push(transform(parent.name, child.name, origin, time));
-      if (!name) throw new Error("Unnamed robot joint");
-    }
-    for (const [name, object] of robot.frames) {
-      const link = [...links.values()].find(({ body }) => {
-        let ancestor = object.parent;
-        while (ancestor && ancestor !== body) ancestor = ancestor.parent;
-        return ancestor === body;
-      });
-      if (!link) throw new Error(`Frame ${name} does not belong to a link`);
-      const local = link.origin
-        .clone()
-        .invert()
-        .multiply(link.body.matrixWorld.clone().invert())
-        .multiply(object.matrixWorld);
-      fixed.push(
-        transform(link.name, name, local, time, object instanceof Camera),
-      );
-    }
     robot.ros.publish(
       robot.descriptionTopic,
       "std_msgs/msg/String",
@@ -64,7 +38,7 @@ export class Model {
   }
   publish(time: number): void {
     this.robot.updateWorldMatrix(true, true);
-    const transforms = this.tree.joints
+    const transforms = this.robot.tree.joints
       .filter(({ joint }) => !(joint instanceof FixedJoint))
       .map(({ parent, child }) => {
         const parentPose = parent.body.matrixWorld
@@ -90,12 +64,7 @@ function transform(
   time: number,
   optical = false,
 ) {
-  const position = new Vector3(),
-    quaternion = new Quaternion(),
-    scale = new Vector3();
-  matrix.decompose(position, quaternion, scale);
-  const p = rosPosition(position);
-  const q = optical ? rosOpticalRotation(quaternion) : rosRotation(quaternion);
+  const { position: p, rotation: q } = rosPose(matrix, optical);
   return {
     header: header(time, parent),
     child_frame_id: child,

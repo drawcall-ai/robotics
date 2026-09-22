@@ -14,4 +14,5 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      # Packaging smoke test: prepack builds, then pnpm packs the published files.
       - run: pnpm --filter @drawcall/robotics pack --pack-destination /tmp/packages

@@ -8,7 +8,7 @@ PATH = "$PIXI_PROJECT_ROOT/node_modules/.bin:$PATH"
 ROS_DOMAIN_ID = "18"
 RMW_IMPLEMENTATION = "rmw_cyclonedds_cpp"
 [tasks]
-launch = "ros2 launch ros/bringup.launch.xml"
+launch = "ros2 launch bringup.launch.xml"
 [dependencies]
 ros-jazzy-ros-base = "*"
 ros-jazzy-rmw-cyclonedds-cpp = "*"

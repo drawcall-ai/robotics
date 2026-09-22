@@ -124,7 +124,7 @@ export class CameraSensor extends PerspectiveCamera {
     const fy = (projection[5] * height) / 2;
     const cx = ((1 - projection[8]) * width) / 2;
     const cy = ((1 + projection[9]) * height) / 2;
-    this.ros.publish(`${this.name}/camera_info`, "sensor_msgs/msg/CameraInfo", {
+    this.ros.publish(this.infoTopic, "sensor_msgs/msg/CameraInfo", {
       header: header(time, this.frameId),
       width,
       height,
