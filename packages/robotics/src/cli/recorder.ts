@@ -20,7 +20,8 @@ export class Recorder {
   private readonly child: ChildProcess;
   private readonly closed: Promise<void>;
   readonly path: string;
-  constructor(path: string) {
+  /** `exclude` is a regular expression of further topics to leave out, as rosbag2 takes it. */
+  constructor(path: string, exclude?: string) {
     this.path = resolve(path);
     this.child = spawn(
       "ros2",
@@ -33,8 +34,12 @@ export class Recorder {
         this.path,
         "--all",
         "--use-sim-time",
-        "--exclude-regex",
-        "^/(clock|bond|evaluation|marker)$|_costmap/.+_(layer|raw|updates)",
+        // Raw images repeat the compressed ones at ten times the size.
+        "--exclude-topics",
+        "/clock",
+        "--exclude-topic-types",
+        "sensor_msgs/msg/Image",
+        ...(exclude ? ["--exclude-regex", exclude] : []),
       ],
       { stdio: ["ignore", "inherit", "inherit"], detached: true },
     );

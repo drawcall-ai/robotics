@@ -92,14 +92,14 @@ def main():
             )
             self.create_subscription(JointState, "/robot/joint_states", self.joints, 10)
             self.create_subscription(
-                CompressedImage, "/robot/wrist_camera/image/compressed", self.image, 10
+                CompressedImage, "/robot/wrist_camera/image_raw/compressed", self.image, 10
             )
             # What the policy saw, for the viewer and recordings: the last look
             # with its detections and estimates drawn on it.
             self.annotated = self.create_publisher(
                 CompressedImage, "/robot/perception/image/compressed", 10
             )
-            self.start = self.create_client(Trigger, "/sim/start")
+            self.start = self.create_client(Trigger, "/sim/start_evaluation")
             self.start_future = None
             self.debug = os.environ.get("SO101_DEBUG_CAMERAS") == "1"
             self.snapshots = 0

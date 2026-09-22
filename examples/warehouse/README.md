@@ -1,6 +1,6 @@
 # Warehouse example
 
-A warehouse and a differential-drive robot in [scene.ts](scene.ts); MuJoCo simulates the chassis, driven wheels, free-rolling support balls and their contacts. [bringup.launch.xml](bringup.launch.xml) runs it next to a standard ROS 2 stack: the simulator node, ros2_control, SLAM Toolbox, Nav2, foxglove_bridge for the viewer and a mission that drives four goals. The simulator supplies `/robot/robot_description`, `/tf` and `/tf_static`; the controller manager consumes the description directly. [params.yaml](params.yaml) holds every node's parameters, [pixi.toml](pixi.toml) the ROS installation.
+A warehouse and a differential-drive robot in [scene.ts](scene.ts); MuJoCo simulates the chassis, driven wheels, free-rolling support balls and their contacts; the balls hang on ball joints, which URDF cannot describe, so they sit beside the robot group rather than in it. [bringup.launch.xml](bringup.launch.xml) runs it next to a standard ROS 2 stack: the simulator node, ros2_control, SLAM Toolbox, Nav2, foxglove_bridge for the viewer and a mission that drives four goals. The simulator supplies `/robot/robot_description`, `/tf` and `/tf_static`; the controller manager consumes the description directly. [params.yaml](params.yaml) holds every node's parameters, [pixi.toml](pixi.toml) the ROS installation.
 
 ## Run
 
@@ -22,4 +22,4 @@ The stack runs on CycloneDDS; Fast DDS misbehaves on macOS with a full Nav2 stac
 
 ## Task
 
-The mission calls `/sim/start` once Nav2 is active. Approaching each of four ordered trigger checkpoints earns up to 25 points, preserving the best progress on each leg; completing all four earns 100. Chassis contact with an obstacle or falling fails the task, and 180 simulation seconds time out. On completion the simulator stops stepping, closes and verifies the recording, then exits to end the launch. `/sim/reset` is rejected for evaluated scenes: launch again for a new episode.
+The mission calls `/sim/start_evaluation` once Nav2 is active. Approaching each of four ordered trigger checkpoints earns up to 25 points, preserving the best progress on each leg; completing all four earns 100. Chassis contact with an obstacle or falling fails the task, and 180 simulation seconds time out. On completion the simulator stops stepping, closes and verifies the recording, then exits to end the launch. `reset_simulation` is rejected for evaluated scenes: launch again for a new episode. The launch file and `pnpm replay` pass the Nav2 map, costmap and plans to the viewer with `--show`.

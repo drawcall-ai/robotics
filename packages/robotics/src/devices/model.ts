@@ -12,15 +12,16 @@ export class Model {
     time: number,
   ) {
     const { base, joints, frames, footprint } = robot.tree;
+    const frame = (name: string) => robot.frame(name);
     const fixed = [
-      transform("base_footprint", base.name, footprint, time),
+      transform(frame("base_footprint"), frame(base.name), footprint, time),
       ...joints
         .filter(({ joint }) => joint instanceof FixedJoint)
         .map(({ parent, child, origin }) =>
-          transform(parent.name, child.name, origin, time),
+          transform(frame(parent.name), frame(child.name), origin, time),
         ),
       ...frames.map(({ name, link, origin, optical }) =>
-        transform(link.name, name, origin, time, optical),
+        transform(frame(link.name), frame(name), origin, time, optical),
       ),
     ];
     robot.ros.publish(
@@ -46,8 +47,8 @@ export class Model {
           .multiply(parent.origin);
         const childPose = child.body.matrixWorld.clone().multiply(child.origin);
         return transform(
-          parent.name,
-          child.name,
+          this.robot.frame(parent.name),
+          this.robot.frame(child.name),
           parentPose.invert().multiply(childPose),
           time,
         );

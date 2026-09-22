@@ -2,6 +2,7 @@ import { Object3D, Quaternion, Vector3 } from "three";
 import { header, identifier } from "../messages.js";
 import { getROS2, type ROS2 } from "../runtime.js";
 import { Schedule } from "./schedule.js";
+import { robotOf } from "./robot.js";
 
 export class LaserSensor extends Object3D {
   readonly ros: ROS2;
@@ -60,7 +61,7 @@ export class LaserSensor extends Object3D {
     this.unregister = this.ros.register(this);
   }
   get topic(): string {
-    return this.ros.topic(this.name);
+    return this.ros.topic(this.name, robotOf(this)?.namespace);
   }
   afterStep(time: number): void {
     if (!this.schedule.due(time)) return;
@@ -75,13 +76,12 @@ export class LaserSensor extends Object3D {
         -Math.cos(angle),
       ).applyQuaternion(rotation);
       const hit = this.ros.world.raycast(origin, direction, this.range);
-      // No return, or one inside the dead zone, is reported beyond the maximum like a real scanner does.
-      return hit && hit.distance >= this.minRange
-        ? hit.distance
-        : this.range + 1;
+      // REP 117: +Inf for no return within range, -Inf for a return inside the dead zone.
+      if (!hit) return Infinity;
+      return hit.distance < this.minRange ? -Infinity : hit.distance;
     });
     this.ros.publish(this.topic, "sensor_msgs/msg/LaserScan", {
-      header: header(time, this.frameId),
+      header: header(time, robotOf(this)?.frame(this.frameId) ?? this.frameId),
       angle_min: this.angleMin,
       angle_max: this.angleMax,
       angle_increment: increment,

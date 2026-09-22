@@ -73,15 +73,13 @@ export class RclConnection implements Connection {
     const subscription = this.node.createSubscription(type, name, receive);
     return () => this.node.destroySubscription(subscription);
   }
-  /** Answers `name` with the value `handler` returns for each request. */
+  /** Answers `name` with the response `handler` returns, or resolves, for each request. */
   service(
     type: string,
     name: string,
     handler: (request: unknown) => unknown,
   ): void {
-    this.node.createService(type, name, (request, response) =>
-      response.send(handler(request)),
-    );
+    this.node.createService(type, name, handler);
   }
   dispose(): void {
     this.resources.dispose();

@@ -1,6 +1,6 @@
 import { EVALUATION_TOPIC, SCORE_TOPIC } from "../evaluation.js";
 import type { ModelView } from "../urdf/view.js";
-const IMAGE = /\/image\/compressed$/;
+const IMAGE = /\/image_raw\/compressed$/;
 const SCENE = {
   meshUpAxis: "z_up",
   transforms: {
@@ -16,35 +16,48 @@ export interface LayoutTopics {
   images?: string[];
   /** The `CameraInfo` topics published beside images, for calibrated image panels. */
   calibrations?: string[];
+  /** Further topics to display: compressed images get an image panel, anything else the 3D panel. */
+  show?: string[];
   /** Adds the score plot and the evaluation status. */
   evaluation?: boolean;
-  model?: ModelView;
+  /** One robot model each; the view frames the first. */
+  models?: ModelView[];
 }
 
 /**
- * A layout for the standard topics: map, scans, costmap, plan and robot in 3D, and one image panel
- * per image topic, calibrated when its camera publishes a `CameraInfo`.
+ * A layout with the robots, scans and shown topics in 3D, and one image panel per image topic,
+ * calibrated when its camera publishes a `CameraInfo`. The view follows `map` when it is shown.
  */
 export function defaultLayout({
   scans = [],
-  images = [],
+  images: cameras = [],
   calibrations = [],
+  show = [],
   evaluation = false,
-  model,
+  models = [],
 }: LayoutTopics) {
+  const images = [
+    ...new Set([
+      ...cameras,
+      ...show.filter((topic) => topic.endsWith("/compressed")),
+    ]),
+  ];
+  const shown = show.filter((topic) => !topic.endsWith("/compressed"));
+  const mapped = shown.includes("/map");
+  const [model] = models;
   const scene = {
     cameraState: {
       perspective: true,
-      distance: scans.length ? 16 : (model?.distance ?? 2),
-      targetOffset: scans.length ? [0, 0, 0] : (model?.target ?? [0, 0, 0]),
+      distance: mapped ? 16 : (model?.distance ?? 2),
+      targetOffset: mapped ? [0, 0, 0] : (model?.target ?? [0, 0, 0]),
       phi: 55,
       thetaOffset: 40,
     },
     followMode: "follow-pose",
-    followTf: scans.length ? "map" : (model?.frame ?? "base_footprint"),
+    followTf: mapped ? "map" : (model?.frame ?? "base_footprint"),
     scene: SCENE,
     topics: {
-      "/map": { visible: true, colorMode: "costmap" },
+      ...Object.fromEntries(shown.map((topic) => [topic, { visible: true }])),
       ...Object.fromEntries(
         scans.map((scan) => [
           scan,
@@ -56,22 +69,23 @@ export function defaultLayout({
           },
         ]),
       ),
-      "/local_costmap/costmap": { visible: true, colorMode: "costmap" },
-      "/plan": { visible: true, lineWidth: 0.05 },
-      "/local_plan": { visible: true, lineWidth: 0.03 },
     },
-    layers: {
-      robot: {
-        layerId: "foxglove.Urdf",
-        instanceId: "robot",
-        label: "Robot",
-        visible: true,
-        sourceType: "topic",
-        topic: model?.topic ?? "/robot_description",
-        displayMode: "visual",
-        order: 1,
-      },
-    },
+    layers: Object.fromEntries(
+      models.map((robot, index) => [
+        `robot${index}`,
+        {
+          layerId: "foxglove.Urdf",
+          instanceId: `robot${index}`,
+          label: robot.topic,
+          visible: true,
+          sourceType: "topic",
+          topic: robot.topic,
+          framePrefix: robot.framePrefix,
+          displayMode: "visual",
+          order: 1,
+        },
+      ]),
+    ),
     publish: {
       type: "pose",
       poseTopic: "/goal_pose",

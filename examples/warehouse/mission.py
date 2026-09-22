@@ -24,9 +24,9 @@ def main():
     rclpy.init()
     nav = BasicNavigator('mission')
     nav.waitUntilNav2Active(localizer='slam_toolbox')
-    start = nav.create_client(Trigger, '/sim/start')
+    start = nav.create_client(Trigger, '/sim/start_evaluation')
     if not start.wait_for_service(timeout_sec=30):
-        raise RuntimeError('Simulator did not expose /sim/start')
+        raise RuntimeError('Simulator did not expose /sim/start_evaluation')
     request = start.call_async(Trigger.Request())
     rclpy.spin_until_future_complete(nav, request, timeout_sec=30)
     if not request.done() or request.result() is None or not request.result().success:

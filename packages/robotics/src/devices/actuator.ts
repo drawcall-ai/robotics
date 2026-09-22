@@ -22,9 +22,9 @@ interface Command {
 }
 
 /**
- * A drive that ros2_control commands. Attach it with `joint.setDrive`: it reads the command
- * for its joint's name from `joint_commands`, applies it before each step, and goes passive when
- * the command expires. Its target belongs to the controller, so scene code cannot set it.
+ * A drive that ros2_control commands. Attach it with `joint.setDrive`: its robot hands it the
+ * `joint_commands` for its joint's name, it applies the command before each step, and goes passive
+ * when the command expires. Its target belongs to the controller, so scene code cannot set it.
  */
 export class JointActuator
   extends JointDrive<JointActuatorOptions>
@@ -34,17 +34,11 @@ export class JointActuator
   private command?: Command;
   private commanded = false;
   private resting?: number;
-  private readonly unsubscribe: () => void;
   private readonly unregister: () => void;
   constructor({ ros, ...options }: JointActuatorOptions & { ros?: ROS2 }) {
     super(options);
     validateGains(options);
     this.ros = ros ?? getROS2();
-    this.unsubscribe = this.ros.subscribe(
-      "joint_commands",
-      "sensor_msgs/msg/JointState",
-      (message) => this.receive(message),
-    );
     this.unregister = this.ros.register(this);
   }
   override setTarget(): never {
@@ -54,7 +48,8 @@ export class JointActuator
   override copy(): this {
     return this;
   }
-  private receive(message: unknown): void {
+  /** Takes this joint's value from a `sensor_msgs/JointState` command, if it names the joint. */
+  receive(message: unknown): void {
     const name = this.joint?.name;
     if (name === undefined) return;
     const index = list(message, "name").indexOf(name);
@@ -121,7 +116,6 @@ export class JointActuator
     runAll(
       [
         () => this.stop(),
-        this.unsubscribe,
         this.unregister,
         () => {
           const joint = this.joint;

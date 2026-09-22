@@ -15,9 +15,9 @@ vi.mock("@drawcall/robotics", () => import("../src/index.js"));
 it("exports the warehouse example as its golden URDF and scans on /robot/scan", async () => {
   const ros = offline();
   await import("../../../examples/warehouse/scene.js");
-  expect(ros.find(CameraSensor).map((camera) => camera.imageTopic)).toEqual([
-    "/robot/camera/image/compressed",
-  ]);
+  expect(
+    ros.find(CameraSensor).map((camera) => camera.compressedTopic),
+  ).toEqual(["/robot/camera/image_raw/compressed"]);
   expect(
     exportURDF({ ros }).replace(
       /data:model\/stl;base64,[^" ]+/g,

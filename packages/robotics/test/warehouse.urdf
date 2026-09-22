@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <robot name="warehouse">
-  <!-- drawcall-view: {"topic":"/robot/robot_description","frame":"base_footprint","distance":2.8936482119732707,"target":[3.5762786898541066e-9,0,0.29999999787658455]} -->
+  <!-- drawcall-view: {"topic":"/robot/robot_description","framePrefix":"","frame":"base_footprint","distance":2.89364820801837,"target":[3.5762786898541066e-9,0,0.30000000026077034]} -->
   <material name="warehouse_material">
     <color rgba="0.603922 0.647059 0.670588 1"/>
   </material>

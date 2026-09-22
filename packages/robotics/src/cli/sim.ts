@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { RclConnection } from "../connections/rcl.js";
 import { CameraSensor } from "../devices/camera.js";
 import { LaserSensor } from "../devices/laser.js";
-import { findRobot, type Robot } from "../devices/robot.js";
+import { Robot } from "../devices/robot.js";
 import { Evaluator } from "../evaluation.js";
 import { Recorder } from "./recorder.js";
 import { registry, type PhysicsWorld } from "@drawcall/physics";
@@ -17,11 +17,11 @@ import { serveLichtblick } from "./lichtblick.js";
 
 interface SimOptions {
   namespace: string;
-  robot?: string;
   viewer?: boolean;
   waitForStart?: boolean;
-  perception?: boolean;
+  show: string[];
   record?: string | boolean;
+  recordExclude?: string;
 }
 
 /** The simulator process: a ROS node that runs a scene until the launch stops it. */
@@ -30,24 +30,29 @@ export const sim = new Command("sim")
   .argument("<scene>", "the scene script")
   .option("--namespace <ns>", "topic namespace", "/robot")
   .option(
-    "--robot <name>",
-    "the robot to show and record, if the scene has several",
-  )
-  .option(
     "--viewer",
     "serve Lichtblick with a layout for the scene's topics and open it (BROWSER=none: serve only)",
   )
   .option("--no-viewer", "run without a viewer (default)")
-  .option("--wait-for-start", "wait for /sim/start before evaluating")
   .option(
-    "--perception",
-    "add an image panel for the controller's own view, <namespace>/perception/image/compressed",
+    "--wait-for-start",
+    "wait for /sim/start_evaluation before evaluating",
+  )
+  .option(
+    "--show <topic>",
+    "also display a topic in the viewer: a compressed image in its own panel, anything else in 3D (repeatable)",
+    (topic: string, shown: string[]) => [...shown, topic],
+    [],
   )
   .option(
     "--record [directory]",
     "record one evaluation episode and verify its final result",
   )
   .option("--no-record", "run without recording (default)")
+  .option(
+    "--record-exclude <regex>",
+    "topics the recording leaves out besides /clock and raw images",
+  )
   .action(async (scene: string, options: SimOptions) => {
     await run(scene, options);
     // Dawn keeps process-lifetime native handles; exit only after scoped cleanup.
@@ -100,8 +105,9 @@ async function run(scene: string, options: SimOptions): Promise<void> {
   });
   ros.attachWorld(world);
   if (stop.signal.aborted) return;
-  const robot = findRobot(ros, options.robot);
-  robot.beforeStep(world.time);
+  const robots = ros.find(Robot);
+  // Descriptions and static transforms go out before the first step, for the recorder to receive.
+  for (const robot of robots) robot.beforeStep(world.time);
   const [evaluation] = ros.find(Evaluator);
   if ((options.record || options.waitForStart) && !evaluation)
     throw new Error(
@@ -112,13 +118,14 @@ async function run(scene: string, options: SimOptions): Promise<void> {
         typeof options.record === "string"
           ? options.record
           : `rosbag2_${new Date().toISOString().replaceAll(":", "-")}`,
+        options.recordExclude,
       )
     : undefined;
   if (recorder) {
     resources.defer(() => recorder.stop());
     world.update(world.fixedDelta);
     await recorder.ready(connection, world.time, stop.signal, [
-      robot.descriptionTopic,
+      ...robots.map((robot) => robot.descriptionTopic),
       "/tf_static",
     ]);
     if (stop.signal.aborted) return;
@@ -135,7 +142,7 @@ async function run(scene: string, options: SimOptions): Promise<void> {
   const controls = serveControls(connection, ros, stepping, evaluation);
   console.error(`Simulating ${scene} under ${ros.namespace}`);
   if (options.viewer)
-    serveViewer(ros, robot, evaluation, options.perception, stop, resources);
+    serveViewer(ros, robots, evaluation, options.show, stop, resources);
 
   const finish = async () => {
     if (recorder && evaluation?.finished)
@@ -172,21 +179,99 @@ interface Controls {
   paused: boolean;
   /** Single steps requested while paused. */
   steps: number;
+  /** Step requests that answer once their steps have run. */
+  stepped: (() => void)[];
 }
 
-/** Pause, resume, step and reset plus the evaluation start, the way other simulators expose them. */
+// simulation_interfaces constants: Result, SimulationState, SimulatorFeatures and ResetSimulation.
+const OK = 1;
+const UNSUPPORTED = 0;
+const FAILED = 4;
+const ALREADY_IN_TARGET_STATE = 101;
+const PLAYING = 1;
+const PAUSED = 2;
+const FEATURES = [20, 24, 25, 26, 31, 32];
+const SCOPE_DEFAULT = 0;
+const SCOPE_ALL = 255;
+
+function result(code: number, message = "") {
+  return { result: { result: code, error_message: message } };
+}
+/** A number in a service request, such as `state.state`. */
+function field(request: unknown, ...path: string[]): number {
+  let value = request;
+  for (const key of path)
+    value =
+      typeof value === "object" && value !== null
+        ? Reflect.get(value, key)
+        : undefined;
+  if (typeof value === "bigint") return Number(value);
+  if (typeof value !== "number")
+    throw new Error(`Request field ${path.join(".")} is missing`);
+  return value;
+}
+
+/** The ROS simulation_interfaces controls, plus the evaluation start. */
 function serveControls(
   connection: RclConnection,
   ros: ROS2,
   stepping: Stepping,
   evaluation: Evaluator | undefined,
 ): Controls {
-  const controls: Controls = { paused: false, steps: 0 };
-  const trigger = (
+  const controls: Controls = { paused: false, steps: 0, stepped: [] };
+  const serve = (
     name: string,
-    run: () => { success: boolean; message: string },
-  ) => connection.service("std_srvs/srv/Trigger", `/sim/${name}`, run);
-  trigger("start", () => {
+    type: string,
+    handle: (request: unknown) => unknown,
+  ) =>
+    connection.service(
+      `simulation_interfaces/srv/${type}`,
+      `/sim/${name}`,
+      handle,
+    );
+  serve("get_simulator_features", "GetSimulatorFeatures", () => ({
+    features: { features: FEATURES, spawn_formats: [], custom_info: "" },
+  }));
+  serve("get_simulation_state", "GetSimulationState", () => ({
+    state: { state: controls.paused ? PAUSED : PLAYING },
+    ...result(OK),
+  }));
+  serve("set_simulation_state", "SetSimulationState", (request) => {
+    const state = field(request, "state", "state");
+    if (state !== PLAYING && state !== PAUSED)
+      return result(UNSUPPORTED, "only playing and paused are supported");
+    if (controls.paused === (state === PAUSED))
+      return result(ALREADY_IN_TARGET_STATE);
+    if (state === PLAYING && evaluation?.finished)
+      return result(FAILED, "episode finished");
+    stepping.clear();
+    controls.paused = state === PAUSED;
+    controls.steps = 0;
+    return result(OK);
+  });
+  serve("step_simulation", "StepSimulation", (request) => {
+    if (!controls.paused) return result(FAILED, "running; pause first");
+    if (evaluation?.finished) return result(FAILED, "episode finished");
+    controls.steps += field(request, "steps");
+    return new Promise((resolve) =>
+      controls.stepped.push(() => resolve(result(OK))),
+    );
+  });
+  serve("reset_simulation", "ResetSimulation", (request) => {
+    const scope = field(request, "scope");
+    if (scope !== SCOPE_DEFAULT && scope !== SCOPE_ALL)
+      return result(UNSUPPORTED, "only a full reset is supported");
+    if (evaluation)
+      return result(
+        FAILED,
+        "launch a new episode to reset evaluation and recording",
+      );
+    stepping.clear();
+    controls.steps = 0;
+    ros.world.reset();
+    return result(OK);
+  });
+  connection.service("std_srvs/srv/Trigger", "/sim/start_evaluation", () => {
     if (!evaluation)
       return { success: false, message: "scene has no evaluator" };
     if (evaluation.result)
@@ -201,40 +286,6 @@ function serveControls(
       ros.fail(error);
       return { success: false, message: String(error) };
     }
-  });
-  trigger("pause", () => {
-    stepping.clear();
-    controls.paused = true;
-    return { success: true, message: "paused" };
-  });
-  trigger("resume", () => {
-    if (evaluation?.finished)
-      return { success: false, message: "episode finished" };
-    controls.paused = false;
-    controls.steps = 0;
-    return { success: true, message: "running" };
-  });
-  trigger("step", () => {
-    if (evaluation?.finished)
-      return { success: false, message: "episode finished" };
-    if (!controls.paused)
-      return { success: false, message: "running; pause first" };
-    controls.steps++;
-    return { success: true, message: `stepping ${ros.world.fixedDelta} s` };
-  });
-  trigger("reset", () => {
-    if (evaluation)
-      return {
-        success: false,
-        message: "launch a new episode to reset evaluation and recording",
-      };
-    stepping.clear();
-    controls.steps = 0;
-    ros.world.reset();
-    return {
-      success: true,
-      message: "world reset; the clock restarts at zero",
-    };
   });
   return controls;
 }
@@ -275,6 +326,8 @@ async function simulate(
         controls.steps--;
         world.update(world.fixedDelta);
       }
+      if (controls.steps === 0 || evaluation?.finished)
+        for (const answer of controls.stepped.splice(0)) answer();
     } catch (error) {
       throw ros.error ?? error;
     }
@@ -286,22 +339,20 @@ async function simulate(
 /** Serves Lichtblick with a layout for the scene; a startup failure stops the simulation with it. */
 function serveViewer(
   ros: ROS2,
-  robot: Robot,
+  robots: Robot[],
   evaluation: Evaluator | undefined,
-  perception: boolean | undefined,
+  show: string[],
   stop: AbortController,
   resources: AsyncDisposableStack,
 ): void {
   const cameras = ros.find(CameraSensor);
   const layout = defaultLayout({
     scans: ros.find(LaserSensor).map((laser) => laser.topic),
-    images: [
-      ...cameras.map((camera) => camera.imageTopic),
-      ...(perception ? [ros.topic("perception/image/compressed")] : []),
-    ],
+    images: cameras.map((camera) => camera.compressedTopic),
     calibrations: cameras.map((camera) => camera.infoTopic),
+    show,
     evaluation: evaluation !== undefined,
-    model: modelView(robot),
+    models: robots.map(modelView),
   });
   const cancel = new AbortController();
   const startup = serveLichtblick(layout, undefined, cancel.signal);

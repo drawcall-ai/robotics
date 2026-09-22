@@ -1,5 +1,7 @@
 import { expect, it, vi } from "vitest";
+import { RigidBody } from "@drawcall/physics";
 import { JointActuator } from "../src/devices/actuator.js";
+import { CameraSensor } from "../src/devices/camera.js";
 import { findRobot, Robot } from "../src/devices/robot.js";
 import { ROS2 } from "../src/runtime.js";
 import {
@@ -168,11 +170,11 @@ it("detaches and stops listening on dispose", async () => {
   actuator.dispose();
   expect(actuator.target).toBeUndefined();
   expect(joint.drive).toBeUndefined();
+  robot.dispose();
+  robot.dispose();
   expect(() =>
     connection.receive(COMMANDS, jointCommand("velocity", 2)),
   ).toThrow("No subscription");
-  robot.dispose();
-  robot.dispose();
   ros.dispose();
   const count = connection.messages.length;
   world.update(0.01);
@@ -214,13 +216,14 @@ it("finds the only robot, or one by name when a scene has several", () => {
   const { robot } = cart(ros);
   robot.name = "one";
   expect(findRobot(ros)).toBe(robot);
-  cart(ros).robot.name = "two";
+  expect(() => new Robot({ ros })).toThrow("share the namespace /robot");
+  new Robot({ ros, namespace: "/two" }).name = "two";
   expect(() => findRobot(ros)).toThrow("pick one by name");
   expect(findRobot(ros, "two").name).toBe("two");
   expect(() => findRobot(ros, "three")).toThrow("no robot named three");
 });
 
-it("stops and detaches an actuator even when releasing its subscription fails", async () => {
+it("releases a robot even when releasing its command subscription fails", async () => {
   const { world, ros, connection } = await simulation();
   const subscribe = connection.subscribe.bind(connection);
   const failure = new Error("Subscription release failed");
@@ -231,15 +234,49 @@ it("stops and detaches an actuator even when releasing its subscription fails", 
       throw failure;
     };
   });
-  const { actuator, joint } = cart(ros);
+  const { robot, actuator } = cart(ros);
   connection.receive(COMMANDS, jointCommand("velocity", 2));
   world.update(0.01);
   expect(actuator.target?.velocity).toBe(2);
-  expect(() => actuator.dispose()).toThrow(
+  expect(() => robot.dispose()).toThrow(
     expect.objectContaining({ errors: [failure] }),
   );
-  expect(actuator.target).toBeUndefined();
-  expect(joint.drive).toBeUndefined();
+  expect(ros.find(Robot)).toEqual([]);
+  actuator.dispose();
   expect(ros.find(JointActuator)).toEqual([]);
   expect(() => ros.dispose()).not.toThrow();
+});
+
+it("puts a namespaced robot's topics under its namespace and prefixes its frames", async () => {
+  const { world, ros, connection } = await simulation();
+  const { robot, actuator } = cart(ros);
+  robot.removeFromParent();
+  robot.dispose();
+  const arm = new Robot({ ros, namespace: "/arm1" });
+  arm.name = "arm";
+  const base = new RigidBody({ type: "static" });
+  base.name = "base_link";
+  const camera = new CameraSensor({ ros, frameId: "camera_optical" });
+  base.add(camera);
+  arm.add(base);
+  expect(arm.descriptionTopic).toBe("/arm1/robot_description");
+  expect(camera.compressedTopic).toBe("/arm1/camera/image_raw/compressed");
+  world.update(0.01);
+  const statics = connection.messages.find(({ name }) => name === "/tf_static");
+  expect(statics?.message).toMatchObject({
+    transforms: [
+      {
+        header: { frame_id: "arm1/base_footprint" },
+        child_frame_id: "arm1/base_link",
+      },
+      {
+        header: { frame_id: "arm1/base_link" },
+        child_frame_id: "arm1/camera_optical",
+      },
+    ],
+  });
+  expect(() =>
+    connection.receive(COMMANDS, jointCommand("velocity", 2)),
+  ).toThrow("No subscription");
+  expect(actuator.target).toBeUndefined();
 });

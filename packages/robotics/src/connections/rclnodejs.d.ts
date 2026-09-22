@@ -21,10 +21,8 @@ declare module "rclnodejs" {
     createService(
       type: string,
       name: string,
-      handler: (
-        request: unknown,
-        response: { send(value: unknown): void },
-      ) => void,
+      /** The returned response, or a promise of it, is sent back. */
+      handler: (request: unknown) => unknown,
     ): unknown;
     spin(): void;
     destroy(): void;

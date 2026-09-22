@@ -144,8 +144,8 @@ function controlXML(robot: Robot, joints: LinkJoint[]): string[] {
     `  <ros2_control name="${robot.name}" type="system">`,
     `    <hardware>`,
     `      <plugin>topic_based_ros2_control/TopicBasedSystem</plugin>`,
-    `      <param name="joint_commands_topic">${robot.ros.topic("joint_commands")}</param>`,
-    `      <param name="joint_states_topic">${robot.ros.topic("joint_states")}</param>`,
+    `      <param name="joint_commands_topic">${robot.topic("joint_commands")}</param>`,
+    `      <param name="joint_states_topic">${robot.topic("joint_states")}</param>`,
     `      <param name="trigger_joint_command_threshold">-1</param>`,
     `    </hardware>`,
     ...joints

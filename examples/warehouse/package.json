@@ -6,7 +6,7 @@
     "dev": "pnpm --filter @drawcall/robotics build && pixi run launch viewer:=true",
     "launch": "pnpm --filter @drawcall/robotics build && pixi run launch",
     "record": "pnpm --filter @drawcall/robotics build && pixi run launch record:=true",
-    "replay": "pnpm --filter @drawcall/robotics build && drawcall-robotics view",
+    "replay": "pnpm --filter @drawcall/robotics build && drawcall-robotics view --show /map --show /local_costmap/costmap --show /plan --show /local_plan",
     "typecheck": "tsc --noEmit",
     "results": "pnpm --filter @drawcall/robotics build && drawcall-robotics results"
   },

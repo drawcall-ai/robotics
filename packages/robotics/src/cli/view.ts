@@ -10,11 +10,20 @@ import { serveLichtblick } from "./lichtblick.js";
 export const view = new Command("view")
   .description("open a recording in Lichtblick")
   .argument("<recording>", "a rosbag2 directory or .mcap file")
+  .option(
+    "--show <topic>",
+    "also display a topic: a compressed image in its own panel, anything else in 3D (repeatable)",
+    (topic: string, shown: string[]) => [...shown, topic],
+    [],
+  )
   .action(run);
 
-async function run(path: string): Promise<void> {
+async function run(path: string, options: { show: string[] }): Promise<void> {
   const file = await recordingFile(path);
-  const viewer = await serveLichtblick(await recordingLayout(file), file);
+  const viewer = await serveLichtblick(
+    await recordingLayout(file, options.show),
+    file,
+  );
   const controller = new AbortController();
   using resources = new DisposableStack();
   resources.defer(() => viewer.close());
@@ -36,8 +45,8 @@ async function recordingFile(path: string): Promise<string> {
   return file;
 }
 
-/** The default layout for the scans and images a recording holds. */
-async function recordingLayout(file: string): Promise<unknown> {
+/** The default layout for the robots, scans and images a recording holds. */
+async function recordingLayout(file: string, show: string[]): Promise<unknown> {
   await using recording = await openRecording(file);
   const { reader } = recording;
   const topics = (schema: string): string[] =>
@@ -46,21 +55,22 @@ async function recordingLayout(file: string): Promise<unknown> {
         (channel) => reader.schemasById.get(channel.schemaId)?.name === schema,
       )
       .map((channel) => channel.topic);
-  let model: ModelView | undefined;
+  const models = new Map<string, ModelView>();
   const descriptions = topics("std_msgs/msg/String").filter((topic) =>
     topic.endsWith("/robot_description"),
   );
   for await (const description of readStrings(reader, descriptions)) {
-    model = descriptionView(description);
-    if (model) break;
+    const model = descriptionView(description);
+    if (model && !models.has(model.topic)) models.set(model.topic, model);
   }
   return defaultLayout({
     scans: topics("sensor_msgs/msg/LaserScan"),
     images: topics("sensor_msgs/msg/CompressedImage"),
     calibrations: topics("sensor_msgs/msg/CameraInfo"),
+    show,
     evaluation: [...reader.channelsById.values()].some(
       (channel) => channel.topic === EVALUATION_TOPIC,
     ),
-    model,
+    models: [...models.values()],
   });
 }

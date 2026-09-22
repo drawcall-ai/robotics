@@ -2,7 +2,7 @@
   <arg name="viewer" default="false"/>
   <arg name="record" default="false"/>
   <let name="scene" value="$(dirname)/scene.ts"/>
-  <executable cmd="drawcall-robotics sim $(var scene) --wait-for-start --perception $(if $(var record) --record --no-record) $(if $(var viewer) --viewer --no-viewer)" cwd="$(dirname)" on_exit="shutdown"/>
+  <executable cmd="drawcall-robotics sim $(var scene) --wait-for-start --show /robot/perception/image/compressed $(if $(var record) --record --no-record) $(if $(var viewer) --viewer --no-viewer)" cwd="$(dirname)" on_exit="shutdown"/>
   <node pkg="foxglove_bridge" exec="foxglove_bridge" if="$(var viewer)" on_exit="shutdown">
     <param name="send_buffer_limit" value="100000000"/>
     <param name="use_sim_time" value="true"/>

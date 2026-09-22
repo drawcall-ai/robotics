@@ -113,11 +113,13 @@ export class ROS2 {
   get error(): Error | undefined {
     return this.fault ?? this.connection.error;
   }
-  /** The absolute topic for `name`: under the namespace unless already absolute. */
-  topic(name: string): string {
+  /** The absolute topic for `name`: under `namespace`, by default the runtime's, unless already absolute. */
+  topic(name: string, namespace = this.namespace): string {
+    if (namespace !== "/" && !TOPIC.test(namespace))
+      throw new Error(`Invalid ROS namespace: ${namespace}`);
     const topic = name.startsWith("/")
       ? name
-      : `${this.namespace === "/" ? "" : this.namespace}/${name}`;
+      : `${namespace === "/" ? "" : namespace}/${name}`;
     if (!TOPIC.test(topic)) throw new Error(`Invalid ROS topic: ${topic}`);
     return topic;
   }

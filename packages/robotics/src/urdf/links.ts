@@ -58,6 +58,7 @@ export interface LinkJoint {
 export function buildLinkTree(
   robot: string,
   root: RigidBody,
+  bodies: readonly RigidBody[],
   axes: ReadonlyMap<string, AxisJoint | FixedJoint>,
   frameObjects: ReadonlyMap<string, Object3D>,
 ): LinkTree {
@@ -96,6 +97,12 @@ export function buildLinkTree(
   if (unreached.length)
     throw new Error(
       `Joints ${unreached.join(", ")} do not connect to ${root.name}`,
+    );
+  // URDF has only fixed and single-axis joints; a body on any other joint cannot be described.
+  const loose = bodies.find((body) => !links.has(body));
+  if (loose)
+    throw new Error(
+      `Body ${loose.name || "(unnamed)"} of ${robot} hangs from no named fixed or axis joint, which URDF cannot describe; move it out of the robot`,
     );
   const frames = [...frameObjects].map(([name, object]) => {
     let body = object.parent;

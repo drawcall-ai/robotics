@@ -132,7 +132,8 @@ function assemble() {
       new SphereCollider({ radius: 0.09 }),
       new Mesh(new SphereGeometry(0.09, 16, 12), metal),
     );
-    robot.add(
+    // URDF has no ball joint, so the support balls ride along outside the robot group.
+    scene.add(
       ball,
       new SphericalJoint({
         body0: chassis,

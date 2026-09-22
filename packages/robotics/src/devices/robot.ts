@@ -6,13 +6,12 @@ import { getROS2, type ROS2 } from "../runtime.js";
 import { JointActuator } from "./actuator.js";
 import { Model } from "./model.js";
 import { Schedule } from "./schedule.js";
-
-/** Joint state publication rate in Hz. */
-const STATE_RATE = 20;
+import { runAll } from "../cleanup.js";
 
 /** What the children describe, read at first use and frozen: children added later are ignored. */
 interface Structure {
   base: RigidBody;
+  bodies: RigidBody[];
   joints: Map<string, AxisJoint>;
   frames: Map<string, Object3D>;
   links: Map<string, AxisJoint | FixedJoint>;
@@ -23,6 +22,18 @@ function isFrame(object: Object3D): object is Object3D & { frameId: string } {
   return "frameId" in object && typeof object.frameId === "string";
 }
 
+export interface RobotOptions {
+  ros?: ROS2;
+  /**
+   * The robot's own namespace, for several robots in one scene. Its topics go under it and its TF
+   * frames carry it as a prefix, as `robot_state_publisher`'s `frame_prefix` does. Without one, the
+   * robot uses the runtime's namespace and plain frame names.
+   */
+  namespace?: string;
+  /** Joint state and TF publication rate in Hz. */
+  rate?: number;
+}
+
 /**
  * A robot is a group: the bodies, joints and sensors under it are the robot. Its URDF and joint
  * states follow from that structure: the base is the body no joint hangs from, every named axis
@@ -31,16 +42,46 @@ function isFrame(object: Object3D): object is Object3D & { frameId: string } {
  */
 export class Robot extends Group {
   readonly ros: ROS2;
-  private readonly schedule = new Schedule(STATE_RATE);
+  readonly namespace: string;
+  /** Prepended to every TF frame the robot publishes: empty, or its namespace and a slash. */
+  readonly framePrefix: string;
+  private readonly schedule: Schedule;
+  private readonly unsubscribe: () => void;
   private readonly unregister: () => void;
   private resolved?: Structure;
   private linkTree?: LinkTree;
   private disposed = false;
   private model?: Model;
-  constructor(options: { ros?: ROS2 } = {}) {
+  constructor({ ros, namespace, rate = 100 }: RobotOptions = {}) {
     super();
-    this.ros = options.ros ?? getROS2();
+    this.ros = ros ?? getROS2();
+    this.namespace = namespace ?? this.ros.namespace;
+    this.framePrefix = namespace ? `${namespace.replace(/^\//, "")}/` : "";
+    if (
+      this.ros.find(Robot).some((robot) => robot.namespace === this.namespace)
+    )
+      throw new Error(
+        `Two robots share the namespace ${this.namespace}; give each its own`,
+      );
+    this.schedule = new Schedule(rate);
+    // One command topic per robot, as the topic-based ros2_control hardware publishes it.
+    this.unsubscribe = this.ros.subscribe(
+      this.topic("joint_commands"),
+      "sensor_msgs/msg/JointState",
+      (message) => {
+        for (const actuator of this.actuators.values())
+          actuator.receive(message);
+      },
+    );
     this.unregister = this.ros.register(this);
+  }
+  /** The absolute topic for `name` in the robot's namespace. */
+  topic(name: string): string {
+    return this.ros.topic(name, this.namespace);
+  }
+  /** The TF frame the robot publishes for `id`. */
+  frame(id: string): string {
+    return this.framePrefix + id;
   }
   /** The body every joint hangs from; its pose is the robot's. */
   get base(): RigidBody {
@@ -51,14 +92,14 @@ export class Robot extends Group {
     return this.structure().joints;
   }
   get descriptionTopic(): string {
-    return this.ros.topic("robot_description");
+    return this.topic("robot_description");
   }
   /** The kinematic tree in link frames, measured at first use and frozen like the structure. */
   get tree(): LinkTree {
     if (this.linkTree) return this.linkTree;
-    const { base, links, frames } = this.structure();
+    const { base, bodies, links, frames } = this.structure();
     this.updateWorldMatrix(true, true);
-    this.linkTree = buildLinkTree(this.name, base, links, frames);
+    this.linkTree = buildLinkTree(this.name, base, bodies, links, frames);
     return this.linkTree;
   }
 
@@ -109,7 +150,7 @@ export class Robot extends Group {
       throw new Error(
         `${this.name} needs exactly one body that no joint hangs from, found ${roots.length}`,
       );
-    this.resolved = { base, joints, frames, links };
+    this.resolved = { base, bodies, joints, frames, links };
     return this.resolved;
   }
   /** Called after authoring, before the first physics step; also usable while paused at startup. */
@@ -122,7 +163,7 @@ export class Robot extends Group {
     this.model?.publish(time);
     if (!joints.size) return;
     const states = [...joints.values()].map((joint) => joint.getState());
-    this.ros.publish("joint_states", "sensor_msgs/msg/JointState", {
+    this.ros.publish(this.topic("joint_states"), "sensor_msgs/msg/JointState", {
       header: header(time, ""),
       name: [...joints.keys()],
       position: states.map((state) => state.position),
@@ -133,8 +174,15 @@ export class Robot extends Group {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.unregister();
+    runAll([this.unsubscribe, this.unregister], "Failed to dispose robot");
   }
+}
+
+/** The robot `object` is mounted on, if any. */
+export function robotOf(object: Object3D): Robot | undefined {
+  for (let parent = object.parent; parent; parent = parent.parent)
+    if (parent instanceof Robot) return parent;
+  return undefined;
 }
 
 /** The runtime's robot named `name`, or its only robot. */

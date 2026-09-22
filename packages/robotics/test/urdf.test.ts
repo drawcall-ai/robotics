@@ -13,7 +13,11 @@ import { CameraSensor } from "../src/devices/camera.js";
 import { LaserSensor } from "../src/devices/laser.js";
 import { Robot } from "../src/devices/robot.js";
 import { exportURDF } from "../src/urdf/export.js";
-import { offline } from "./fixture.js";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { separateMeshes } from "../src/cli/urdf.js";
+import { defer, offline } from "./fixture.js";
 
 /** A rover standing somewhere: box chassis, one actuated wheel on a cylinder, a camera and a lidar. */
 function rover(
@@ -22,10 +26,16 @@ function rover(
     at = [5, 1, -2],
     stiffness,
     limits,
-  }: { at?: number[]; stiffness?: number; limits?: [number, number] } = {},
+    namespace,
+  }: {
+    at?: number[];
+    stiffness?: number;
+    limits?: [number, number];
+    namespace?: string;
+  } = {},
 ) {
   const [x = 0, y = 0, z = 0] = at;
-  const robot = new Robot();
+  const robot = new Robot({ namespace });
   robot.name = name;
   const base = new RigidBody({ mass: 2 });
   base.name = "base_link";
@@ -64,7 +74,7 @@ function rover(
   robot.add(base, wheel, axle);
   return { robot, base, wheel, axle };
 }
-/** A free-rolling support ball: a body under a spherical joint is physics only, not a link. */
+/** A free-rolling support ball: URDF has no ball joint to describe it. */
 function withCaster({ robot, base }: { robot: Robot; base: RigidBody }) {
   const caster = new RigidBody({ mass: 0.1 });
   caster.name = "caster";
@@ -75,7 +85,6 @@ function withCaster({ robot, base }: { robot: Robot; base: RigidBody }) {
 it("reads links, joints, colliders, frames and control from its children in ROS coordinates", () => {
   const ros = offline();
   const { robot, base } = rover();
-  withCaster({ robot, base });
   const urdf = exportURDF({ ros });
   expect(urdf).toContain('<robot name="rover">');
   expect(urdf).toContain('<box size="0.6 0.4 0.2"/>');
@@ -139,10 +148,10 @@ it("rejects a robot without a name, an ambiguous base and an unnamed joint", () 
   const ros = offline();
   new Robot();
   expect(() => exportURDF({ ros })).toThrow("Invalid robot name");
-  const two = rover("two");
+  const two = rover("two", { namespace: "/two" });
   two.robot.add(new RigidBody({ mass: 1 }));
   expect(() => exportURDF({ ros, name: "two" })).toThrow("found 2");
-  const unnamed = rover("unnamed");
+  const unnamed = rover("unnamed", { namespace: "/unnamed" });
   unnamed.axle.name = "";
   expect(() => exportURDF({ ros, name: "unnamed" })).toThrow(
     "Invalid joint name",
@@ -151,7 +160,7 @@ it("rejects a robot without a name, an ambiguous base and an unnamed joint", () 
 
 it("rejects disconnected joints and duplicate frames, and exports mesh colliders", () => {
   const ros = offline();
-  const orphaned = rover("orphaned");
+  const orphaned = rover("orphaned", { namespace: "/orphaned" });
   const loose = new RigidBody({ mass: 1 });
   loose.name = "loose";
   const other = new RigidBody({ mass: 1 });
@@ -160,12 +169,12 @@ it("rejects disconnected joints and duplicate frames, and exports mesh colliders
   orphan.name = "orphan";
   orphaned.robot.add(loose, other, orphan);
   expect(() => exportURDF({ ros, name: "orphaned" })).toThrow("found 2");
-  const duplicate = rover("duplicate");
+  const duplicate = rover("duplicate", { namespace: "/duplicate" });
   duplicate.base.add(new LaserSensor({ name: "rear", frameId: "wheel" }));
   expect(() => exportURDF({ ros, name: "duplicate" })).toThrow(
     "Duplicate URDF link name: wheel",
   );
-  const meshed = rover("meshed");
+  const meshed = rover("meshed", { namespace: "/meshed" });
   const mesh = new MeshCollider();
   mesh.setGeometry(new BoxGeometry(1, 1, 1));
   meshed.base.add(mesh);
@@ -176,7 +185,7 @@ it("rejects disconnected joints and duplicate frames, and exports mesh colliders
 
 it("rejects two joints or two frames with one name, and a frame off a link", () => {
   const ros = offline();
-  const twin = rover("twin");
+  const twin = rover("twin", { namespace: "/twin" });
   const extra = new RigidBody({ mass: 1 });
   extra.name = "extra";
   const axle = new RevoluteJoint({ body0: twin.base, body1: extra });
@@ -185,12 +194,39 @@ it("rejects two joints or two frames with one name, and a frame off a link", () 
   expect(() => exportURDF({ ros, name: "twin" })).toThrow(
     "two joints named axle",
   );
-  const eyes = rover("eyes");
+  const eyes = rover("eyes", { namespace: "/eyes" });
   eyes.base.add(new CameraSensor({ name: "rear", frameId: "camera_optical" }));
   expect(() => exportURDF({ ros, name: "eyes" })).toThrow(
     "two frames named camera_optical",
   );
-  const rolling = rover("rolling");
-  withCaster(rolling).add(new LaserSensor({ name: "under", frameId: "under" }));
-  expect(() => exportURDF({ ros, name: "rolling" })).toThrow("is not a link");
+  const rolling = rover("rolling", { namespace: "/rolling" });
+  withCaster(rolling);
+  expect(() => exportURDF({ ros, name: "rolling" })).toThrow(
+    "Body caster of rolling hangs from no named fixed or axis joint",
+  );
+});
+
+it("separates embedded meshes into shared STL files beside the output", async () => {
+  const ros = offline();
+  const { base } = rover();
+  for (const x of [0, 1]) {
+    const mesh = new MeshCollider();
+    mesh.setGeometry(new BoxGeometry(1, 1, 1));
+    mesh.position.x = x;
+    base.add(mesh);
+  }
+  const dir = await mkdtemp(join(tmpdir(), "urdf-"));
+  defer(() => void rm(dir, { recursive: true }));
+  const output = join(dir, "rover.urdf");
+  const urdf = await separateMeshes(exportURDF({ ros }), output);
+  expect(urdf).not.toContain("data:");
+  const files = [...urdf.matchAll(/filename="(file:[^"]+)"/g)].map(
+    ([, url]) => url ?? "",
+  );
+  // Two colliders, each drawn as a visual too, all one shape.
+  expect(files).toHaveLength(4);
+  expect(new Set(files).size).toBe(1);
+  const [file = ""] = files;
+  expect(file).toMatch(/\/rover-[0-9a-f]{12}\.stl$/);
+  expect((await readFile(new URL(file))).byteLength).toBeGreaterThan(84);
 });

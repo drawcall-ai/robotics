@@ -8,6 +8,7 @@ import {
 import { header, identifier } from "../messages.js";
 import { getROS2, type CaptureRenderer, type ROS2 } from "../runtime.js";
 import { Schedule } from "./schedule.js";
+import { robotOf } from "./robot.js";
 
 export class CameraSensor extends PerspectiveCamera {
   readonly ros: ROS2;
@@ -57,11 +58,19 @@ export class CameraSensor extends PerspectiveCamera {
     this.ros = options.ros ?? getROS2();
     this.unregister = this.ros.register(this);
   }
-  get imageTopic(): string {
-    return this.ros.topic(`${this.name}/image/compressed`);
+  /** `sensor_msgs/Image`, `rgb8`, as image_transport's raw transport names it. */
+  get rawTopic(): string {
+    return this.topic("image_raw");
+  }
+  /** `sensor_msgs/CompressedImage`, JPEG, as image_transport's compressed transport names it. */
+  get compressedTopic(): string {
+    return this.topic("image_raw/compressed");
   }
   get infoTopic(): string {
-    return this.ros.topic(`${this.name}/camera_info`);
+    return this.topic("camera_info");
+  }
+  private topic(name: string): string {
+    return this.ros.topic(`${this.name}/${name}`, robotOf(this)?.namespace);
   }
   get busy(): boolean {
     return this.pending !== undefined;
@@ -113,10 +122,30 @@ export class CameraSensor extends PerspectiveCamera {
     if (!(pixels instanceof Uint8Array))
       throw new Error("Camera readback must produce 8-bit pixels");
     const { width, height } = this;
+    const stamped = header(
+      time,
+      robotOf(this)?.frame(this.frameId) ?? this.frameId,
+    );
+    // The readback is RGBA; a camera has no alpha.
+    const rgb = new Uint8Array(width * height * 3);
+    for (let i = 0, j = 0; j < rgb.length; i += 4, j += 3) {
+      rgb[j] = pixels[i] ?? 0;
+      rgb[j + 1] = pixels[i + 1] ?? 0;
+      rgb[j + 2] = pixels[i + 2] ?? 0;
+    }
+    this.ros.publish(this.rawTopic, "sensor_msgs/msg/Image", {
+      header: stamped,
+      height,
+      width,
+      encoding: "rgb8",
+      is_bigendian: 0,
+      step: width * 3,
+      data: rgb,
+    });
     const jpeg = encode({ data: pixels, width, height }, this.quality);
-    this.ros.publish(this.imageTopic, "sensor_msgs/msg/CompressedImage", {
-      header: header(time, this.frameId),
-      format: "jpeg",
+    this.ros.publish(this.compressedTopic, "sensor_msgs/msg/CompressedImage", {
+      header: stamped,
+      format: "rgb8; jpeg compressed bgr8",
       data: new Uint8Array(jpeg.data),
     });
     const projection = this.projectionMatrix.elements;
@@ -125,7 +154,7 @@ export class CameraSensor extends PerspectiveCamera {
     const cx = ((1 - projection[8]) * width) / 2;
     const cy = ((1 + projection[9]) * height) / 2;
     this.ros.publish(this.infoTopic, "sensor_msgs/msg/CameraInfo", {
-      header: header(time, this.frameId),
+      header: stamped,
       width,
       height,
       distortion_model: "plumb_bob",

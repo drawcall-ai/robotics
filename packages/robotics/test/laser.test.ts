@@ -6,7 +6,10 @@ import { simulation } from "./fixture.js";
 
 /** Five samples over the full circle: behind, right, ahead, left, behind again. */
 const SAMPLES = 5;
-const CLEAR = 7; // beyond the default range of 6
+/** REP 117: no return within range. */
+const CLEAR = Infinity;
+/** REP 117: a return inside the dead zone. */
+const NEAR = -Infinity;
 
 function wall(
   position: [number, number, number],
@@ -51,13 +54,13 @@ it("scans in the frame of the body it sits on", async () => {
   );
 });
 
-it("drops returns closer than the minimum range like a real scanner", async () => {
+it("reports returns closer than the minimum range as -Inf", async () => {
   const { world, ros, connection } = await simulation();
   room();
   new LaserSensor({ ros, samples: SAMPLES, minRange: 2 });
   world.update(0.01);
   expect(connection.messages).toContainEqual(
-    scan([CLEAR, CLEAR, expect.closeTo(2.9, 5), CLEAR, CLEAR]),
+    scan([CLEAR, CLEAR, expect.closeTo(2.9, 5), NEAR, CLEAR]),
   );
 });
 
@@ -89,7 +92,7 @@ it("describes its sweep, ranges and frame in every scan", async () => {
       scan_time: 0.2,
       range_min: 0.5,
       range_max: 4,
-      ranges: [5, 5, 5, 5, 5],
+      ranges: [CLEAR, CLEAR, CLEAR, CLEAR, CLEAR],
       intensities: [],
     },
   });

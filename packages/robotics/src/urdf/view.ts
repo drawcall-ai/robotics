@@ -4,6 +4,8 @@ import { rosPosition } from "../coordinates.js";
 
 export interface ModelView {
   topic: string;
+  /** Prefix of the robot's TF frames, empty for plain names. */
+  framePrefix: string;
   frame: string;
   distance: number;
   target: number[];
@@ -23,7 +25,8 @@ export function modelView(robot: Robot): ModelView {
   const size = box.isEmpty() ? 1 : box.getSize(new Vector3()).length();
   return {
     topic: robot.descriptionTopic,
-    frame: "base_footprint",
+    framePrefix: robot.framePrefix,
+    frame: robot.frame("base_footprint"),
     distance: Math.max(0.3, size * 2),
     target: rosPosition(center).toArray(),
   };
@@ -38,6 +41,8 @@ export function descriptionView(xml: string): ModelView | undefined {
     value === null ||
     !("topic" in value) ||
     typeof value.topic !== "string" ||
+    !("framePrefix" in value) ||
+    typeof value.framePrefix !== "string" ||
     !("frame" in value) ||
     typeof value.frame !== "string" ||
     !("distance" in value) ||
@@ -54,6 +59,7 @@ export function descriptionView(xml: string): ModelView | undefined {
     throw new Error("Invalid robot view metadata");
   return {
     topic: value.topic,
+    framePrefix: value.framePrefix,
     frame: value.frame,
     distance: value.distance,
     target: value.target.map(Number),

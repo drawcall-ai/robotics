@@ -5,7 +5,8 @@ import { Stepping } from "../src/cli/sim.js";
 import { CameraSensor } from "../src/devices/camera.js";
 import { defer, simulation } from "./fixture.js";
 
-const IMAGE = "/robot/camera/image/compressed";
+const IMAGE = "/robot/camera/image_raw/compressed";
+const RAW = "/robot/camera/image_raw";
 const INFO = "/robot/camera/camera_info";
 
 async function fixture() {
@@ -70,13 +71,33 @@ it("encodes the readback as a JPEG the size of the sensor", async () => {
   camera.afterStep(0.2);
   await renderer.flush();
   const image = messages.find((message) => message.name === IMAGE)?.message;
-  expect(field(image, "format")).toBe("jpeg");
+  expect(field(image, "format")).toBe("rgb8; jpeg compressed bgr8");
   const data = field(image, "data");
   if (!(data instanceof Uint8Array))
     throw new Error("Image data must be bytes");
   const decoded = decode(data);
   expect([decoded.width, decoded.height]).toEqual([320, 180]);
   expect(decoded.data[0]).toBeCloseTo(200, -1);
+});
+
+it("publishes the readback as a raw rgb8 image beside the JPEG", async () => {
+  const { camera, renderer, messages } = await fixture();
+  renderer.pixel = 200;
+  camera.afterStep(0.2);
+  await renderer.flush();
+  const image = messages.find((message) => message.name === RAW)?.message;
+  expect(image).toMatchObject({
+    header: { frame_id: "camera_optical" },
+    width: 320,
+    height: 180,
+    encoding: "rgb8",
+    step: 960,
+  });
+  const data = field(image, "data");
+  if (!(data instanceof Uint8Array))
+    throw new Error("Image data must be bytes");
+  expect(data).toHaveLength(320 * 180 * 3);
+  expect(data[0]).toBe(200);
 });
 
 it("restores the previous render target and publishes nothing after rendering fails", async () => {
@@ -108,7 +129,7 @@ it("publishes only image and calibration from a step, never a camera pose", asyn
   world.update(0.01);
   await renderer.flush();
   expect(new Set(messages.map(({ name }) => name))).toEqual(
-    new Set(["/clock", IMAGE, INFO]),
+    new Set(["/clock", RAW, IMAGE, INFO]),
   );
 });
 
