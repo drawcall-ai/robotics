@@ -2,7 +2,7 @@
   "name": "@drawcall/example-so101",
   "private": true,
   "dependencies": {
-    "@drawcall/physics": "0.12.0",
+    "@drawcall/physics": "0.13.0",
     "@drawcall/robotics": "workspace:*",
     "sharp": "^0.35.4",
     "three": "^0.185.1"

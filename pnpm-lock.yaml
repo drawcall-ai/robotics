@@ -32,8 +32,8 @@ importers:
   examples/so101:
     dependencies:
       '@drawcall/physics':
-        specifier: 0.12.0
-        version: 0.12.0(three@0.185.1)
+        specifier: 0.13.0
+        version: 0.13.0(three@0.185.1)
       '@drawcall/robotics':
         specifier: workspace:*
         version: link:../../packages/robotics
@@ -57,8 +57,8 @@ importers:
   examples/warehouse:
     dependencies:
       '@drawcall/physics':
-        specifier: 0.12.0
-        version: 0.12.0(three@0.185.1)
+        specifier: 0.13.0
+        version: 0.13.0(three@0.185.1)
       '@drawcall/robotics':
         specifier: workspace:*
         version: link:../../packages/robotics
@@ -76,8 +76,8 @@ importers:
   packages/robotics:
     dependencies:
       '@drawcall/physics-mujoco':
-        specifier: 0.12.0
-        version: 0.12.0(@drawcall/physics@0.12.0(three@0.185.1))(three@0.185.1)
+        specifier: 0.13.0
+        version: 0.13.0(@drawcall/physics@0.13.0(three@0.185.1))(three@0.185.1)
       '@foxglove/rosmsg':
         specifier: ^5.0.5
         version: 5.0.5
@@ -113,8 +113,8 @@ importers:
         version: 0.185.1
     devDependencies:
       '@drawcall/physics':
-        specifier: 0.12.0
-        version: 0.12.0(three@0.185.1)
+        specifier: 0.13.0
+        version: 0.13.0(three@0.185.1)
       '@types/node':
         specifier: ^26.6.0
         version: 26.6.0
@@ -138,14 +138,14 @@ packages:
   '@dimforge/rapier3d-compat@0.12.0':
     resolution: {integrity: sha512-uekIGetywIgopfD97oDL5PfeezkFpNhwlzlaEYNOA0N6ghdsOvh/HYjSMek5Q2O1PYvRSDFcqFVJl4r4ZBwOow==}
 
-  '@drawcall/physics-mujoco@0.12.0':
-    resolution: {integrity: sha512-R77TKLcWPIVN+KLb8FKfWwf9YXMcdlvHNuC9FUn7uIpO8a9ZdTPbNZTVvnUfg02C/nm33PgmALQFc4Ur/dkoZg==}
+  '@drawcall/physics-mujoco@0.13.0':
+    resolution: {integrity: sha512-q3HFrAcKkwfT1oADm0qWzxFa6cENZBRLX3rXYhcHWTlUAjEfLDYRmY8OWtzgzsWT+acYe9xBauIBFOgKStzU7A==}
     peerDependencies:
-      '@drawcall/physics': ^0.12.0
+      '@drawcall/physics': ^0.13.0
       three: '>=0.180.0'
 
-  '@drawcall/physics@0.12.0':
-    resolution: {integrity: sha512-cyFejDerj0XKRZVBzXmpcEC3WLc5+q/sD41NZfR0ArluOcmPT5U1gyHCgnGMkHqiYIPycW+AsiSCPy0pneo3tA==}
+  '@drawcall/physics@0.13.0':
+    resolution: {integrity: sha512-EkCKQ/roR5/NmOOKt754WBh0IS+fH1JPgfDm6dNUR6K6UzVBNjHuCfRMYlOAludW+QRtVoKd14Fr/d0XnMWENw==}
     peerDependencies:
       three: '>=0.185.0'
 
@@ -1326,13 +1326,13 @@ snapshots:
 
   '@dimforge/rapier3d-compat@0.12.0': {}
 
-  '@drawcall/physics-mujoco@0.12.0(@drawcall/physics@0.12.0(three@0.185.1))(three@0.185.1)':
+  '@drawcall/physics-mujoco@0.13.0(@drawcall/physics@0.13.0(three@0.185.1))(three@0.185.1)':
     dependencies:
-      '@drawcall/physics': 0.12.0(three@0.185.1)
+      '@drawcall/physics': 0.13.0(three@0.185.1)
       '@mujoco/mujoco': 3.13.0
       three: 0.185.1
 
-  '@drawcall/physics@0.12.0(three@0.185.1)':
+  '@drawcall/physics@0.13.0(three@0.185.1)':
     dependencies:
       three: 0.185.1
 
