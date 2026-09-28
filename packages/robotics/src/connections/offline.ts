@@ -6,6 +6,9 @@ export class OfflineConnection implements Connection {
   publish(name: string): void {
     throw new Error(`Cannot publish ${name}: this runtime is offline`);
   }
+  subscribed(): boolean {
+    return false;
+  }
   subscribe(): () => void {
     return () => undefined;
   }

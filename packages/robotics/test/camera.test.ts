@@ -13,7 +13,14 @@ async function fixture() {
   const { world, ros, connection, renderer } = await simulation();
   const camera = new CameraSensor({ width: 320, height: 180, ros });
   new Scene().add(camera);
-  return { world, ros, camera, renderer, messages: connection.messages };
+  return {
+    world,
+    ros,
+    camera,
+    renderer,
+    connection,
+    messages: connection.messages,
+  };
 }
 function field(message: unknown, key: string): unknown {
   if (typeof message !== "object" || message === null || !(key in message))
@@ -100,6 +107,18 @@ it("publishes the readback as a raw rgb8 image beside the JPEG", async () => {
   expect(data[0]).toBe(200);
 });
 
+it("publishes images only while someone subscribes, and calibration always", async () => {
+  const { camera, renderer, connection, messages } = await fixture();
+  connection.listening = false;
+  camera.afterStep(0.2);
+  await renderer.flush();
+  expect(messages.map((message) => message.name)).not.toContain(IMAGE);
+  expect(messages.map((message) => message.name)).not.toContain(RAW);
+  expect(messages.some((message) => message.name.endsWith("camera_info"))).toBe(
+    true,
+  );
+});
+
 it("restores the previous render target and publishes nothing after rendering fails", async () => {
   const { camera, renderer, messages } = await fixture();
   const previous = new RenderTarget(128, 128);
@@ -112,14 +131,21 @@ it("restores the previous render target and publishes nothing after rendering fa
   expect(messages).toHaveLength(0);
 });
 
-it("skips a sample while a readback is still in flight instead of queueing captures", async () => {
+it("skips a sample while every readback is still in flight instead of queueing captures", async () => {
   const { camera, renderer, messages } = await fixture();
-  camera.afterStep(0.2);
-  camera.afterStep(0.4);
+  for (const time of [0.2, 0.4, 0.6, 0.8]) camera.afterStep(time);
   await renderer.flush();
-  camera.afterStep(0.6);
+  camera.afterStep(1.0);
   await renderer.flush();
-  expect(messages.filter((message) => message.name === IMAGE)).toHaveLength(2);
+  const stamps = messages
+    .filter((message) => message.name === IMAGE)
+    .map((message) => field(field(message.message, "header"), "stamp"));
+  expect(stamps).toEqual([
+    { sec: 0, nanosec: 200_000_000 },
+    { sec: 0, nanosec: 400_000_000 },
+    { sec: 0, nanosec: 600_000_000 },
+    { sec: 1, nanosec: 0 },
+  ]);
 });
 
 it("publishes only image and calibration from a step, never a camera pose", async () => {
@@ -150,13 +176,14 @@ it("finishes an individual camera's readback before releasing its target and dro
   const finished = vi.fn();
   disposed?.then(finished);
   expect(ros.find(CameraSensor)).toEqual([]);
-  expect(dispose).not.toHaveBeenCalled();
+  // The idle targets go at once; the one read back into only once it is done.
+  expect(dispose).toHaveBeenCalledTimes(2);
   await Promise.resolve();
   expect(finished).not.toHaveBeenCalled();
   await renderer.flush();
   await disposed;
   expect(finished).toHaveBeenCalledOnce();
-  expect(dispose).toHaveBeenCalledOnce();
+  expect(dispose).toHaveBeenCalledTimes(3);
   expect(messages).toHaveLength(0);
   expect(ros.connected).toBe(true);
   camera.afterStep(0.4);
@@ -175,7 +202,7 @@ it("reports a disposed camera's failed readback to its owner without faulting th
   );
   await renderer.flush();
   await failure;
-  expect(dispose).toHaveBeenCalledOnce();
+  expect(dispose).toHaveBeenCalledTimes(3);
   expect(messages).toHaveLength(0);
   expect(ros.connected).toBe(true);
   expect(ros.error).toBeUndefined();
@@ -188,25 +215,27 @@ it("joins pending camera work through runtime disposal before its target is rele
   const completion = ros.disposeAsync();
   expect(ros.connected).toBe(false);
   expect(camera.parent).toBe(null);
-  expect(release).not.toHaveBeenCalled();
+  expect(release).toHaveBeenCalledTimes(2);
   await renderer.flush();
   await completion;
-  expect(release).toHaveBeenCalledOnce();
+  expect(release).toHaveBeenCalledTimes(3);
   expect(messages).toHaveLength(0);
 });
 
-it("holds simulation stepping until each capture is published", async () => {
+it("steps on while captures read back, holding only when three are in flight", async () => {
   const { world, ros, renderer, messages } = await fixture();
   const stepping = new Stepping(world, () => ros.busy);
-  stepping.update(0.1);
-  expect(world.time).toBeCloseTo(0.01);
+  // Captures at 0.01, 0.2 and 0.4 s fill the ring; physics then waits for a readback.
+  for (let i = 0; i < 3; i++) stepping.update(0.2);
+  expect(world.time).toBeCloseTo(0.4);
   expect(ros.busy).toBe(true);
   stepping.update(0.1);
-  expect(world.time).toBeCloseTo(0.01);
+  expect(world.time).toBeCloseTo(0.4);
   await renderer.flush();
   expect(ros.busy).toBe(false);
-  stepping.update(0.3);
-  expect(world.time).toBeCloseTo(0.2);
+  // Freed, it catches up on the time it was held for, capturing at 0.6 s on the way.
+  stepping.update(0.2);
+  expect(world.time).toBeGreaterThan(0.6);
   await renderer.flush();
   const stamps = messages
     .filter((message) => message.name === IMAGE)
@@ -214,5 +243,7 @@ it("holds simulation stepping until each capture is published", async () => {
   expect(stamps).toEqual([
     { sec: 0, nanosec: 10_000_000 },
     { sec: 0, nanosec: 200_000_000 },
+    { sec: 0, nanosec: 400_000_000 },
+    { sec: 0, nanosec: 600_000_000 },
   ]);
 });

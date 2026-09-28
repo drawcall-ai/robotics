@@ -26,6 +26,11 @@ export class ConnectionStub implements Connection {
   disposed = false;
   readonly messages: { name: string; type: string; message: unknown }[] = [];
   readonly receivers = new Map<string, Set<(message: unknown) => void>>();
+  /** Whether the stub reports subscribers on every topic. */
+  listening = true;
+  subscribed(): boolean {
+    return this.listening;
+  }
   publish(name: string, type: string, message: unknown): void {
     this.messages.push({ name, type, message });
   }

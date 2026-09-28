@@ -1,4 +1,5 @@
-import { Command } from "commander";
+import { renameSync, writeFileSync } from "node:fs";
+import { Command, InvalidArgumentError } from "commander";
 import { resolve } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
@@ -22,6 +23,7 @@ interface SimOptions {
   show: string[];
   record?: string | boolean;
   recordExclude?: string;
+  realTimeFactor: number;
 }
 
 /** The simulator process: a ROS node that runs a scene until the launch stops it. */
@@ -52,6 +54,16 @@ export const sim = new Command("sim")
   .option(
     "--record-exclude <regex>",
     "topics the recording leaves out besides /clock and raw images",
+  )
+  .option(
+    "--real-time-factor <factor>",
+    "simulated seconds per wall-clock second; 0 runs as fast as the host allows",
+    (value: string) => {
+      const factor = Number(value);
+      if (!(factor >= 0)) throw new InvalidArgumentError("must be 0 or more");
+      return factor;
+    },
+    1,
   )
   .action(async (scene: string, options: SimOptions) => {
     await run(scene, options);
@@ -95,7 +107,8 @@ async function run(scene: string, options: SimOptions): Promise<void> {
   await import(pathToFileURL(resolve(scene)).href);
   const world = await buildWorld({
     gravity: [0, -9.81, 0],
-    fixedDelta: 1 / 1000,
+    // MuJoCo's default timestep.
+    fixedDelta: 1 / 500,
     maxSubsteps: 32,
     solverIterations: 50,
     // Friction constraints stiffer than penetration ones, as MuJoCo Menagerie grippers
@@ -147,13 +160,28 @@ async function run(scene: string, options: SimOptions): Promise<void> {
   const finish = async () => {
     if (recorder && evaluation?.finished)
       await recorder.finish(connection, evaluation);
-    if (evaluation?.result)
+    if (evaluation?.result) {
       console.error(
         `Evaluation ${evaluation.result.status}: ${evaluation.result.reason}`,
       );
+      // For a runner of many episodes: the final result, written whole or not at all.
+      const file = process.env.DRAWCALL_RESULT;
+      if (file) {
+        writeFileSync(`${file}.tmp`, JSON.stringify(evaluation.result));
+        renameSync(`${file}.tmp`, file);
+      }
+    }
   };
   try {
-    await simulate(ros, stepping, controls, evaluation, recorder, stop.signal);
+    await simulate(
+      ros,
+      stepping,
+      controls,
+      evaluation,
+      recorder,
+      options.realTimeFactor,
+      stop.signal,
+    );
     if (stop.signal.aborted && stop.signal.reason !== INTERRUPTED)
       throw stop.signal.reason;
     if (stop.signal.aborted) evaluation?.end("aborted", "interrupted");
@@ -300,23 +328,30 @@ async function simulate(
   controls: Controls,
   evaluation: Evaluator | undefined,
   recorder: Recorder | undefined,
+  realTimeFactor: number,
   signal: AbortSignal,
 ): Promise<void> {
   const world = ros.world;
+  // Frames of 1/60 s: each steps physics, then sleeps what is left of it, which also lets
+  // ROS messages and camera readbacks through.
+  const frame = 1000 / 60;
   let last = performance.now();
   for (;;) {
-    try {
-      await setTimeout(1000 / 60, undefined, { signal });
-    } catch (error) {
-      if (signal.aborted) return;
-      throw error;
-    }
     const now = performance.now();
     const delta = (now - last) / 1000;
     last = now;
     try {
       recorder?.check();
-      if (!controls.paused) stepping.update(delta);
+      if (!controls.paused) {
+        // Catching up on at most two frames' worth, so a host that falls behind stays behind
+        // rather than spiralling, whatever the factor.
+        if (realTimeFactor > 0)
+          stepping.update(
+            delta * realTimeFactor,
+            (2 * frame * realTimeFactor) / 1000,
+          );
+        else stepping.until(now + frame);
+      }
       while (
         controls.paused &&
         controls.steps > 0 &&
@@ -333,6 +368,18 @@ async function simulate(
     }
     if (evaluation?.finished) return;
     if (!ros.connected) throw ros.error ?? new Error("ROS connection lost");
+    try {
+      await setTimeout(
+        Math.max(0, frame - (performance.now() - now)),
+        undefined,
+        {
+          signal,
+        },
+      );
+    } catch (error) {
+      if (signal.aborted) return;
+      throw error;
+    }
   }
 }
 
@@ -379,10 +426,11 @@ export class Stepping {
     private readonly world: PhysicsWorld,
     private readonly halted: () => boolean,
   ) {}
-  update(delta: number): void {
+  /** Steps `delta` seconds on, carrying at most `limit`, and at least 32 steps, of debt. */
+  update(delta: number, limit = 0): void {
     this.accumulated = Math.min(
       this.accumulated + delta,
-      this.world.fixedDelta * 32,
+      Math.max(limit, this.world.fixedDelta * 32),
     );
     while (
       this.accumulated + 1e-12 >= this.world.fixedDelta &&
@@ -391,6 +439,11 @@ export class Stepping {
       this.accumulated = Math.max(0, this.accumulated - this.world.fixedDelta);
       this.world.update(this.world.fixedDelta);
     }
+  }
+  /** Steps as many fixed steps as fit before `deadline`, in performance.now() milliseconds. */
+  until(deadline: number): void {
+    while (performance.now() < deadline && !this.halted())
+      this.world.update(this.world.fixedDelta);
   }
   clear(): void {
     this.accumulated = 0;

@@ -104,6 +104,10 @@ export class RosbridgeConnection implements Connection {
     if (!this.connected) throw new Error("ROS bridge is disconnected");
     this.topic(name, type, options).publish(base64Bytes(message));
   }
+  /** rosbridge does not report subscribers, so everything is published. */
+  subscribed(): boolean {
+    return true;
+  }
   subscribe(
     name: string,
     type: string,

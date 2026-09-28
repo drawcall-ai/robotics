@@ -21,6 +21,8 @@ export interface Connection {
     type: string,
     receive: (message: unknown) => void,
   ): () => void;
+  /** Whether anyone receives what is published on a topic; a connection that cannot tell says yes. */
+  subscribed(name: string, type: string): boolean;
   dispose(): void;
 }
 
@@ -144,6 +146,10 @@ export class ROS2 {
   ): void {
     if (!this.connected) throw new Error("ROS runtime is disconnected");
     this.connection.publish(this.topic(name), type, message, options);
+  }
+  /** Whether anyone receives a topic, so devices can skip work nobody reads, as image_transport does. */
+  subscribed(name: string, type: string): boolean {
+    return this.connection.subscribed(this.topic(name), type);
   }
   /** The returned release is a no-op once the runtime is disposed: disposing the connection ends every subscription. */
   subscribe(

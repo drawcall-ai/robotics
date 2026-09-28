@@ -2,6 +2,7 @@
 declare module "rclnodejs" {
   export interface RclQoS {}
   export interface RclPublisher {
+    readonly subscriptionCount: number;
     waitForAllAcked(timeout: bigint): boolean;
     publish(message: unknown): void;
   }

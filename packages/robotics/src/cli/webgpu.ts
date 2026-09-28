@@ -31,6 +31,8 @@ export async function createRenderer(): Promise<WebGPURenderer> {
   cleanup.defer(() => renderer.dispose());
   await renderer.init();
   renderer.setSize(1, 1, false);
+  // Lights that cast shadows get them; the others cost nothing.
+  renderer.shadowMap.enabled = true;
   cleanup.move();
   return renderer;
 }

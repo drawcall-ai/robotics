@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { Command } from "commander";
+import { episodes } from "./episodes.js";
 import { results } from "./recording.js";
 import { sim } from "./sim.js";
 import { snapshot } from "./snapshot.js";
@@ -28,6 +29,7 @@ new Command("drawcall-robotics")
   .showHelpAfterError()
   .addCommand(sim)
   .addCommand(results)
+  .addCommand(episodes)
   .addCommand(urdf)
   .addCommand(view)
   .addCommand(snapshot)

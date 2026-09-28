@@ -55,6 +55,9 @@ export class RclConnection implements Connection {
   ): void {
     this.advertise(name, type, options).publish(message);
   }
+  subscribed(name: string, type: string): boolean {
+    return this.advertise(name, type).subscriptionCount > 0;
+  }
   hasSubscriber(topic: string, node: string): boolean {
     return this.node
       .getSubscriptionsInfoByTopic(topic, false)

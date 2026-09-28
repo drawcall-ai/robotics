@@ -191,3 +191,12 @@ it("preserves the last valid metrics when a condition throws", async () => {
     metrics: { score: 25 },
   });
 });
+
+it("steps until a deadline, or until halted", async () => {
+  const { world } = await simulation();
+  new Stepping(world, () => false).until(performance.now() + 20);
+  expect(world.time).toBeGreaterThan(0);
+  const before = world.time;
+  new Stepping(world, () => true).until(performance.now() + 20);
+  expect(world.time).toBe(before);
+});
