@@ -100,8 +100,8 @@ export class CameraSensor extends PerspectiveCamera {
     while (root.parent) root = root.parent;
     if (root === this) throw new Error(`Camera ${this.name} is not in a scene`);
     const previous = renderer.getRenderTarget();
+    // Rendering updates the scene's world matrices itself.
     try {
-      root.updateMatrixWorld(true);
       renderer.setRenderTarget(target);
       renderer.render(root, this);
     } catch (error) {
