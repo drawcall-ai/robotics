@@ -1,0 +1,54 @@
+// One piece lies on its side within reach; the robot must stand it up, anywhere. A test of
+// righting alone, apart from recognising and placing pieces.
+import { Evaluator } from "@drawcall/robotics";
+import { Quaternion, Vector3 } from "three";
+import { kinds, type Kind } from "./pieces.ts";
+import {
+  boardMoved,
+  boardPeak,
+  random,
+  scatter,
+  touching,
+} from "./environment.ts";
+import { deskHeight, tilt } from "./task.ts";
+
+const kind = (process.env.PIECE ??
+  kinds[Math.floor(random() * kinds.length)]) as Kind;
+if (!kinds.includes(kind)) throw new Error(`Unknown piece ${kind}`);
+const { body } = scatter(kind, true);
+let rest:
+  { since: number; position: Vector3; rotation: Quaternion } | undefined;
+new Evaluator({
+  timeout: 400,
+  metrics: { peakBoardDisplacement: () => boardPeak.displacement },
+  failure: {
+    boardMoved,
+    pieceDropped: () => body.position.y < deskHeight - 0.04,
+  },
+  success: {
+    // Upright, let go of, and still so a second later; judged by pose, not velocity.
+    pieceUpright: ({ elapsed }) => {
+      if (
+        tilt(body.quaternion) > Math.PI / 18 ||
+        (touching.get(body)?.size ?? 0) > 0
+      ) {
+        rest = undefined;
+        return false;
+      }
+      if (
+        !rest ||
+        rest.position.distanceTo(body.position) > 0.001 ||
+        rest.rotation.angleTo(body.quaternion) > Math.PI / 90
+      ) {
+        rest = {
+          since: elapsed,
+          position: body.position.clone(),
+          rotation: body.quaternion.clone(),
+        };
+        return false;
+      }
+      return elapsed - rest.since >= 1;
+    },
+  },
+  score: ({ status }) => (status === "success" ? 100 : 0),
+});

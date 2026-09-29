@@ -1,2 +1,5 @@
 stage_*.jpg
 stage_*.txt
+stage_robot.urdf
+models/
+public/
