@@ -10,6 +10,7 @@ import {
 import { availableParallelism } from "node:os";
 import { join, resolve } from "node:path";
 import { Command, InvalidArgumentError } from "commander";
+import { BEHIND } from "./sim.js";
 
 /** One episode's outcome, as the simulator wrote it, or missing if it never finished. */
 export interface EpisodeResult {
@@ -22,11 +23,14 @@ export interface EpisodeResult {
 }
 
 /** What every episode of a run shares. */
-interface Run {
+export interface Run {
   launch: string;
   args: string[];
   timeout: number;
   out: string;
+  /** Episodes at a time: fewer once the machine could not keep that many at pace. */
+  slots: number;
+  /** Inference threads per episode, fixed for the run: more would only crowd the others. */
   threads: string;
   running: Set<ChildProcess>;
 }
@@ -93,6 +97,7 @@ export const episodes = new Command("episodes")
       args: options.arg,
       timeout: options.timeout,
       out: resolve(options.out),
+      slots: parallel,
       // A share of the cores each, as joblib gives its workers, so that parallel episodes'
       // inference threads do not crowd each other out while simulated time runs on.
       threads: String(
@@ -108,23 +113,51 @@ export const episodes = new Command("episodes")
         for (const child of run.running) group(child, "SIGKILL");
         process.exit(code);
       });
-    const results: EpisodeResult[] = [];
-    // Each slot runs one episode at a time in a ROS domain of its own.
-    const slot = async (domain: number) => {
-      for (let seed = seeds.shift(); seed !== undefined; seed = seeds.shift()) {
-        const result = await episode(run, seed, domain);
-        results.push(result);
-        console.log(row(result));
-      }
-    };
     console.log(header());
-    await Promise.all(
-      Array.from({ length: parallel }, (_, i) => slot(options.domain + i)),
-    );
-    results.sort((a, b) => a.seed - b.seed);
+    const results = await runEpisodes(run, seeds, options.domain, console.log);
     console.log(total(results));
     process.exit(results.every((r) => r.status === "success") ? 0 : 1);
   });
+
+/**
+ * Runs the seeds `run.slots` at a time, each slot in a ROS domain of its own from `domain` on,
+ * and returns their results by seed. An episode that could not keep its pace runs again, and
+ * the first one of an overload retires a slot; alone, its result stands.
+ */
+export async function runEpisodes(
+  run: Run,
+  seeds: number[],
+  domain: number,
+  report: (line: string) => void,
+): Promise<EpisodeResult[]> {
+  const results: EpisodeResult[] = [];
+  let alive = run.slots;
+  const slot = async (domain: number) => {
+    // A slot stops taking seeds while more run than the machine keeps at pace.
+    while (alive <= run.slots) {
+      const seed = seeds.shift();
+      if (seed === undefined) break;
+      const slots = run.slots;
+      const result = await episode(run, seed, domain);
+      if (result.reason.startsWith(BEHIND) && slots > 1) {
+        seeds.unshift(seed);
+        // Episodes started before the back-off fall behind from the same overload.
+        if (run.slots === slots) {
+          run.slots = slots - 1;
+          report(`${seed} fell behind; ${run.slots} at a time from now`);
+        } else report(`${seed} fell behind; running it again`);
+        continue;
+      }
+      results.push(result);
+      report(row(result));
+    }
+    alive--;
+  };
+  await Promise.all(
+    Array.from({ length: run.slots }, (_, i) => slot(domain + i)),
+  );
+  return results.sort((a, b) => a.seed - b.seed);
+}
 
 async function episode(
   run: Run,

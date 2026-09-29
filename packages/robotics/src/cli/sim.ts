@@ -71,6 +71,11 @@ export const sim = new Command("sim")
     process.exit(0);
   });
 
+/** How an evaluation that could not keep its real-time factor ends: the host was too busy. */
+export const BEHIND = "could not keep the real-time factor";
+/** Simulated seconds an evaluation may fall behind its factor, for hiccups such as a recompile. */
+const LAG = 2;
+
 /** The stop reason of SIGINT and SIGTERM; any other reason is a failure. */
 const INTERRUPTED = new Error("interrupted");
 
@@ -363,6 +368,13 @@ async function simulate(
       }
       if (controls.steps === 0 || evaluation?.finished)
         for (const answer of controls.stepped.splice(0)) answer();
+      // Results of an episode that falls behind its factor would not mean what was asked, so
+      // it ends with an error instead; before the evaluation, catching up is fine.
+      if (!evaluation?.active) stepping.behind = 0;
+      else if (stepping.behind > LAG)
+        throw new Error(
+          `${BEHIND} ${realTimeFactor}: ${stepping.behind.toFixed(1)} s behind`,
+        );
     } catch (error) {
       throw ros.error ?? error;
     }
@@ -422,16 +434,20 @@ function serveViewer(
 /** Keep the accumulator outside physics so a terminal step or a busy device interrupts catch-up immediately. */
 export class Stepping {
   private accumulated = 0;
+  /** Simulated seconds the host could not step in time, and dropped. */
+  behind = 0;
   constructor(
     private readonly world: PhysicsWorld,
     private readonly halted: () => boolean,
   ) {}
   /** Steps `delta` seconds on, carrying at most `limit`, and at least 32 steps, of debt. */
   update(delta: number, limit = 0): void {
+    const owed = this.accumulated + delta;
     this.accumulated = Math.min(
-      this.accumulated + delta,
+      owed,
       Math.max(limit, this.world.fixedDelta * 32),
     );
+    this.behind += owed - this.accumulated;
     while (
       this.accumulated + 1e-12 >= this.world.fixedDelta &&
       !this.halted()

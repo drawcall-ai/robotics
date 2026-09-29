@@ -200,3 +200,14 @@ it("steps until a deadline, or until halted", async () => {
   new Stepping(world, () => true).until(performance.now() + 20);
   expect(world.time).toBe(before);
 });
+
+it("counts the time it could not step as behind, and none while it keeps up", async () => {
+  const { world } = await simulation();
+  const keeping = new Stepping(world, () => false);
+  for (let i = 0; i < 10; i++) keeping.update(0.1);
+  expect(keeping.behind).toBe(0);
+  // Held, it carries at most 32 steps of debt and drops the rest.
+  const held = new Stepping(world, () => true);
+  for (let i = 0; i < 10; i++) held.update(0.1);
+  expect(held.behind).toBeCloseTo(1 - 32 * world.fixedDelta);
+});
