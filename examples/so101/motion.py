@@ -11,8 +11,8 @@ CLOSED = -0.174
 PAD_DEPTH = 0.015
 # Tool speed the drives follow without trailing, and the fastest any joint is asked to
 # turn: past the servo's rated 1.5 rad/s there is no torque left.
-TOOL_SPEED = 0.05
-JOINT_RATE = 0.6
+TOOL_SPEED = 0.08
+JOINT_RATE = 1.0
 
 
 def between_pads(arm, jaw):
@@ -29,7 +29,7 @@ def grasp_tool(arm, xy, q, axis):
 def clearance(arm, q, obstacles, floor):
     """Least height of the gripper over the floor, a height or the height under each xy,
     and over each obstacle (xy, radius, top)."""
-    points = np.concatenate([t.reshape(-1, 3) for t in arm.surfaces(q)])
+    points = arm.solid(q)
     gap = (points[:, 2] - (floor(points[:, :2]) if callable(floor) else floor)).min()
     for xy, radius, top in obstacles:
         near = np.linalg.norm(points[:, :2] - xy, axis=1) < radius

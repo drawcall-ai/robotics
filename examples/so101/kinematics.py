@@ -88,6 +88,13 @@ class Arm:
             name: np.concatenate([triangles(v) for v in links[name].findall("visual")])
             for name in ("gripper_link", "moving_jaw_so101_v1_link")
         }
+        # For collision checks the gripper's shape to a millimetre or two is enough: its
+        # vertices, one per 2 mm cell.
+        self.coarse = {}
+        for name, mesh in self.meshes.items():
+            points = mesh.reshape(-1, 3)
+            _, first = np.unique(np.round(points / 0.002).astype(int), axis=0, return_index=True)
+            self.coarse[name] = points[np.sort(first)]
         # The arm's links up to the wrist, the base first, as convex hulls: enough to mask the
         # robot out of images, and fast. The gripper and jaw keep their meshes: their hulls
         # would cover the gap between the jaws.
@@ -126,15 +133,22 @@ class Arm:
         found = [mesh @ frame[:3, :3].T + frame[:3, 3] for mesh, frame in zip(self.body, frames)]
         return found + self.surfaces(q)
 
-    def surfaces(self, q):
-        """The gripper's and moving jaw's visual triangles at joints q, in the base frame."""
+    def surfaces(self, q, meshes=None):
+        """The gripper's and moving jaw's visual triangles at joints q, in the base frame, or
+        the points of other `meshes` of theirs."""
+        meshes = self.meshes if meshes is None else meshes
         gripper = self.fk(q) @ self.turn
         joint, axis = self.jaw
         jaw = self.fk(q) @ joint @ transform((0, 0, 0), Rotation.from_rotvec(axis * float(q[5])))
         return [
-            self.meshes["gripper_link"] @ gripper[:3, :3].T + gripper[:3, 3],
-            self.meshes["moving_jaw_so101_v1_link"] @ jaw[:3, :3].T + jaw[:3, 3],
+            meshes["gripper_link"] @ gripper[:3, :3].T + gripper[:3, 3],
+            meshes["moving_jaw_so101_v1_link"] @ jaw[:3, :3].T + jaw[:3, 3],
         ]
+
+    def solid(self, q):
+        """Points over the gripper's and moving jaw's surfaces at joints q, in the base frame,
+        about 2 mm apart: for collision checks."""
+        return np.concatenate(self.surfaces(q, self.coarse))
 
     def aim(self, position, direction, seed=None):
         """Joints putting the camera's optical centre at `position`, looking along `direction`.

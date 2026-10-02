@@ -16,6 +16,9 @@ import math
 
 import cv2
 import numpy as np
+from scipy.optimize import linear_sum_assignment
+
+from detector import KINDS
 
 # The wrist camera's calibration: 640x480 pixels, 70 degrees vertical field of view.
 FOV = math.radians(70)
@@ -299,10 +302,6 @@ class Survey:
 TOP_ELEVATION = math.radians(70)
 
 
-# Views at most this steep look at a piece from the side, as a player sees the board.
-SIDE_ELEVATION = math.radians(45)
-
-
 class Sighting:
     """A detected piece in one view: its kind and the rays through its box centre and the
     middle of its box top."""
@@ -310,6 +309,7 @@ class Sighting:
     def __init__(self, view, detection):
         self.kind = detection.kind
         self.score = detection.score
+        self.scores = detection.scores
         self.origin = view.center
         self.ray = view.ray(detection.center)
         self.top = view.ray(np.array([detection.center[0], detection.box[1]]))
@@ -336,17 +336,21 @@ def height(group, support, xy):
     return float(np.median([at_axis(s.origin, s.top, xy) for s in flat]) - support)
 
 
-def vote(group, allowed=None):
-    """The kind the sightings of one piece agree on, each counted by its confidence, among
-    the `allowed` kinds if any of them was seen. Views from the side, like the photos of
-    boards a detector learns from, decide if there are any; views from high above show
-    little of what tells pieces apart."""
-    side = [s for s in group if math.asin(-s.ray[2]) <= SIDE_ELEVATION]
-    totals = {}
-    for s in side or group:
-        totals[s.kind] = totals.get(s.kind, 0.0) + s.score
-    kept = {k: v for k, v in totals.items() if allowed is None or k in allowed}
-    return max(kept or totals, key=(kept or totals).get)
+def assign(evidence, counts):
+    """The kinds of several pieces of one set, decided together: `evidence` holds, per piece,
+    how well each kind fits it, and a set has each kind `counts` times. A detector trained on
+    other sets tells some kinds apart only roughly, but the set can hold only one queen:
+    the kinds are the jointly most likely ones the counts allow. Pieces beyond the counts
+    get None."""
+    slots = [k for k, n in counts.items() for _ in range(n)]
+    if not slots or not evidence:
+        return [None] * len(evidence)
+    fit = np.array([[e[KINDS.index(k)] for k in slots] for e in evidence])
+    rows, cols = linear_sum_assignment(-np.log(fit + 1e-3))
+    kinds = [None] * len(evidence)
+    for r, c in zip(rows, cols):
+        kinds[r] = slots[c]
+    return kinds
 
 
 def axis(group):
@@ -454,21 +458,26 @@ class Shape:
         return self.length > 1.5 * self.width
 
 
-def facing(view, mask, z):
-    return foot_and_facing(view, mask, z)[1]
-
-
 def foot_and_facing(view, mask, z):
-    """Where a piece's base is and the way its head leans, seen from above, on the plane at
-    height z: the base is the middle of the widest round part of its outline, and the head
-    leans from there towards the outline's centroid, which the overhanging head pulls
-    forward, as a unit vector. A knight looks that way."""
+    """Where a piece's base is and the way its head points, seen from above, on the plane at
+    height z, as a unit vector. The base is the middle of the widest round part of its
+    outline. A knight's outline from above is a drop, the base round at one end and the nose
+    pointed at the other: along the outline's long axis, towards its narrower end."""
     inside = (mask & ~view.own).astype(np.uint8)
     distance = cv2.distanceTransform(inside, cv2.DIST_L2, 5)
     rows, cols = np.nonzero(inside)
     base = np.array(np.unravel_index(np.argmax(distance), distance.shape)[::-1], float)
-    centroid = np.array([cols.mean(), rows.mean()])
-    ends = view.center + view.ray(np.stack([base, centroid])) * ((z - view.center[2]) / view.ray(np.stack([base, centroid]))[:, 2:3])
+    points = np.c_[cols, rows].astype(float)
+    center = points.mean(0)
+    axis = np.linalg.eigh(np.cov((points - center).T))[1][:, 1]
+    along, across = (points - center) @ axis, (points - center) @ np.array([-axis[1], axis[0]])
+    span = np.ptp(along)
+    ends = [along > along.max() - 0.25 * span, along < along.min() + 0.25 * span]
+    if np.ptp(across[ends[0]]) > np.ptp(across[ends[1]]):
+        axis = -axis
+    pixels = np.stack([base, base + axis * 10])
+    rays = view.ray(pixels)
+    ends = view.center + rays * ((z - view.center[2]) / rays[:, 2:3])
     direction = ends[1, :2] - ends[0, :2]
     return ends[0, :2], direction / (np.linalg.norm(direction) + 1e-12)
 
@@ -497,6 +506,90 @@ def piece_shapes(view, masks, survey, length, width):
             if any((mask & t).sum() > 0.5 * len(rows) for t in taken):
                 continue
             shape.foot, shape.facing = foot_and_facing(view, mask, support + shape.width / 2)
+            # The look and outline it was seen in, for measuring it again later.
+            shape.view, shape.mask = view, mask
             found.append(shape)
             taken.append(mask)
     return found
+
+
+UP = np.array([0.0, 0.0, 1.0])
+
+
+def knight_axis(view, mask, base, height):
+    """A standing knight's long axis, from a look straight down at it: an unsigned horizontal
+    unit vector. The outline's principal axis, less the smear perspective adds along the line
+    from the image's nadir through the piece, whose top is nearer the camera. `base` is where
+    the piece stands, `height` how tall it is."""
+    rows, cols = np.nonzero(mask)
+    points = np.c_[cols, rows].astype(float)
+    center = points.mean(0)
+    smear = view.project(np.array([base + height * UP]))[0][0] - view.project(np.array([base]))[0][0]
+    axis = np.linalg.eigh(np.cov((points - center).T) - np.outer(smear, smear) / 12)[1][:, 1]
+    rays = view.ray(np.stack([center, center + 10 * axis]))
+    ends = view.center + rays * ((base[2] + 0.75 * height - view.center[2]) / rays[:, 2:3])
+    direction = ends[1, :2] - ends[0, :2]
+    return direction / np.linalg.norm(direction)
+
+
+def side_look(base, height, axis, toward, distance, elevation):
+    """Where to look at a knight's profile from: square to its axis, on the side of `toward`.
+    The camera is aimed at the piece's middle."""
+    across = np.array([-axis[1], axis[0]])
+    if across @ (np.asarray(toward)[:2] - base[:2]) < 0:
+        across = -across
+    return base + height / 2 * UP + distance * np.r_[math.cos(elevation) * across, math.sin(elevation)]
+
+
+def snout_side(view, mask, base, height):
+    """Which way a knight's snout points, from a look at its profile: a horizontal unit vector
+    across the line of sight, scaled by how clear the profile is; zero if it is not clear.
+    Going up a knight's outline, its front steps out abruptly where the jaw overhangs the
+    chest, while its back, the mane, swells smoothly: the snout is on the side whose outline
+    widens most within a tenth of the piece's height, over 15-95 % of it."""
+    b, t = view.project(np.array([base, base + height * UP]))[0]
+    length = np.linalg.norm(t - b)
+    up = (t - b) / length
+    lateral = np.cross(UP, base - view.center)[:2]
+    lateral /= np.linalg.norm(lateral)
+    middle = base + height / 2 * UP
+    shift = view.project(np.array([middle + 0.01 * np.r_[lateral, 0]]))[0][0] - view.project(np.array([middle]))[0][0]
+    right = np.array([-up[1], up[0]])
+    if right @ shift < 0:
+        right = -right
+    rows, cols = np.nonzero(mask)
+    # More than a piece: merged with something else.
+    if len(rows) > 4 * length**2:
+        return np.zeros(2)
+    points = np.c_[cols, rows] - b
+    s, l = points @ up / length, points @ right / length
+    near = np.abs(l) < 0.6
+    if not near.any():
+        return np.zeros(2)
+    # Heights from the top of its outline down, rather than from where its base is thought to be.
+    s = s - s[near].max() + 1
+    bins = np.round(s * 40).astype(int)
+    profile = [(l[bins == k].max(), -l[bins == k].min()) for k in range(6, 39) if (bins == k).any()]
+    if len(profile) < 20:
+        return np.zeros(2)
+    ahead, behind = np.array(profile).T
+    rise = lambda x: np.max(x[4:] - x[:-4])
+    return lateral * (rise(ahead) - rise(behind))
+
+
+def carve(view, mask, side_view, side_mask, base, height):
+    """The part of an outline from above that a side look also sees: the pixels whose rays, at
+    the head's height, pass inside the side look's outline. A shadow joined to the outline from
+    above lies on the surface, beside the piece as the side look sees it, and is cut away."""
+    rows, cols = np.nonzero(mask)
+    rays = view.ray(np.c_[cols, rows].astype(float))
+    points = view.center + rays * ((base[2] + 0.6 * height - view.center[2]) / rays[:, 2:3])
+    uv = np.round(side_view.project(points)[0]).astype(int)
+    h, w = side_mask.shape
+    inside = (uv[:, 0] >= 0) & (uv[:, 0] < w) & (uv[:, 1] >= 0) & (uv[:, 1] < h)
+    wide = cv2.dilate(side_mask.astype(np.uint8), np.ones((5, 5), np.uint8)).astype(bool)
+    keep = np.zeros(len(rows), bool)
+    keep[inside] = wide[uv[inside, 1], uv[inside, 0]]
+    carved = np.zeros_like(mask)
+    carved[rows[keep], cols[keep]] = True
+    return carved

@@ -17,6 +17,7 @@ const kind = (process.env.PIECE ??
   kinds[Math.floor(random() * kinds.length)]) as Kind;
 if (!kinds.includes(kind)) throw new Error(`Unknown piece ${kind}`);
 const piece = scatter(kind, true);
+console.error(`Piece: a lying ${kind}`);
 const { body } = piece;
 // Where it came to rest, and when.
 let rest:

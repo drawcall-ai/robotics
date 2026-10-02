@@ -56,11 +56,15 @@ class Segmenter:
         return embedding
 
     def decode(self, embedding, point, shape):
+        return self.decode_points(embedding, [point], shape)
+
+    def decode_points(self, embedding, points, shape):
+        """The mask of the one object all `points` lie on."""
         h, w = shape
         scale = SIZE / max(h, w)
-        # One point on the object, and the padding point the decoder expects without a box.
-        coords = np.array([[np.asarray(point, float) * scale, [0.0, 0.0]]], np.float32)
-        labels = np.array([[1, -1]], np.float32)
+        # The points on the object, and the padding point the decoder expects without a box.
+        coords = np.array([[*(np.asarray(p, float) * scale for p in points), [0.0, 0.0]]], np.float32)
+        labels = np.array([[1] * len(points) + [-1]], np.float32)
         masks, _, _ = self.decoder.run(None, {
             "image_embeddings": embedding,
             "point_coords": coords,

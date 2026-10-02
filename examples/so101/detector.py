@@ -11,15 +11,17 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-CLASSES = ["bishop", "king", "knight", "pawn", "queen", "rook"] * 2
+KINDS = ["bishop", "king", "knight", "pawn", "queen", "rook"]
 SIZE = (736, 960)
 MODEL = Path(os.environ.get("SO101_DETECTOR", Path(__file__).parent / "models" / "pieces.onnx"))
 
 
 class Detection:
-    def __init__(self, kind, score, box):
-        self.kind = kind
-        self.score = score
+    def __init__(self, scores, box):
+        # Each kind's score, the better of its two colours.
+        self.scores = scores
+        self.kind = KINDS[int(np.argmax(scores))]
+        self.score = float(np.max(scores))
         # Left, top, right, bottom in image pixels.
         self.box = np.asarray(box, float)
 
@@ -45,12 +47,10 @@ class Detector:
         padded[top : top + size[1], left : left + size[0]] = cv2.resize(rgb, size)
         self.net.setInput(cv2.dnn.blobFromImage(padded, 1 / 255))
         rows = self.net.forward()[0].T
-        scores = rows[:, 4:].max(1)
-        rows, classes, scores = rows[scores >= confidence], rows[scores >= confidence, 4:].argmax(1), scores[scores >= confidence]
+        kinds = np.maximum(rows[:, 4:10], rows[:, 10:16])
+        scores = kinds.max(1)
+        rows, kinds, scores = rows[scores >= confidence], kinds[scores >= confidence], scores[scores >= confidence]
         boxes = np.c_[rows[:, :2] - rows[:, 2:4] / 2, rows[:, 2:4]]
         keep = np.array(cv2.dnn.NMSBoxes(boxes.tolist(), scores.tolist(), confidence, overlap), int).reshape(-1)
         offset = np.array([left, top, 0, 0])
-        return [
-            Detection(CLASSES[classes[i]], float(scores[i]), np.r_[(boxes[i] - offset)[:2], (boxes[i] - offset)[:2] + boxes[i, 2:]] / scale)
-            for i in keep
-        ]
+        return [Detection(kinds[i], np.r_[(boxes[i] - offset)[:2], (boxes[i] - offset)[:2] + boxes[i, 2:]] / scale) for i in keep]
