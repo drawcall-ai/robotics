@@ -8,10 +8,8 @@ it("shows every scan in the 3D panel and gives each image its own panel", () => 
     calibrations: ["/robot/camera/camera_info"],
     show: ["/robot/perception/image/compressed", "/map", "/plan"],
   });
-  expect(layout).toEqual({
-    direction: "row",
-    first: "3D!scene",
-    second: {
+  expect(layout).toEqual(
+    beside({
       direction: "column",
       first: "Image!/robot/camera/image_raw/compressed",
       second: {
@@ -19,9 +17,8 @@ it("shows every scan in the 3D panel and gives each image its own panel", () => 
         first: "Image!/other/image",
         second: "Image!/robot/perception/image/compressed",
       },
-    },
-    splitPercentage: 65,
-  });
+    }),
+  );
   for (const topic of ["/robot/scan", "/rear/scan", "/map", "/plan"])
     expect(configById["3D!scene"]).toHaveProperty(["topics", topic]);
   expect(configById["Image!/robot/camera/image_raw/compressed"]).toHaveProperty(
@@ -41,21 +38,28 @@ it("shows every scan in the 3D panel and gives each image its own panel", () => 
   );
 });
 
-it("is the single 3D panel without images", () => {
-  expect(defaultLayout({ scans: ["/robot/scan"] }).layout).toBe("3D!scene");
-});
-
-it("puts a single image beside the 3D panel without an empty split", () => {
-  expect(defaultLayout({ images: ["/camera"] }).layout).toEqual({
+it("shows the score and the evaluation beside the 3D panel without images", () => {
+  expect(defaultLayout({ scans: ["/robot/scan"] }).layout).toEqual({
     direction: "row",
     first: "3D!scene",
-    second: "Image!/camera",
+    second: {
+      direction: "column",
+      first: "Plot!score",
+      second: "RawMessages!evaluation",
+      splitPercentage: 40,
+    },
     splitPercentage: 65,
   });
 });
 
+it("puts a single image beside the 3D panel without an empty split", () => {
+  expect(defaultLayout({ images: ["/camera"] }).layout).toEqual(
+    beside("Image!/camera"),
+  );
+});
+
 it("plots numeric score on the shared recording timeline and shows final status", () => {
-  const { configById, layout } = defaultLayout({ evaluation: true });
+  const { configById, layout } = defaultLayout({});
   expect(configById["Plot!score"]).toMatchObject({
     xAxisVal: "timestamp",
     isSynced: true,
@@ -96,3 +100,23 @@ it("frames the map when it is shown and draws every robot with its frame prefix"
     topics: { "/map": { visible: true } },
   });
 });
+
+/** The layout with `images` between the score plot and the evaluation's state. */
+function beside(images: unknown) {
+  return {
+    direction: "row",
+    first: "3D!scene",
+    second: {
+      direction: "column",
+      first: "Plot!score",
+      second: {
+        direction: "column",
+        first: images,
+        second: "RawMessages!evaluation",
+        splitPercentage: 60,
+      },
+      splitPercentage: 40,
+    },
+    splitPercentage: 65,
+  };
+}

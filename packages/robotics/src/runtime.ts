@@ -23,6 +23,8 @@ export interface Connection {
   ): () => void;
   /** Whether anyone receives what is published on a topic; a connection that cannot tell says yes. */
   subscribed(name: string, type: string): boolean;
+  /** Logs to /rosout, for a connection that can; the runtime writes to stderr otherwise. */
+  log?(message: string): void;
   dispose(): void;
 }
 
@@ -172,6 +174,11 @@ export class ROS2 {
     return () => {
       if (!this.disposed) unsubscribe();
     };
+  }
+  /** Logs `message` to /rosout, or to stderr where the connection cannot. */
+  log(message: string): void {
+    if (this.connection.log) this.connection.log(message);
+    else console.error(message);
   }
   /** Records the first fault and stops every actuator; the runtime stays disconnected until disposed. */
   fail(error: unknown): void {

@@ -15,6 +15,7 @@ vi.mock("rclnodejs", () => ({
         RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL: 1,
       };
     },
+    Context: class {},
     init: native.init,
     removeSignalHandlers: native.removeSignalHandlers,
     shutdown: native.shutdown,

@@ -1,38 +1,44 @@
-<!-- The warehouse: simulator node, ros2_control, SLAM, Nav2 and a four-goal mission.
-     Every process ends the launch when it exits, so one launch is one episode. -->
+<!-- The robot's persistent stack: ros2_control, SLAM and Nav2. A node that exits ends the launch. -->
 <launch>
-  <arg name="viewer" default="false" description="Serve Lichtblick and open it"/>
-  <arg name="record" default="false" description="Record every topic to a rosbag2_* directory next to this file"/>
-  <let name="scene" value="$(dirname)/scene.ts"/>
-  <let name="params" value="$(dirname)/params.yaml"/>
+  <arg name="use_sim_time" default="false"/>
+  <arg name="params_file" default="$(dirname)/params.yaml"/>
 
-  <!-- Recording subscribes to what it records; a subscriber on Nav2's costmap layer and raw
-       topics crashes planner_server in this Jazzy build, so those stay out of the bag. -->
-  <executable cmd="drawcall-robotics sim $(var scene) --wait-for-start --show /map --show /local_costmap/costmap --show /plan --show /local_plan --record-exclude ^/(bond|evaluation|marker)$|_costmap/.+_(layer|raw|updates) $(if $(var record) --record --no-record) $(if $(var viewer) --viewer --no-viewer)" cwd="$(dirname)" on_exit="shutdown"/>
   <node pkg="controller_manager" exec="ros2_control_node" on_exit="shutdown">
-    <param from="$(var params)"/>
+    <param from="$(var params_file)"/>
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
     <remap from="robot_description" to="/robot/robot_description"/>
   </node>
-  <!-- The controller manager runs on sim time, so its first cycle waits for the simulator's clock. -->
+  <!-- On sim time, the controller manager's first cycle waits for the simulator's clock. -->
   <node pkg="controller_manager" exec="spawner" args="joint_state_broadcaster diff_drive_controller --switch-timeout 30"/>
   <node pkg="nav2_controller" exec="controller_server" on_exit="shutdown">
-    <param from="$(var params)"/>
+    <param from="$(var params_file)"/>
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
     <remap from="cmd_vel" to="/diff_drive_controller/cmd_vel"/>
   </node>
-  <node pkg="nav2_planner" exec="planner_server" on_exit="shutdown"><param from="$(var params)"/></node>
+  <node pkg="nav2_planner" exec="planner_server" on_exit="shutdown">
+    <param from="$(var params_file)"/>
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+  </node>
   <node pkg="nav2_behaviors" exec="behavior_server" on_exit="shutdown">
-    <param from="$(var params)"/>
+    <param from="$(var params_file)"/>
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
     <remap from="cmd_vel" to="/diff_drive_controller/cmd_vel"/>
   </node>
-  <node pkg="nav2_bt_navigator" exec="bt_navigator" on_exit="shutdown"><param from="$(var params)"/></node>
+  <node pkg="nav2_bt_navigator" exec="bt_navigator" on_exit="shutdown">
+    <param from="$(var params_file)"/>
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+  </node>
   <node pkg="nav2_lifecycle_manager" exec="lifecycle_manager" name="lifecycle_manager_navigation" on_exit="shutdown">
-    <param from="$(var params)"/>
+    <param from="$(var params_file)"/>
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
   </node>
   <!-- A plain node rather than slam_toolbox's launch include, whose lifecycle adapter throws at shutdown. -->
-  <node pkg="slam_toolbox" exec="async_slam_toolbox_node" on_exit="shutdown"><param from="$(var params)"/></node>
-  <node pkg="nav2_lifecycle_manager" exec="lifecycle_manager" name="lifecycle_manager_slam" on_exit="shutdown">
-    <param from="$(var params)"/>
+  <node pkg="slam_toolbox" exec="async_slam_toolbox_node" on_exit="shutdown">
+    <param from="$(var params_file)"/>
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
   </node>
-  <node pkg="foxglove_bridge" exec="foxglove_bridge" if="$(var viewer)" on_exit="shutdown"><param from="$(var params)"/></node>
-  <executable cmd="python3 $(dirname)/mission.py --ros-args -p use_sim_time:=true" on_exit="shutdown"/>
+  <node pkg="nav2_lifecycle_manager" exec="lifecycle_manager" name="lifecycle_manager_slam" on_exit="shutdown">
+    <param from="$(var params_file)"/>
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+  </node>
 </launch>

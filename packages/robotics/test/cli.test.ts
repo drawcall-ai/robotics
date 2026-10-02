@@ -1,7 +1,38 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
+const { Evaluator, evaluator, JointActuator, actuator, split } = vi.hoisted(
+  () => {
+    class Evaluator {
+      finished = false;
+      active = false;
+      result = undefined;
+      end = vi.fn();
+    }
+    class JointActuator {
+      release = vi.fn();
+    }
+    return {
+      Evaluator,
+      evaluator: new Evaluator(),
+      JointActuator,
+      actuator: new JointActuator(),
+      split: vi.fn(async () => {}),
+    };
+  },
+);
 const mocks = vi.hoisted(() => ({
-  connection: { dispose: vi.fn(), subscribe: vi.fn(), service: vi.fn() },
+  connection: {
+    dispose: vi.fn(),
+    subscribe: vi.fn(),
+    service:
+      vi.fn<
+        (
+          type: string,
+          name: string,
+          handle: (request: unknown) => unknown,
+        ) => void
+      >(),
+  },
   createConnection: vi.fn(),
   createRuntime: vi.fn(),
   built: false,
@@ -12,7 +43,13 @@ const mocks = vi.hoisted(() => ({
     attachWorld: vi.fn(),
     connected: true,
     publish: vi.fn(),
-    find: vi.fn<() => { dispose(): Promise<void> }[]>(() => []),
+    find: vi.fn((type: unknown) =>
+      type === Evaluator
+        ? [evaluator]
+        : type === JointActuator
+          ? [actuator]
+          : [],
+    ),
   },
   serve: vi.fn(),
 }));
@@ -44,6 +81,19 @@ vi.mock("../src/runtime.js", () => ({
   },
 }));
 vi.mock("../src/devices/robot.js", () => ({ Robot: class {} }));
+vi.mock("../src/devices/actuator.js", () => ({ JointActuator }));
+vi.mock("../src/evaluation.js", async (original) => ({
+  ...(await original<object>()),
+  Evaluator,
+}));
+vi.mock("../src/cli/recorder.js", () => ({
+  Recorder: class {
+    ready = async () => {};
+    check() {}
+    split = split;
+    async stop() {}
+  },
+}));
 vi.mock("../src/urdf/view.js", () => ({
   modelView: () => ({
     topic: "/robot/robot_description",
@@ -98,7 +148,7 @@ it("disposes the snapshot connection on timeout", async () => {
 it("releases rendering before physics is built when native connection setup fails", async () => {
   mocks.createConnection.mockRejectedValueOnce(new Error("native failed"));
   await expect(
-    sim.parseAsync(["missing-scene.ts"], { from: "user" }),
+    sim.parseAsync(["missing-scene.ts", "--record", "bag"], { from: "user" }),
   ).rejects.toThrow("native failed");
   expect(mocks.renderer.dispose).toHaveBeenCalledOnce();
   expect(mocks.world.dispose).not.toHaveBeenCalled();
@@ -109,7 +159,7 @@ it("releases the connection when runtime construction fails before taking owners
     throw new Error("runtime setup failed");
   });
   await expect(
-    sim.parseAsync(["missing-scene.ts"], { from: "user" }),
+    sim.parseAsync(["missing-scene.ts", "--record", "bag"], { from: "user" }),
   ).rejects.toThrow("runtime setup failed");
   expect(mocks.connection.dispose).toHaveBeenCalledOnce();
   expect(mocks.runtime.disposeAsync).not.toHaveBeenCalled();
@@ -119,7 +169,7 @@ it("releases the connection when runtime construction fails before taking owners
 
 it("releases acquired resources when the scene cannot be imported", async () => {
   await expect(
-    sim.parseAsync(["missing-scene.ts"], { from: "user" }),
+    sim.parseAsync(["missing-scene.ts", "--record", "bag"], { from: "user" }),
   ).rejects.toThrow();
   expect(mocks.runtime.disposeAsync).toHaveBeenCalledOnce();
   expect(mocks.connection.dispose).not.toHaveBeenCalled();
@@ -130,16 +180,23 @@ it("releases acquired resources when the scene cannot be imported", async () => 
 it("stops during viewer startup and removes timers and signal listeners", async () => {
   const before = process.listenerCount("SIGTERM");
   let signal: AbortSignal | undefined;
-  mocks.serve.mockImplementation((_layout, _file, received: AbortSignal) => {
-    signal = received;
-    return new Promise((_resolve, reject) => {
-      received.addEventListener("abort", () => {
-        setTimeout(() => reject(received.reason), 25);
+  mocks.serve.mockImplementation(
+    (_layout, _source, { signal: received }: { signal: AbortSignal }) => {
+      signal = received;
+      return new Promise((_resolve, reject) => {
+        received.addEventListener("abort", () => {
+          setTimeout(() => reject(received.reason), 25);
+        });
       });
-    });
-  });
+    },
+  );
   const result = sim.parseAsync(
-    [new URL("./cli.test.ts", import.meta.url).pathname, "--viewer"],
+    [
+      new URL("./cli.test.ts", import.meta.url).pathname,
+      "--viewer",
+      "--record",
+      "bag",
+    ],
     { from: "user" },
   );
   await vi.waitFor(() => expect(mocks.serve).toHaveBeenCalled());
@@ -171,7 +228,7 @@ it("preserves setup and cleanup failures while releasing all resources", async (
     throw cleanup;
   });
   await expect(
-    sim.parseAsync(["missing-scene.ts"], { from: "user" }),
+    sim.parseAsync(["missing-scene.ts", "--record", "bag"], { from: "user" }),
   ).rejects.toMatchObject({ error: cleanup, suppressed: setup });
   expect(mocks.world.dispose).not.toHaveBeenCalled();
 });
@@ -200,7 +257,9 @@ it("waits for runtime cleanup before releasing the renderer, including on failur
   });
   mocks.runtime.disposeAsync.mockReturnValueOnce(cleanup);
   const disposal = new Error("runtime disposal failed");
-  const result = sim.parseAsync(["missing-scene.ts"], { from: "user" });
+  const result = sim.parseAsync(["missing-scene.ts", "--record", "bag"], {
+    from: "user",
+  });
   const failure = expect(result).rejects.toMatchObject({ error: disposal });
   await vi.waitFor(() =>
     expect(mocks.runtime.disposeAsync).toHaveBeenCalledOnce(),
@@ -218,7 +277,12 @@ it("reports viewer startup failure once while disposing the simulation", async (
   mocks.serve.mockRejectedValueOnce(startup);
   await expect(
     sim.parseAsync(
-      [new URL("./cli.test.ts", import.meta.url).pathname, "--viewer"],
+      [
+        new URL("./cli.test.ts", import.meta.url).pathname,
+        "--viewer",
+        "--record",
+        "bag",
+      ],
       { from: "user" },
     ),
   ).rejects.toBe(startup);
@@ -227,13 +291,20 @@ it("reports viewer startup failure once while disposing the simulation", async (
 
 it("surfaces viewer cleanup failure after cancellation", async () => {
   const cleanup = new Error("temporary directory removal failed");
-  mocks.serve.mockImplementation((_layout, _file, signal: AbortSignal) => {
-    return new Promise((_resolve, reject) => {
-      signal.addEventListener("abort", () => reject(cleanup));
-    });
-  });
+  mocks.serve.mockImplementation(
+    (_layout, _source, { signal }: { signal: AbortSignal }) => {
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(cleanup));
+      });
+    },
+  );
   const result = sim.parseAsync(
-    [new URL("./cli.test.ts", import.meta.url).pathname, "--viewer"],
+    [
+      new URL("./cli.test.ts", import.meta.url).pathname,
+      "--viewer",
+      "--record",
+      "bag",
+    ],
     { from: "user" },
   );
   const failure = expect(result).rejects.toBe(cleanup);
@@ -241,4 +312,49 @@ it("surfaces viewer cleanup failure after cancellation", async () => {
   process.emit("SIGTERM");
   await failure;
   expect(mocks.renderer.dispose).toHaveBeenCalledOnce();
+});
+
+it("releases the actuators at a pause and at the next play, splits the recording at a pause, and ends the evaluation on quitting", async () => {
+  const exited = new Error("exited");
+  const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+    throw exited;
+  });
+  const result = sim.parseAsync(
+    [new URL("./cli.test.ts", import.meta.url).pathname, "--record", "bag"],
+    { from: "user" },
+  );
+  const failure = expect(result).rejects.toBe(exited);
+  const handler = async (name: string) => {
+    await vi.waitFor(() =>
+      expect(mocks.connection.service.mock.calls.map((c) => c[1])).toContain(
+        name,
+      ),
+    );
+    const call = mocks.connection.service.mock.calls.find((c) => c[1] === name);
+    if (!call) throw new Error(`No ${name} service`);
+    return call[2];
+  };
+  const set = await handler("/sim/set_simulation_state");
+  expect(await set({ state: { state: 0 } })).toMatchObject({
+    result: { result: 0 },
+  });
+  expect(await set({ state: { state: 2 } })).toMatchObject({
+    result: { result: 1 },
+  });
+  expect(actuator.release).toHaveBeenCalledOnce();
+  expect(split).toHaveBeenCalledOnce();
+  expect(await set({ state: { state: 2 } })).toMatchObject({
+    result: { result: 101 },
+  });
+  expect(await set({ state: { state: 1 } })).toMatchObject({
+    result: { result: 1 },
+  });
+  expect(actuator.release).toHaveBeenCalledTimes(2);
+  expect(await set({ state: { state: 3 } })).toMatchObject({
+    result: { result: 1 },
+  });
+  await vi.advanceTimersByTimeAsync(100);
+  await failure;
+  expect(evaluator.end).toHaveBeenCalledWith("aborted", "quit");
+  expect(exit).toHaveBeenCalledWith(0);
 });

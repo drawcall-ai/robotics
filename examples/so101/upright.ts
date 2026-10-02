@@ -12,6 +12,8 @@ import {
 } from "./environment.ts";
 import { deskHeight, tilt } from "./task.ts";
 
+export { show } from "./environment.ts";
+
 const kind = (process.env.PIECE ??
   kinds[Math.floor(random() * kinds.length)]) as Kind;
 if (!kinds.includes(kind)) throw new Error(`Unknown piece ${kind}`);

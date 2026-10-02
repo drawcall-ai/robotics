@@ -18,8 +18,6 @@ export interface LayoutTopics {
   calibrations?: string[];
   /** Further topics to display: compressed images get an image panel, anything else the 3D panel. */
   show?: string[];
-  /** Adds the score plot and the evaluation status. */
-  evaluation?: boolean;
   /** One robot model each; the view frames the first. */
   models?: ModelView[];
 }
@@ -33,7 +31,6 @@ export function defaultLayout({
   images: cameras = [],
   calibrations = [],
   show = [],
-  evaluation = false,
   models = [],
 }: LayoutTopics) {
   const images = [
@@ -139,6 +136,7 @@ export function defaultLayout({
       diffEnabled: false,
     },
   };
+  // Images above the evaluation's final state, below its score.
   let column: Panel | undefined;
   for (const image of [...images].reverse()) {
     const panel = `Image!${image}`;
@@ -147,41 +145,35 @@ export function defaultLayout({
         ? panel
         : { direction: "column", first: panel, second: column };
   }
-  if (evaluation) {
-    const details: Panel = column
-      ? {
-          direction: "column",
-          first: column,
-          second: "RawMessages!evaluation",
-          splitPercentage: 60,
-        }
-      : "RawMessages!evaluation";
-    column = {
-      direction: "column",
-      first: "Plot!score",
-      second: details,
-      splitPercentage: 40,
-    };
-  }
+  const details: Panel = column
+    ? {
+        direction: "column",
+        first: column,
+        second: "RawMessages!evaluation",
+        splitPercentage: 60,
+      }
+    : "RawMessages!evaluation";
   const configById: Record<string, unknown> = {
     "3D!scene": scene,
     ...imagePanels,
-    ...(evaluation ? evaluationPanels : {}),
+    ...evaluationPanels,
   };
   return {
     configById,
     globalVariables: {},
     userNodes: {},
     playbackConfig: { speed: 1 },
-    layout:
-      column !== undefined
-        ? {
-            direction: "row",
-            first: "3D!scene",
-            second: column,
-            splitPercentage: 65,
-          }
-        : "3D!scene",
+    layout: {
+      direction: "row",
+      first: "3D!scene",
+      second: {
+        direction: "column",
+        first: "Plot!score",
+        second: details,
+        splitPercentage: 40,
+      },
+      splitPercentage: 65,
+    },
   };
 }
 

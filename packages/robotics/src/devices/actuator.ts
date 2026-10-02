@@ -107,6 +107,13 @@ export class JointActuator
     const state = joint.getState();
     return "position" in state ? state.position : undefined;
   }
+  /** Drops the command and holds the current pose, as if never commanded: a paused controller no longer drives the joint. */
+  release(): void {
+    this.stop();
+    this.commanded = false;
+    // Measured again at the next step, where the joint now is.
+    this.resting = undefined;
+  }
   /** Drops the command and exerts no force, without braking. */
   stop(): void {
     this.command = undefined;

@@ -81,6 +81,22 @@ it("holds its joint up until commanded, then releases once a command expires", a
   expect(actuator.target).toBeUndefined();
 });
 
+it("holds where a released joint is, as if never commanded", async () => {
+  const { world, ros, connection } = await simulation({
+    gravity: [0, -9.81, 0],
+  });
+  const { joint, actuator } = cart(ros, { stiffness: 100 });
+  for (let step = 0; step < 30; step++) {
+    connection.receive(COMMANDS, jointCommand("position", 0.5));
+    world.update(0.01);
+  }
+  const position = joint.getState().position;
+  actuator.release();
+  // Long past the command's expiry, it still holds instead of letting go.
+  for (let step = 0; step < 100; step++) world.update(0.01);
+  expect(actuator.target?.position).toBeCloseTo(position, 1);
+});
+
 it("lets a command expire by simulation time and accepts a repeated one", async () => {
   const { world, ros, connection } = await simulation();
   const { actuator } = cart(ros);

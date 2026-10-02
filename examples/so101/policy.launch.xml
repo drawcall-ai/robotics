@@ -1,0 +1,5 @@
+<!-- The chess controller: set up the board, then exit. -->
+<launch>
+  <arg name="use_sim_time" default="false"/>
+  <executable cmd="python3 $(dirname)/controller.py --ros-args -p use_sim_time:=$(var use_sim_time)"/>
+</launch>

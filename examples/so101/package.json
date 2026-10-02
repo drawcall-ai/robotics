@@ -10,13 +10,11 @@
   "type": "module",
   "scripts": {
     "lib": "pnpm --filter @drawcall/robotics build",
-    "dev": "pnpm lib && pixi run launch viewer:=true",
-    "launch": "pnpm lib && pixi run launch",
-    "episodes": "pnpm lib && pixi run drawcall-robotics episodes bringup.launch.xml",
-    "record": "pnpm lib && pixi run launch record:=true",
-    "replay": "pnpm lib && drawcall-robotics view",
-    "typecheck": "tsc --noEmit",
-    "results": "pnpm lib && drawcall-robotics results"
+    "dev": "pnpm lib && pixi run drawcall-robotics run --viewer",
+    "start": "pnpm lib && pixi run drawcall-robotics run",
+    "cat": "pnpm lib && drawcall-robotics cat",
+    "view": "pnpm lib && drawcall-robotics view runs/latest/bag",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^26.6.0",

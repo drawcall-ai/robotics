@@ -36,6 +36,9 @@ import {
   type Board,
 } from "./task.ts";
 
+/** What the viewer shows beside the robot: the controller's annotated wrist image. */
+export const show = ["/robot/perception/image/compressed"];
+
 // Every run draws a new world; SEED=<n> replays one.
 const seed = Number(process.env.SEED ?? Math.floor(Math.random() * 2 ** 31));
 export const random = seeded(seed);

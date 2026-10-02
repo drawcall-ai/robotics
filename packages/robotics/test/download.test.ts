@@ -103,7 +103,7 @@ async function extractedDirectory(): Promise<string> {
 it("publishes the extracted viewer only after the complete download succeeds", async () => {
   const stream = downloadStream();
   const { serveLichtblick } = await import("../src/cli/lichtblick.js");
-  const startup = serveLichtblick({});
+  const startup = serveLichtblick({}, { bridge: 8765 });
   const temporary = await extractedDirectory();
   expect(existsSync(installed)).toBe(false);
   stream.close();
@@ -123,7 +123,11 @@ it("removes partial extraction before aborted startup settles without installing
   downloadStream();
   const owner = new AbortController();
   const { serveLichtblick } = await import("../src/cli/lichtblick.js");
-  const startup = serveLichtblick({}, undefined, owner.signal);
+  const startup = serveLichtblick(
+    {},
+    { bridge: 8765 },
+    { signal: owner.signal },
+  );
   const failure = expect(startup).rejects.toMatchObject({ name: "AbortError" });
   const temporary = await extractedDirectory();
   owner.abort();

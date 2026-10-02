@@ -1,0 +1,5 @@
+<!-- The mission: drive the patrol, then exit. -->
+<launch>
+  <arg name="use_sim_time" default="false"/>
+  <executable cmd="python3 $(dirname)/mission.py --ros-args -p use_sim_time:=$(var use_sim_time)"/>
+</launch>

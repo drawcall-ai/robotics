@@ -14,9 +14,6 @@ ROS_DOMAIN_ID = "17"
 # a full Nav2 stack; CycloneDDS is the middleware Nav2 recommends and behaves on every platform here.
 RMW_IMPLEMENTATION = "rmw_cyclonedds_cpp"
 
-[tasks]
-launch = "ros2 launch bringup.launch.xml"
-
 [dependencies]
 ros-jazzy-ros-base = "*"
 ros-jazzy-rmw-cyclonedds-cpp = "*"

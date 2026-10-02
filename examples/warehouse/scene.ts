@@ -30,6 +30,13 @@ import {
   SphereGeometry,
 } from "three";
 
+/** What the viewer shows beside the robot: the SLAM map and Nav2's costmap and plans. */
+export const show = ["/map", "/local_costmap/costmap", "/plan", "/local_plan"];
+// Recording subscribes to what it records; a subscriber on Nav2's costmap layer and raw
+// topics crashes planner_server in this Jazzy build, so those stay out of the bag.
+export const recordExclude =
+  "^/(bond|evaluation|marker)$|_costmap/.+_(layer|raw|updates)";
+
 const scene = new Scene();
 const obstacles = new Set<RigidBody>();
 const robot = new Robot();

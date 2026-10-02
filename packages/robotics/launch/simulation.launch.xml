@@ -1,0 +1,24 @@
+<!-- One simulated episode: the simulator node, which records it, and the robot's bringup on sim
+     time. The policy runs separately. The simulator runs in the launch's working directory, which
+     drawcall-robotics run sets to the scene's folder. Substitutions that come out empty would pass
+     empty arguments, so each flag has its negation. -->
+<launch>
+  <arg name="scene" default="scene.ts" description="The scene script"/>
+  <arg name="bringup" description="The robot's persistent stack: a launch file with a use_sim_time arg"/>
+  <arg name="record" description="The rosbag2 directory to record to"/>
+  <arg name="record_all" default="false" description="Also record raw images"/>
+  <arg name="real_time_factor" default="1" description="Simulated seconds per wall-clock second; 0 runs as fast as the host allows"/>
+  <arg name="viewer" default="false" description="Serve Lichtblick and open it"/>
+  <arg name="viewer_port" default="0" description="The port to serve Lichtblick on; 0 picks a free one"/>
+  <arg name="bridge_port" default="8765" description="The foxglove_bridge port"/>
+
+  <executable cmd="drawcall-robotics sim $(var scene) --real-time-factor $(var real_time_factor) --record $(var record) $(if $(var record_all) --record-all --no-record-all) $(if $(var viewer) --viewer --no-viewer) --viewer-port $(var viewer_port) --bridge-port $(var bridge_port)" on_exit="shutdown"/>
+  <include file="$(var bringup)">
+    <arg name="use_sim_time" value="true"/>
+  </include>
+  <node pkg="foxglove_bridge" exec="foxglove_bridge" if="$(var viewer)" on_exit="shutdown">
+    <param name="use_sim_time" value="true"/>
+    <param name="port" value="$(var bridge_port)"/>
+    <param name="send_buffer_limit" value="100000000"/>
+  </node>
+</launch>

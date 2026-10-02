@@ -20,8 +20,11 @@ export class Recorder {
   private readonly child: ChildProcess;
   private readonly closed: Promise<void>;
   readonly path: string;
-  /** `exclude` is a regular expression of further topics to leave out, as rosbag2 takes it. */
-  constructor(path: string, exclude?: string) {
+  /**
+   * `exclude` is a regular expression of further topics to leave out, as rosbag2 takes it;
+   * `images` keeps raw images, which otherwise repeat the compressed ones at ten times the size.
+   */
+  constructor(path: string, exclude?: string, images = false) {
     this.path = resolve(path);
     this.child = spawn(
       "ros2",
@@ -34,14 +37,13 @@ export class Recorder {
         this.path,
         "--all",
         "--use-sim-time",
-        // Raw images repeat the compressed ones at ten times the size.
         "--exclude-topics",
         "/clock",
-        "--exclude-topic-types",
-        "sensor_msgs/msg/Image",
+        ...(images ? [] : ["--exclude-topic-types", "sensor_msgs/msg/Image"]),
         ...(exclude ? ["--exclude-regex", exclude] : []),
       ],
-      { stdio: ["ignore", "inherit", "inherit"], detached: true },
+      // In the simulator's process group, which the runner kills as a last resort.
+      { stdio: ["ignore", "inherit", "inherit"] },
     );
     this.closed = new Promise((resolve) => {
       this.child.once("error", (error) => {
@@ -108,6 +110,15 @@ export class Recorder {
         "Recorded evaluation differs from the simulator's final result",
       );
     console.error(`Recorded ${result.status}: ${this.path}`);
+  }
+  /** Closes the current file and continues in a new one, so that everything so far is readable. */
+  async split(connection: RclConnection): Promise<void> {
+    this.check();
+    await connection.call(
+      "rosbag2_interfaces/srv/SplitBagfile",
+      "/rosbag2_recorder/split_bagfile",
+      {},
+    );
   }
   private async wait(
     ready: () => boolean,

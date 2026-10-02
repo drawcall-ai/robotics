@@ -191,3 +191,15 @@ it("async disposal starts every release before waiting, even when a device throw
   delayed.resolve();
   await expect(completion).rejects.toMatchObject({ errors: [failure] });
 });
+
+it("logs through the connection, or to stderr where it cannot", async () => {
+  const { ros } = await simulation();
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  ros.log("to stderr");
+  expect(error).toHaveBeenCalledWith("to stderr");
+  const log = vi.fn();
+  Object.assign(ros.connection, { log });
+  ros.log("to rosout");
+  expect(log).toHaveBeenCalledWith("to rosout");
+  error.mockRestore();
+});

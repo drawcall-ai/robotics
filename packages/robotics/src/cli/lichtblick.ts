@@ -18,19 +18,32 @@ const DIR = join(
   "drawcall-robotics",
   `lichtblick-${VERSION}`,
 );
-/** The launch file's foxglove_bridge. */
-const FOXGLOVE = "ws://127.0.0.1:8765";
-/** Where a recording is served; the extension tells Lichtblick the format. */
-const RECORDING = "/recording.mcap";
+
+/** What Lichtblick plays: the foxglove_bridge on a port, or the MCAP files of a recording, in order. */
+export type Source = { bridge: number } | { recordings: string[] };
+
+/** Where the `index`th file of a recording is served; the extension tells Lichtblick the format. */
+const recordingPath = (index: number) => `/recording/${index}.mcap`;
+
+/** The address of Lichtblick served on `port`, deep-linked to `source` and the served layout. */
+export function lichtblickUrl(port: number, source: Source): string {
+  const origin = `http://127.0.0.1:${port}`;
+  // Lichtblick plays several remote files, given as a comma-separated ds.url, as one recording.
+  const data =
+    "bridge" in source
+      ? `ds=foxglove-websocket&ds.url=${encodeURIComponent(`ws://127.0.0.1:${source.bridge}`)}`
+      : `ds=remote-file&ds.url=${encodeURIComponent(source.recordings.map((_, index) => origin + recordingPath(index)).join(","))}`;
+  return `${origin}/?${data}&layoutUrl=${encodeURIComponent(`${origin}/layout.json`)}`;
+}
 
 /**
- * Hosts the Lichtblick web build on loopback with `layout` preloaded, deep-linked to the launch's bridge or,
- * given a `recording`, to that MCAP file served alongside, and opens it in the browser.
+ * Hosts the Lichtblick web build on loopback, on `port` or any free one, with `layout` preloaded and
+ * `source` deep-linked, serving a recording's files alongside, and opens it in the browser.
  */
 export async function serveLichtblick(
   layout: unknown,
-  recording?: string,
-  signal?: AbortSignal,
+  source: Source,
+  { port = 0, signal }: { port?: number; signal?: AbortSignal } = {},
 ): Promise<{ url: string; close(): void }> {
   if (!existsSync(join(DIR, "index.html"))) await download(signal);
   const template = await readFile(join(DIR, "index.html"), {
@@ -55,8 +68,10 @@ export async function serveLichtblick(
       return;
     }
     // `send` answers the range requests Lichtblick reads a recording with.
-    if (recording && path === RECORDING)
-      send(request, recording).pipe(response);
+    const recording =
+      "recordings" in source &&
+      source.recordings.find((_, index) => path === recordingPath(index));
+    if (recording) send(request, recording).pipe(response);
     else send(request, path, { root: DIR }).pipe(response);
   });
   const close = () => {
@@ -68,16 +83,12 @@ export async function serveLichtblick(
   using resources = new DisposableStack();
   resources.defer(close);
   const listening = once(server, "listening", { signal });
-  server.listen({ port: 0, host: "127.0.0.1", signal });
+  server.listen({ port, host: "127.0.0.1", signal });
   await listening;
   const address = server.address();
   if (!address || typeof address === "string")
     throw new Error("Viewer has no TCP address");
-  const port = address.port;
-  const source = recording
-    ? `ds=remote-file&ds.url=${encodeURIComponent(`http://127.0.0.1:${port}${RECORDING}`)}`
-    : `ds=foxglove-websocket&ds.url=${encodeURIComponent(FOXGLOVE)}`;
-  const url = `http://127.0.0.1:${port}/?${source}&layoutUrl=${encodeURIComponent(`http://127.0.0.1:${port}/layout.json`)}`;
+  const url = lichtblickUrl(address.port, source);
   console.error(`Lichtblick: ${url}`);
   await openBrowser(url);
   signal?.throwIfAborted();

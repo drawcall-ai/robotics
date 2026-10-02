@@ -3,12 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm --filter @drawcall/robotics build && pixi run launch viewer:=true",
-    "launch": "pnpm --filter @drawcall/robotics build && pixi run launch",
-    "record": "pnpm --filter @drawcall/robotics build && pixi run launch record:=true",
-    "replay": "pnpm --filter @drawcall/robotics build && drawcall-robotics view --show /map --show /local_costmap/costmap --show /plan --show /local_plan",
-    "typecheck": "tsc --noEmit",
-    "results": "pnpm --filter @drawcall/robotics build && drawcall-robotics results"
+    "lib": "pnpm --filter @drawcall/robotics build",
+    "dev": "pnpm lib && pixi run drawcall-robotics run --viewer",
+    "start": "pnpm lib && pixi run drawcall-robotics run",
+    "cat": "pnpm lib && drawcall-robotics cat",
+    "view": "pnpm lib && drawcall-robotics view runs/latest/bag --show /map --show /local_costmap/costmap --show /plan --show /local_plan",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@drawcall/physics": "0.13.0",

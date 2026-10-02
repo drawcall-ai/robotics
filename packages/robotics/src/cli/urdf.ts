@@ -24,40 +24,39 @@ export const urdf = new Command("urdf")
     "-s, --separate",
     "write meshes as STL files beside the output instead of embedding them",
   )
-  .action(
-    async (
-      scene: string,
-      options: {
-        namespace: string;
-        robot?: string;
-        output?: string;
-        separate?: boolean;
-      },
-    ) => {
-      if (options.separate && !options.output)
-        throw new Error("--separate writes files beside --output; give one");
-      let xml: string;
-      {
-        using resources = new DisposableStack();
-        resources.defer(() => registry.clear());
-        const ros = new ROS2(new OfflineConnection(), {
-          namespace: options.namespace,
-        });
-        resources.defer(() => ros.dispose());
-        await import(pathToFileURL(resolve(scene)).href);
-        xml = exportURDF({ ros, name: options.robot });
-      }
-      if (!options.output) {
-        process.stdout.write(xml);
-        return;
-      }
-      const output = resolve(options.output);
-      await writeFile(
-        output,
-        options.separate ? await separateMeshes(xml, output) : xml,
-      );
+  .action(async function (
+    this: Command,
+    scene: string,
+    options: {
+      namespace: string;
+      robot?: string;
+      output?: string;
+      separate?: boolean;
     },
-  );
+  ) {
+    if (options.separate && !options.output)
+      this.error("error: --separate writes files beside --output; give one");
+    let xml: string;
+    {
+      using resources = new DisposableStack();
+      resources.defer(() => registry.clear());
+      const ros = new ROS2(new OfflineConnection(), {
+        namespace: options.namespace,
+      });
+      resources.defer(() => ros.dispose());
+      await import(pathToFileURL(resolve(scene)).href);
+      xml = exportURDF({ ros, name: options.robot });
+    }
+    if (!options.output) {
+      process.stdout.write(xml);
+      return;
+    }
+    const output = resolve(options.output);
+    await writeFile(
+      output,
+      options.separate ? await separateMeshes(xml, output) : xml,
+    );
+  });
 
 /**
  * Writes every embedded mesh of `xml` beside `output` as `<name>-<hash>.stl` and points at it with an

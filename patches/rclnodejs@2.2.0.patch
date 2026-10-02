@@ -11,3 +11,19 @@ index 7daad5b2fc00bb1b333421e7b4ef8af8c13fb4b0..4a2b9f3170a9dd21581c286c6836103d
  }
  
  Napi::Object InitContextBindings(Napi::Env env, Napi::Object exports) {
+diff --git a/src/shadow_node.cpp b/src/shadow_node.cpp
+index aeae6afc24b572e0940aa7a062eaffc42a146311..0a5a60b937b9d3d1dab33f4726c3fd2b07a513af 100644
+--- a/src/shadow_node.cpp
++++ b/src/shadow_node.cpp
+@@ -110,7 +110,10 @@ void ShadowNode::Execute(const std::vector<rclnodejs::RclHandle*>& handles) {
+ 
+   Napi::Function execute =
+       Value().As<Napi::Object>().Get("execute").As<Napi::Function>();
+-  execute.Call(Value(), {results});
++  // Called from a libuv async callback, outside any JavaScript callback scope: MakeCallback
++  // runs the microtasks the callbacks queue, such as a service response resolving its promise,
++  // which Call leaves waiting until something else, such as a timer, enters JavaScript.
++  execute.MakeCallback(Value(), {results});
+ }
+ 
+ void ShadowNode::CatchException(std::exception_ptr e_ptr) {

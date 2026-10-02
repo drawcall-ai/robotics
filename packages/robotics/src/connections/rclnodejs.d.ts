@@ -6,6 +6,14 @@ declare module "rclnodejs" {
     waitForAllAcked(timeout: bigint): boolean;
     publish(message: unknown): void;
   }
+  export interface RclContext {}
+  export interface RclClient {
+    waitForService(timeout: number): Promise<boolean>;
+    sendRequestAsync(
+      request: unknown,
+      options?: { timeout?: number },
+    ): Promise<unknown>;
+  }
   export interface RclNode {
     createPublisher(
       type: string,
@@ -25,6 +33,8 @@ declare module "rclnodejs" {
       /** The returned response, or a promise of it, is sent back. */
       handler: (request: unknown) => unknown,
     ): unknown;
+    createClient(type: string, name: string): RclClient;
+    getLogger(): { info(message: string): boolean };
     spin(): void;
     destroy(): void;
   }
@@ -40,10 +50,11 @@ declare module "rclnodejs" {
       ReliabilityPolicy: { RMW_QOS_POLICY_RELIABILITY_RELIABLE: number };
       DurabilityPolicy: { RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL: number };
     };
-    init(): Promise<void>;
-    shutdown(): void;
+    Context: new (domain?: bigint) => RclContext;
+    init(context: RclContext, argv: string[]): Promise<void>;
+    shutdown(context: RclContext): void;
     removeSignalHandlers(): void;
-    Node: new (name: string) => RclNode;
+    Node: new (name: string, namespace: string, context: RclContext) => RclNode;
   };
   export default rclnodejs;
 }

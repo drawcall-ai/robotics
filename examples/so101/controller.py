@@ -14,6 +14,7 @@ left it can handle, the node exits, which ends the episode.
 
 import math
 import os
+import signal
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -210,11 +211,11 @@ def aim_point(elevation, azimuth, distance, center=CENTER):
 
 def main():
     import rclpy
+    from rclpy.executors import ExternalShutdownException
     from rclpy.node import Node
     from rclpy.qos import DurabilityPolicy, QoSProfile
     from sensor_msgs.msg import CompressedImage, Image, JointState
     from std_msgs.msg import String
-    from std_srvs.srv import Trigger
 
     class Controller(Node):
         def __init__(self):
@@ -227,8 +228,6 @@ def main():
             self.create_subscription(Image, "/robot/wrist_camera/image_raw", self.image, 10)
             # What the policy saw, for the viewer and recordings.
             self.annotated = self.create_publisher(CompressedImage, "/robot/perception/image/compressed", 10)
-            self.start = self.create_client(Trigger, "/sim/start_evaluation")
-            self.start_future = None
             self.worker = ThreadPoolExecutor(1)
             self.detector = Detector()
             self.segmenter = Segmenter()
@@ -280,14 +279,8 @@ def main():
             if self.target is None:
                 self.target = self.q.copy()
             if self.task is None:
-                if self.start_future is None and self.start.service_is_ready():
-                    self.start_future = self.start.call_async(Trigger.Request())
-                if self.start_future is not None and self.start_future.done():
-                    response = self.start_future.result()
-                    if not response.success:
-                        raise RuntimeError(f"Episode start rejected: {response.message}")
-                    self.task = threading.Thread(target=self.play, daemon=True)
-                    self.task.start()
+                self.task = threading.Thread(target=self.play, daemon=True)
+                self.task.start()
             elif self.failure is not None:
                 raise self.failure
             elif self.ended is not None:
@@ -1432,12 +1425,10 @@ def main():
     node = Controller()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+    except (KeyboardInterrupt, ExternalShutdownException):
+        # An eject sends SIGINT twice, to the process group and through ros2 launch: ignore the
+        # second while the worker thread winds down.
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
 if __name__ == "__main__":

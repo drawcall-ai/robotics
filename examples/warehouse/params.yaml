@@ -1,7 +1,6 @@
 # Every node loads this one file and reads its own section.
 /**:
   ros__parameters:
-    use_sim_time: true
     enable_stamped_cmd_vel: true
 
 bt_navigator:
@@ -166,29 +165,3 @@ lifecycle_manager_slam:
     autostart: true
     bond_timeout: 0.0
     node_names: [slam_toolbox]
-
-foxglove_bridge:
-  ros__parameters:
-    address: 127.0.0.1
-    send_buffer_limit: 100000000
-    # Only what the viewer layout uses. Everything else is noise there: the 1 kHz clock trips
-    # Lichtblick's rate alert, and Nav2 and SLAM services disagree on the Marker schema.
-    topic_whitelist:
-      [
-        "^/tf$",
-        "^/tf_static$",
-        "^/map$",
-        "^/robot/.*",
-        "^/sim/score$",
-        "^/sim/evaluation$",
-        "^/diff_drive_controller/.*",
-        "^/plan$",
-        "^/local_plan$",
-        "^/local_costmap/costmap$",
-        "^/global_costmap/costmap$",
-        "^/goal_pose$",
-        "^/initialpose$",
-        "^/clicked_point$",
-      ]
-    service_whitelist: ["^$"]
-    param_whitelist: ["^$"]

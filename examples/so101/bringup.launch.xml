@@ -1,17 +1,4 @@
+<!-- The SO101 needs no persistent stack: the simulator, or the real arm's driver, serves its topics. -->
 <launch>
-  <arg name="viewer" default="false"/>
-  <arg name="record" default="false"/>
-  <!-- Simulated seconds per wall-clock second; 0 runs as fast as the host allows. -->
-  <arg name="real_time_factor" default="1"/>
-  <!-- The scene script beside this file: scene.ts for one piece, setup.ts for the whole set,
-       upright.ts to test standing one piece up. -->
-  <arg name="scene" default="scene.ts"/>
-  <executable cmd="drawcall-robotics sim $(dirname)/$(var scene) --wait-for-start --real-time-factor $(var real_time_factor) --show /robot/perception/image/compressed $(if $(var record) --record --no-record) $(if $(var viewer) --viewer --no-viewer)" cwd="$(dirname)" on_exit="shutdown"/>
-  <node pkg="foxglove_bridge" exec="foxglove_bridge" if="$(var viewer)" on_exit="shutdown">
-    <param name="send_buffer_limit" value="100000000"/>
-    <param name="use_sim_time" value="true"/>
-    <param name="topic_whitelist" value="['^/robot/.*', '^/tf$', '^/tf_static$', '^/sim/(score|evaluation)$']"/>
-  </node>
-  <!-- Lower priority than the simulator: the world never waits for the robot's computation. -->
-  <executable cmd="nice -n 10 python3 $(dirname)/controller.py --ros-args -p use_sim_time:=true" on_exit="shutdown"/>
+  <arg name="use_sim_time" default="false"/>
 </launch>
