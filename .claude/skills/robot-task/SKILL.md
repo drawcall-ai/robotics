@@ -7,7 +7,7 @@ description: Solve a simulated robot task in this repo (e.g. examples/so101) wit
 
 A previous attempt ran 9 days, 51 active hours and about 300 full episodes without finishing, mostly waiting on episodes. Everything below exists to keep each iteration short and each decision honest.
 
-Run commands from the example folder inside its ROS env (`pixi run drawcall-robotics …`). `run` prints its run folder on stdout. `continue`, `stop` and `cat` default to `runs/latest`, which is whoever's run started last in that folder; when other runs may start alongside yours, pass yours: `continue --run <folder>`, `stop --run <folder>`, `cat <folder>`.
+Run commands from the example folder inside its ROS env (`pixi run drawcall-robotics …`). `run` prints its run folder on stdout. `continue`, `stop` and `cat` default to `runs/latest`, which is whoever's run started last in that folder; when other runs may start alongside yours, pass yours: `continue --run <folder>`, `stop --run <folder>`, `cat <folder>`. When the user wants to watch, add `--viewer` to the single `run`: it opens Lichtblick, which stays live across every `continue` of that run.
 
 ## Workflow
 
