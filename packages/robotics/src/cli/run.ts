@@ -294,7 +294,14 @@ async function episode(
       console.error(
         `Simulating ${setup.scene} with seed ${seed} in ROS domain ${domain}`,
       );
-    const pid = await launch(setup, folder, seed, domain, mode.slots);
+    const pid = await launch(
+      setup,
+      folder,
+      seed,
+      domain,
+      mode.slots,
+      mode.batch,
+    );
     hold(domain, pid);
     // The simulator serves Lichtblick on this port once it is up, and opens it.
     if (setup.viewer)

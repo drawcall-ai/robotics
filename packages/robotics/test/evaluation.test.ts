@@ -211,3 +211,16 @@ it("counts the time it could not step as behind, and none while it keeps up", as
   for (let i = 0; i < 10; i++) held.update(0.1);
   expect(held.behind).toBeCloseTo(1 - 32 * world.fixedDelta);
 });
+
+it("slows down when it falls behind, unless it must keep pace", async () => {
+  const { world } = await simulation();
+  const held = new Stepping(world, () => true);
+  for (let i = 0; i < 30; i++) held.update(0.1);
+  expect(() => held.pace(true, 1)).toThrow(
+    "could not keep the real-time factor 1",
+  );
+  held.pace(false, 1);
+  expect(held.behind).toBe(0);
+  for (let i = 0; i < 30; i++) held.update(0.1);
+  expect(() => held.pace(false, 1)).not.toThrow();
+});

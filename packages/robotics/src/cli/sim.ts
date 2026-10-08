@@ -41,6 +41,7 @@ interface SimOptions {
   record: string;
   recordAll?: boolean;
   realTimeFactor: number;
+  keepPace?: boolean;
 }
 
 /**
@@ -77,6 +78,14 @@ export const sim = new Command("sim")
     "simulated seconds per wall-clock second; 0 runs as fast as the host allows",
     number(0),
     1,
+  )
+  .option(
+    "--keep-pace",
+    "end the episode with an error when it falls behind its real-time factor, as a batch's scheduler needs; otherwise the simulation slows down",
+  )
+  .option(
+    "--no-keep-pace",
+    "slow the simulation down when it falls behind (default)",
   )
   .action(async (scene: string, options: SimOptions) => {
     await run(scene, options);
@@ -199,6 +208,7 @@ async function run(scene: string, options: SimOptions): Promise<void> {
       evaluation,
       recorder,
       options.realTimeFactor,
+      options.keepPace ?? false,
       stop.signal,
     );
     if (stop.signal.aborted && stop.signal.reason !== INTERRUPTED)
@@ -372,6 +382,7 @@ async function simulate(
   evaluation: Evaluator,
   recorder: Recorder,
   realTimeFactor: number,
+  keepPace: boolean,
   signal: AbortSignal,
 ): Promise<void> {
   const world = ros.world;
@@ -411,13 +422,7 @@ async function simulate(
       }
       if (controls.steps === 0 || evaluation.finished)
         for (const answer of controls.stepped.splice(0)) answer();
-      // Results of an episode that falls behind its factor would not mean what was asked, so
-      // it ends with an error instead; before the evaluation, catching up is fine.
-      if (!evaluation.active) stepping.behind = 0;
-      else if (stepping.behind > LAG)
-        throw new Error(
-          `${BEHIND} ${realTimeFactor}: ${stepping.behind.toFixed(1)} s behind`,
-        );
+      stepping.pace(keepPace && evaluation.active, realTimeFactor);
     } catch (error) {
       throw ros.error ?? error;
     }
@@ -501,6 +506,19 @@ export class Stepping {
       this.accumulated = Math.max(0, this.accumulated - this.world.fixedDelta);
       this.world.update(this.world.fixedDelta);
     }
+  }
+  /**
+   * With `enforced`, throws once the simulation has fallen more than LAG seconds behind `factor`:
+   * results of an episode that cannot keep its pace would not mean what was asked, and a batch
+   * runs it again with fewer at a time. Otherwise the lag is forgiven and the simulation slows
+   * down, as a real robot holds its goals while its computer is busy.
+   */
+  pace(enforced: boolean, factor: number): void {
+    if (!enforced) this.behind = 0;
+    else if (this.behind > LAG)
+      throw new Error(
+        `${BEHIND} ${factor}: ${this.behind.toFixed(1)} s behind`,
+      );
   }
   /** Steps as many fixed steps as fit before `deadline`, in performance.now() milliseconds. */
   until(deadline: number): void {

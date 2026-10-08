@@ -124,6 +124,7 @@ export async function launch(
   seed: number,
   domain: number,
   slots: number,
+  keepPace: boolean,
 ): Promise<number> {
   const log = openSync(join(folder, "launch.log"), "a");
   try {
@@ -136,6 +137,7 @@ export async function launch(
         `bringup:=${setup.bringup}`,
         `record:=${resolve(folder, "bag")}`,
         `real_time_factor:=${setup.realTimeFactor}`,
+        `keep_pace:=${keepPace}`,
         ...(setup.viewer
           ? [
               "viewer:=true",
