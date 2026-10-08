@@ -24,6 +24,7 @@ import {
   CAMERA,
   GRIPPER_CLOSED,
   GRIPPER_TRAVEL,
+  restAngles,
   ROLL_ERROR,
 } from "./calibration.ts";
 import { joints as authored, links as allLinks } from "./model.ts";
@@ -36,8 +37,8 @@ const joints = authored.filter((joint) => !joint.child.startsWith("wrist_camera"
 /** Calibrated ranges of the readings, LeRobot degrees (gripper 0..100). */
 const RANGES: Record<string, readonly [number, number]> = {
   shoulder_pan: [-101.6, 101.6],
-  shoulder_lift: [-90, 90],
-  elbow_flex: [-86.8, 86.8],
+  shoulder_lift: [-95.36, 95.36],
+  elbow_flex: [-90.35, 90.35],
   wrist_flex: [-85.9, 85.9],
   wrist_roll: [-180, 180],
   gripper: [0, 100],
@@ -117,6 +118,7 @@ export function arm(height: number) {
     shapes.set(body, entry);
   }
   const servoJoints = new Map<string, RevoluteJoint>();
+  const rest = restAngles();
   const placed = new Set(["base_link"]);
   while (placed.size < links.length) {
     let progress = false;
@@ -133,7 +135,9 @@ export function arm(height: number) {
         continue;
       }
       const child = place(spec.child).body;
-      child.applyMatrix4(parent.body.matrix.clone().multiply(frame));
+      // Each link starts turned to the rest pose.
+      const turn = new Matrix4().makeRotationZ(rest[ORDER.indexOf(spec.name)]!);
+      child.applyMatrix4(parent.body.matrix.clone().multiply(frame).multiply(turn));
       child.updateMatrix();
       const joint = new RevoluteJoint({
         body0: parent.body,

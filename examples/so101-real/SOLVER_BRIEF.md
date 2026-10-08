@@ -29,13 +29,14 @@ heat up, and the camera is all you see. Develop as you would on the real arm.
   | joint | range |
   | --- | --- |
   | shoulder_pan | ±101.6° |
-  | shoulder_lift | ±90.0° |
-  | elbow_flex | ±86.8° |
+  | shoulder_lift | ±95.4° |
+  | elbow_flex | ±90.3° |
   | wrist_flex | ±85.9° |
   | wrist_roll | ±180° (a full turn; its zero is arbitrary) |
   | gripper | 0 (jaws touching) to 100 (fully open), linear in motor angle |
 
-  Readings have the same signs as the URDF joint angles.
+  Readings have the same signs as the URDF joint angles. The arm starts in its rest pose, folded so
+  that it holds itself with the torque off: readings about (−6, −94, 89, 17, −6, 5).
 - The gripper has a white fixed jaw and a black moving jaw.
 - The camera: Raspberry Pi Camera V2.1, 1280×960, datasheet intrinsics fx = fy = 1061 px,
   cx = 640, cy = 480, no distortion. Its mounting on the gripper has not been calibrated.

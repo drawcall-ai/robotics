@@ -64,3 +64,15 @@ class Driver:
         rgb = self.robot.image()
         rgb = self.robot.image()
         cv2.imwrite(os.path.join(HERE, f"sim-{name}.jpg"), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
+
+
+def shifted(old):
+    """Readings as REAL_OBSERVATIONS logged them, before the calibration was widened to take in
+    the rest pose, in today's calibration: lift +5.36°, elbow −3.52°. Takes a dict or a tuple in
+    the order pan, lift, elbow, wrist_flex, roll."""
+    if isinstance(old, dict):
+        new = dict(old)
+        new["shoulder_lift"] = old["shoulder_lift"] + 5.36
+        new["elbow_flex"] = old["elbow_flex"] - 3.52
+        return new
+    return (old[0], old[1] + 5.36, old[2] - 3.52, *old[3:])

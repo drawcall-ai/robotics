@@ -7,6 +7,21 @@ run with `SO101_PUBLIC_TRUTH=1`, e.g.
 `SO101_PUBLIC_TRUTH=1 pixi run drawcall-robotics run --seed 0 --real-time-factor 0 -- python3 evidence/actuators.py`.
 All runs use seed 0, the measured scene. Status: ✅ reproduced, ◐ partly, ✗ not yet.
 
+## Calibration change (after REAL_OBSERVATIONS)
+
+The real arm's calibration was later widened so that its unpowered rest pose (folded, holding
+itself with the motors off) lies inside the limits: shoulder_lift range_min 991 → 869, elbow_flex
+range_max 2989 → 3069. Readings are centred on the range, so the same physical pose now reads
++5.36° on the lift and −3.52° on the elbow. **REAL_OBSERVATIONS predates the shift:** old lift
+reading = new − 5.36, old elbow = new + 3.52. The sim mirrors today's calibration: ranges ±95.4°
+(lift) and ±90.3° (elbow), fitted offsets −0.96° and −7.28° (were +4.4 and −10.8), so physics
+is unchanged. The evidence scripts convert the logged readings (`shifted()` in
+`evidence/drive.py`); the tables below quote the logged (old) readings unless noted. The arm
+starts in the rest pose: readings (−5.7, −94.5, 87.1, 17.1, −5.6, 5.2) against the real
+(−5.7, −94.5, 89.5, 16.9, −5.6, 5.2). The elbow is 2.4° off because it carries a little torque
+there. Re-check at the shifted readings: B reached on the table (0.03 cm) at (59.3, −52.8), C at
+0.37 cm at (54.5, −48.3), D 4.44 cm, Q 2.25 cm, all as before.
+
 ## How it is built (simple on purpose)
 
 - **Readings ≠ joints** (`calibration.ts`, `load.ts`): true angle = reading + offset − bending·τ,

@@ -2,7 +2,7 @@
 save the sim wrist camera's view as evidence/sim-<name>.jpg."""
 import sys
 sys.path.insert(0, "evidence")
-from drive import Driver
+from drive import Driver, shifted
 
 d = Driver()
 d.robot.p_gain(shoulder_pan=32, shoulder_lift=32, elbow_flex=32, wrist_flex=32, wrist_roll=32)
@@ -15,6 +15,7 @@ poses = {
     "20-pre": dict(shoulder_pan=-44.5, shoulder_lift=31.5, elbow_flex=-38.6, wrist_flex=82.5, wrist_roll=-61.2, gripper=100),
 }
 for name, p in poses.items():
+    p = shifted(p)
     if p["shoulder_lift"] > 10:
         d.glide(**{**p, "shoulder_lift": 0.0})
     d.reach(**p)

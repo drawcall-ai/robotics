@@ -4,7 +4,7 @@ fixed-jaw height and loads. Plain = goal set to the readings (P=16, no correctio
 reached = goals nudged until the readings match, as the real controller's sag correction did."""
 import sys
 sys.path.insert(0, "evidence")
-from drive import Driver
+from drive import Driver, shifted
 
 d = Driver()
 POSES = {
@@ -13,6 +13,7 @@ POSES = {
     "D": (-48.7, 34.8, -36.0, 83.2, -71.7),
     "Q": (-44.8, 37.5, -31.4, 82.5, -62.5),
 }
+POSES = {name: shifted(p) for name, p in POSES.items()}
 J = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
 
 
@@ -39,7 +40,7 @@ for mode in ("plain", "reached"):
         d.shoot(f"{name}-{mode}")
     above(POSES["Q"])
 # The first motion test's pose: the arm folded down onto the table in front of the base.
-d.glide(seconds=3, shoulder_pan=0, shoulder_lift=-30.7, elbow_flex=60, wrist_flex=0, wrist_roll=0)
-d.glide(seconds=3, elbow_flex=93.4)
+d.glide(seconds=3, shoulder_pan=0, shoulder_lift=-30.7 + 5.36, elbow_flex=60, wrist_flex=0, wrist_roll=0)
+d.glide(seconds=3, elbow_flex=93.4 - 3.52)
 d.robot.settle(timeout=3)
 d.report("early-plain")

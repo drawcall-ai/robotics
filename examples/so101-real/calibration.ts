@@ -36,7 +36,10 @@ export const GRIPPER_TRAVEL = 130 * deg;
  * camera calibration fitted where it was valid (upper arm near vertical, wrist 40–75°),
  * model = reading + offset.
  */
-const FITTED = [0, 4.4, -10.8, 5.2, ROLL_ERROR];
+// REAL_OBSERVATIONS measured +4.4 and −10.8 on lift and elbow before the calibration was widened
+// to take in the rest pose (lift range_min 991 → 869, elbow range_max 2989 → 3069), which moved
+// their readings by +5.36° and −3.52°.
+const FITTED = [0, 4.4 - 5.36, -10.8 + 3.52, 5.2, ROLL_ERROR];
 /**
  * How far each joint's link bends away from its encoder's reading, degrees per N·m of the torque
  * it passes on to the link (`load.ts`): gear backlash and printed-plastic flex, which the encoder
@@ -69,3 +72,11 @@ export const calibration: Calibration = {
     );
   },
 };
+
+/**
+ * The arm's unpowered rest pose, folded so that it holds itself, as readings: where the real arm
+ * sits when its torque is off and where the simulation starts.
+ */
+export const REST = [-5.7, -94.5, 89.5, 16.9, -5.6, 5.2];
+/** The rest pose's true joint angles, radians: folded, its links carry next to no torque. */
+export const restAngles = () => calibration.angles(REST, REST.map(() => 0));
