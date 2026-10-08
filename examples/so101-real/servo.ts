@@ -6,13 +6,14 @@
 //   error(reading). The policy never sees true angles.
 // - P-only position control, torque = K·(goal − present) capped at the torque limit, K set by
 //   the P coefficient (16 by default, K = 7.9 N·m/rad). Gravity makes the arm sag by degrees.
-// - Stiction as a dead band: a joint at rest ignores goal changes smaller than its static
-//   friction torque over K (±3° at P=16), then jumps to the full goal at once.
+// - Gear friction: Coulomb friction of 0.35 N·m on each arm joint. A joint at rest ignores goal
+//   changes smaller than that torque over K (2.5° at P=16), and where it settles, and so its
+//   load, depends on the side it came from.
 // - Present_Load: the commanded torque K·(present − goal), in tenths of a percent of stall torque.
 // - Temperature: dT/dt = 0.3125·load² − (T − 25)/1440 s; at 70 °C the motor cuts its torque and
 //   stays off until it is below 55 °C and receives a new goal. Heat follows simulated time; a
-//   pause between turns charges the wall-clock time it lasted (up to 120 s) as holding time,
-//   since a real arm keeps heating while its operator thinks.
+//   pause between turns charges the wall-clock time it lasted (up to 120 s) as holding time at
+//   the load it paused with, since a real arm keeps heating while its operator thinks.
 //
 // Topics: /follower/joint_states (readings, deg/s, Present_Load in effort),
 // /follower/status (JSON: temperatures, torque on/off, P coefficients), and the inputs
@@ -26,10 +27,10 @@ import { getROS2, header, type ROS2 } from "@drawcall/robotics";
 export const STALL = 2.94;
 /** Joint stiffness per unit of P coefficient, N·m/rad: P=16 gives 47 load units per degree (§2). */
 const STIFFNESS_PER_P = 7.9 / 16;
-/** Static friction of a geared servo, N·m: §2's load hysteresis (±120 units) and a 3° step that does not move. */
-const STATIC_FRICTION = 0.42;
-/** How long a joint keeps following goals after it last moved, s. */
-const SETTLE = 0.3;
+/** Coulomb friction of a geared servo, N·m: §2's load hysteresis, ±120 units of 2.94 N·m. */
+const FRICTION = 0.35;
+/** The longest pause charged as holding time, s. */
+const PAUSE = 120;
 const AMBIENT = 25;
 const HEATING = 0.3125;
 const COOLING = 1440;
@@ -46,8 +47,8 @@ export interface ServoJoint {
   torqueLimit: number;
   /** Reading units per degree of motor rotation: 1 for the arm, 100/130 for the gripper. */
   unitsPerDegree: number;
-  /** Whether stiction holds the joint at rest; off for the light, fast gripper. */
-  stiction: boolean;
+  /** Whether gear friction holds the joint; off for the light, fast gripper. */
+  friction: boolean;
 }
 
 /** The hidden map between readings and true joint angles, both in a joint order. */
@@ -60,9 +61,6 @@ export interface Calibration {
 
 interface State {
   goal: number;
-  /** The goal the motor actually drives to: the goal, or where stiction holds it. */
-  held: number;
-  moved: number;
   p: number;
   temperature: number;
   torque: boolean;
@@ -77,7 +75,6 @@ export class ServoBus {
   private readonly unregister: () => void;
   private last = -Infinity;
   private lastStatus = -Infinity;
-  private wall?: number;
   /** Listeners for audit events: trips and recoveries. */
   readonly events: ((message: string) => void)[] = [];
   readonly joints: readonly ServoJoint[];
@@ -86,13 +83,14 @@ export class ServoBus {
     this.joints = joints;
     this.calibration = calibration;
     this.ros = getROS2();
-    this.drives = joints.map(({ joint, torqueLimit }) => {
+    this.drives = joints.map(({ joint, torqueLimit, friction }) => {
       const drive = new JointDrive({
         stiffness: 16 * STIFFNESS_PER_P,
         damping: 0.1,
         maxForce: torqueLimit * STALL,
         // No-load speed of the STS3215 at 12 V, 0.222 s per 60°.
         maxVelocity: 4.7,
+        frictionLoss: friction ? FRICTION : 0,
       });
       joint.setDrive(drive);
       return drive;
@@ -104,7 +102,6 @@ export class ServoBus {
           state.goal = Math.min(high, Math.max(low, value));
           if (!state.torque && state.temperature < RECOVER) {
             state.torque = true;
-            state.held = state.goal;
             this.emit(`${this.joints[i]!.name} torque on again at ${state.temperature.toFixed(0)} C`);
           }
         }),
@@ -145,7 +142,7 @@ export class ServoBus {
       velocities: measured.map((m) => m.velocity),
     };
   }
-  beforeStep(time: number, dt: number): void {
+  beforeStep(_time: number, dt: number): void {
     const { angles } = this.measure();
     const present = this.calibration.readings(angles);
     // On power-up the servos hold where they are, as LeRobot's connect does.
@@ -153,43 +150,22 @@ export class ServoBus {
       for (const reading of present)
         this.states.push({
           goal: reading,
-          held: reading,
-          moved: -Infinity,
           p: 16,
           temperature: 30,
           torque: true,
           load: 0,
         });
-    // A pause between turns: the arm held its pose all along.
-    const now = performance.now() / 1000;
-    const paused = this.wall === undefined ? 0 : Math.min(120, now - this.wall - dt);
-    this.wall = now;
     const goals = this.calibration.angles(this.states.map((s) => s.goal));
-    this.joints.forEach(({ name, unitsPerDegree, stiction, torqueLimit }, i) => {
+    this.joints.forEach(({ torqueLimit }, i) => {
       const state = this.states[i]!;
       const k = state.p * STIFFNESS_PER_P;
-      const band = stiction ? (STATIC_FRICTION / k) * (180 / Math.PI) * unitsPerDegree : 0;
-      if (Math.abs(state.goal - state.held) > band || time - state.moved < SETTLE) {
-        if (state.held !== state.goal) state.moved = time;
-        state.held = state.goal;
-      }
       const torque = state.torque
         ? Math.max(-torqueLimit, Math.min(torqueLimit, (k * (goals[i]! - angles[i]!)) / STALL))
         : 0;
       // Feetech reports the load positive while pushing towards decreasing readings (§2).
       state.load = -Math.round(1000 * torque);
-      const heat = (seconds: number) => {
-        const t = state.temperature;
-        state.temperature += seconds * (HEATING * torque * torque - (t - AMBIENT) / COOLING);
-      };
-      if (paused > 1) heat(paused);
-      heat(dt);
-      if (state.torque && state.temperature >= TRIP) {
-        state.torque = false;
-        this.emit(`${name} overheated at ${state.temperature.toFixed(0)} C: torque off`);
-      }
+      this.heat(i, dt);
     });
-    const held = this.calibration.angles(this.states.map((s) => s.held));
     this.drives.forEach((drive, i) => {
       const state = this.states[i]!;
       if (!state.torque) {
@@ -199,9 +175,24 @@ export class ServoBus {
       const k = state.p * STIFFNESS_PER_P;
       // The P coefficient sets the stiffness, fixed at construction; scale the target instead.
       const base = 16 * STIFFNESS_PER_P;
-      const position = angles[i]! + (k / base) * (held[i]! - angles[i]!);
+      const position = angles[i]! + (k / base) * (goals[i]! - angles[i]!);
       if (drive.target?.position !== position) drive.setTarget({ position });
     });
+  }
+  /** The arm held its pose all through a pause between turns. */
+  resumed(wallSeconds: number): void {
+    this.states.forEach((_, i) => this.heat(i, Math.min(PAUSE, wallSeconds)));
+  }
+  /** Heats joint `i` for `seconds` at its present load, and trips it at 70 °C. */
+  private heat(i: number, seconds: number): void {
+    const state = this.states[i]!;
+    const torque = state.load / 1000;
+    const t = state.temperature;
+    state.temperature += seconds * (HEATING * torque * torque - (t - AMBIENT) / COOLING);
+    if (state.torque && state.temperature >= TRIP) {
+      state.torque = false;
+      this.emit(`${this.joints[i]!.name} overheated at ${state.temperature.toFixed(0)} C: torque off`);
+    }
   }
   afterStep(time: number): void {
     if (time - this.last < 0.02 - 1e-9) return;

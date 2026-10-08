@@ -101,9 +101,11 @@ positions. Your final policy goes in `policy/` and is started by `policy.launch.
 2. Do not read the scene, task, environment, model, servo or calibration sources (`*.ts`,
    `pixi.toml` and `package.json` excepted), `FIDELITY.md`, `PACKAGE_CHANGES.md`, `evidence/`, or
    any `REAL_OBSERVATIONS.md`. They hold ground truth.
-3. Do not subscribe to or `cat` any other topic: no `/robot/joint_states`, `/tf`, `/tf_static`,
-   `/robot/robot_description` or `/sim/*`. You may read the final `status` and `reason` of
-   `/sim/evaluation` to learn whether an episode succeeded, nothing else in it.
+3. Do not subscribe to or `cat` any other topic. The simulator's truth (`/robot/joint_states`,
+   `/tf`, `/tf_static`, `/robot/robot_description`, `/sim/*`) is not on your ROS graph, but it is
+   recorded in the run's bag: do not `cat` it. You may read the final `status` and `reason` of
+   `/sim/evaluation` (or the run's `result.json`) to learn whether an episode succeeded, nothing
+   else in it.
 4. No teleporting or other changes to the simulated world except through the servo goals and gains.
 5. Edit only your own `policy/` folder and scratch files. Do not change the example, the robotics
    package, the skill or the configuration.

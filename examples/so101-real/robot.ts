@@ -55,7 +55,9 @@ function transform(
 }
 
 export function arm(height: number) {
-  const robot = new Robot();
+  // The true joint angles, TF and camera mount are recorded, never sent to the policy. Builder
+  // checks that read them live (evidence/truth.py) run with SO101_PUBLIC_TRUTH=1.
+  const robot = new Robot({ private: process.env.SO101_PUBLIC_TRUTH !== "1" });
   robot.name = "so101";
   // The real arm's printed parts are white, its moving jaw black.
   const yellow = new MeshStandardMaterial({ color: "#f2f0ec", roughness: 0.7 });
@@ -242,7 +244,7 @@ export function arm(height: number) {
     // LeRobot limits the gripper to half the stall torque.
     torqueLimit: name === "gripper" ? 0.5 : 1,
     unitsPerDegree: name === "gripper" ? 100 / ((GRIPPER_TRAVEL * 180) / Math.PI) : 1,
-    stiction: name !== "gripper",
+    friction: name !== "gripper",
   }));
   const bus = new ServoBus(servos, calibration);
   return { robot, bus };

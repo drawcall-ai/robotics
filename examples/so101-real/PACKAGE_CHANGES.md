@@ -3,7 +3,16 @@
 Everything else of the real robot's behaviour lives in the example (`servo.ts`, `calibration.ts`,
 `scene.ts`). Two changes are needed for an honest evaluation. Two more are optional.
 
-## 1. Keep simulator truth off the policy's ROS graph (required)
+**Status: all four are done** and used by the example. §2 and §3 live in `@drawcall/physics` and
+`@drawcall/physics-mujoco`, applied as pnpm patches (`patches/`) to their published 0.13.0 until
+the physics repository has them. Results in FIDELITY.md.
+
+## 1. Keep simulator truth off the policy's ROS graph (required) — done
+
+The simulator writes private messages as `bag/private_<n>.mcap` beside rosbag2's files, split at
+the same pauses; `cat` and `view` read them with the rest. A private robot takes no joint
+commands. Acceptance: a policy's `ros2 topic list` shows the listed topics plus rosbag2's own
+`/events/write_split`; the bag holds the private topics.
 
 **Why.** The example hides the true joint angles behind LeRobot readings with a zero error
 (REAL_OBSERVATIONS §1, §5), but the package still publishes the truth where any policy can
@@ -23,7 +32,10 @@ SOLVER_BRIEF.md keep the solver from reading them.
 `/follower/*`, `/robot/wrist_camera/*`, `/clock`, `/rosout` and `/parameter_events`; the bag still
 contains `/robot/joint_states`, `/tf`, `/sim/audit` and `/sim/evaluation`, and `cat` shows them.
 
-## 2. Contact forces (required for the audit)
+## 2. Contact forces (required for the audit) — done
+
+Acceptance: queen at rest 0.323 N = m·g (0 %, `evidence/weight.ts`); in `contacts.py` every table
+touch reports `peakForce`; C plain 15.1 N, C reached 23.7 N.
 
 **Why.** The auditor must judge how hard the arm hit the table, the board and the queen (§5:
 "forces were low"; §6.4). `RigidBody` contact events carry no force, so the audit trail now
@@ -39,7 +51,12 @@ force }`, with the normal force in newtons (MuJoCo `mj_contactForce`).
   a peak force, and the touch at C with goals pushed into the table (`reached`) reports more than
   the plain one.
 
-## 3. Joint friction (optional)
+## 3. Joint friction (optional) — done
+
+The dead band is gone from `servo.ts`. The friction constraint is made hard (no creep under a
+steady load). Tuned to `frictionLoss: 0.35`, the real ±120-unit hysteresis; at P=16: a 3° step
+down does not move the shoulder (load 335 → 148), a 4°/s descent lags 0.8–1.2°, settled loads 93
+from above vs 335 from below.
 
 **Why.** The example emulates stiction by holding a joint's drive target while goal changes stay
 within ±τs/K. That reproduces §2's "3° down: no motion" and the sudden drop, but it has no
@@ -55,7 +72,10 @@ pose at P=16: a 3° downward goal step does not move the shoulder; a 4°/s desce
 1.5°; settled shoulder loads after approaching from above and from below differ by at least
 150 units.
 
-## 4. A pause hook for devices (optional)
+## 4. A pause hook for devices (optional) — done
+
+`ROS2.resume(wallSeconds)` calls it; the simulator does when a paused episode plays again. A 32 s
+pause at full load heated the shoulder 31 → 41 °C.
 
 **Why.** Heat must accrue while the arm holds its pose between turns (a real operator's thinking
 time). `servo.ts` now detects a pause from the wall-clock gap between two physics steps.

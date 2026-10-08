@@ -1,8 +1,9 @@
 // The real queen task: the queen lies on the table beside the board; the robot must stand it
 // upright on d8. The evaluator also records what an auditor needs afterwards, on /sim/audit and
-// in its metrics: every contact of the robot with the table, the board and the queen with the
-// servo loads during it, peak loads and temperatures, and overheating trips. A policy must not
-// subscribe to /sim/* or read this file.
+// in its metrics: every contact of the robot with the table, the board and the queen with its
+// peak contact force and the servo loads during it, peak loads and temperatures, and overheating
+// trips. Both are private: recorded in the run's bag, never seen by the policy. A policy must not
+// read this file.
 import type { RigidBody } from "@drawcall/physics";
 import { Evaluator, getROS2 } from "@drawcall/robotics";
 import { Quaternion, Vector3 } from "three";
@@ -14,7 +15,12 @@ export { show } from "./environment.ts";
 
 const ros2 = getROS2();
 const audit = (event: Record<string, unknown>) =>
-  ros2.publish("/sim/audit", "std_msgs/msg/String", { data: JSON.stringify(event) });
+  ros2.publish(
+    "/sim/audit",
+    "std_msgs/msg/String",
+    { data: JSON.stringify(event) },
+    { private: true },
+  );
 const now = () => ros2.world.time;
 
 /** Robot bodies touching the queen now. */
@@ -28,13 +34,23 @@ bus.events.push((message) => {
   audit({ time: now(), event: message });
 });
 // A touch lasts from the first robot link touching a thing until none has for 0.1 s (sliding
-// contacts flicker); it reports the links involved and the largest servo loads (‰ of stall
-// torque) while it lasted.
+// contacts flicker); it reports the links involved, the largest total contact force between
+// robot and thing (N) and the largest servo loads (‰ of stall torque) while it lasted.
 interface Touch {
   start: number;
   end?: number;
   links: Set<string>;
+  force: number;
   loads: Record<string, number>;
+}
+const maxForce = { table: 0, chessboard: 0, queen: 0 };
+/** The net normal force the robot exerts on `body` now, N. */
+function force(body: RigidBody): number {
+  const total = new Vector3();
+  for (const contact of ros2.world.contacts(body))
+    if (contact.otherBody.parent === robot)
+      total.addScaledVector(contact.normal, contact.force);
+  return total.length();
 }
 const things = [
   { body: table, key: "table" as const, touching: new Set<RigidBody>(), touch: undefined as Touch | undefined },
@@ -48,7 +64,7 @@ for (const thing of things) {
     thing.touching.add(otherBody);
     if (!thing.touch) {
       contacts[thing.key]++;
-      thing.touch = { start: now(), links: new Set(), loads: {} };
+      thing.touch = { start: now(), links: new Set(), force: 0, loads: {} };
       audit({ time: now(), event: "contact", with: thing.key, link: otherBody.name });
     }
     thing.touch.end = undefined;
@@ -63,7 +79,7 @@ for (const thing of things) {
 let beat = -Infinity;
 ros2.register({
   afterStep(time: number) {
-    // A heartbeat, so the recorder subscribes before the first contact, with the queen's pose.
+    // A heartbeat with the queen's pose and the temperatures.
     if (time - beat >= 1) {
       beat = time;
       const [x, y] = ros(queenBody.position);
@@ -82,6 +98,11 @@ ros2.register({
           bus.states.map((s, i) => [ORDER[i]!, Math.round(s.temperature * 10) / 10]),
         ),
       });
+    }
+    for (const { body, key, touch } of things) {
+      if (!touch) continue;
+      touch.force = Math.max(touch.force, force(body));
+      maxForce[key] = Math.max(maxForce[key], touch.force);
     }
     bus.states.forEach((state, i) => {
       const name = ORDER[i]!;
@@ -103,6 +124,7 @@ ros2.register({
         with: thing.key,
         duration: touch.end - touch.start,
         links: [...touch.links],
+        peakForce: Math.round(touch.force * 100) / 100,
         maxLoads: touch.loads,
       });
     }
@@ -120,8 +142,15 @@ const initial = boardBody.position.clone();
 let boardShift = 0;
 let rest: { since: number; position: Vector3; rotation: Quaternion } | undefined;
 new Evaluator({
+  private: true,
   timeout: 1800,
   metrics: {
+    ...Object.fromEntries(
+      Object.keys(maxForce).map((key) => [
+        `maxForce_${key}`,
+        () => maxForce[key as keyof typeof maxForce],
+      ]),
+    ),
     tableContacts: () => contacts.table,
     boardContacts: () => contacts.chessboard,
     queenContacts: () => contacts.queen,
