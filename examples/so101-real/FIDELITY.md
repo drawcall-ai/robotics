@@ -102,8 +102,13 @@ at rest a square or more from d8's centre, untouched, with the arm withdrawn. Bo
 fallen off fail as in the main task. Checked with a temporary edit: a queen on a8 succeeds at 1.0 s.
 
 Success needs the queen upright on d8 (centred within 9 mm, tilted under 10°, on the board top),
-at rest, untouched, and no gripper, jaw or camera collider point within 2 cm of it, all held for
-one second. The episode runs until that holds.
+at rest and untouched, with the arm withdrawn, all held for one second. The episode runs until that
+holds. Withdrawn means no gripper, jaw or camera box collider within 2 cm of the queen (exact
+box-to-axis distance; the queen counts as a capsule as wide as its base) and the queen not
+between the jaws, however wide open. The jaw rule came from the scatter solver: success fired
+during a slow retreat with open jaws still around the queen, 2.7 cm from it. Regression check
+(`withdraw_check.py`, `withdraw_check.txt`): jaws closed on a queen off d8 for 5 s, then opened
+wide around it for 5 s, give no success; it comes 0.4 s after the arm has lifted away.
 
 ## Open
 

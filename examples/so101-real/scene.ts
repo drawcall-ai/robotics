@@ -6,7 +6,8 @@
 // read this file.
 import { BoxCollider, RigidBody } from "@drawcall/physics";
 import { Evaluator, getROS2 } from "@drawcall/robotics";
-import { Line3, Quaternion, Vector3 } from "three";
+import { Matrix4, Quaternion, Vector3 } from "three";
+import { fixedPads, movingPads } from "./gripper.ts";
 import { QUEEN_BASE, QUEEN_LENGTH } from "./pieces.ts";
 import { board, boardBody, bus, queenBody, robot, scale, table, task } from "./environment.ts";
 import { ORDER } from "./robot.ts";
@@ -133,39 +134,67 @@ ros2.register({
   dispose() {},
 });
 
-// The arm has withdrawn when no point of the gripper's, jaws' or camera's colliders comes within
-// 2 cm of the queen. The queen counts as a capsule along its axis as wide as its base, so the
-// margin is up to 7 mm larger at its neck.
+// The arm has withdrawn when none of the gripper's, jaws' or camera's box colliders comes within
+// 2 cm of the queen, and the queen is not between the jaws, however wide they are open. The queen
+// counts as a capsule along its axis as wide as its base, so the margin is up to 7 mm larger at its
+// neck.
 const hands = robot.children.filter(
   (child): child is RigidBody =>
     child instanceof RigidBody &&
     (child.name === "gripper_link" || child.name === "moving_jaw_so101_v1_link"),
 );
-const corners = hands.flatMap((body) =>
+const gripperBody = hands.find((body) => body.name === "gripper_link")!;
+const jawBody = hands.find((body) => body.name === "moving_jaw_so101_v1_link")!;
+const boxes = hands.flatMap((body) =>
   body.children
     .filter((child): child is BoxCollider => child instanceof BoxCollider)
-    .flatMap((box) => {
-      const [sx, sy, sz] = box.size;
-      const points = [new Vector3()];
-      for (const a of [-0.5, 0.5])
-        for (const b of [-0.5, 0.5])
-          for (const c of [-0.5, 0.5]) points.push(new Vector3(a * sx, b * sy, c * sz));
-      return points.map((p) => ({ body, local: p.applyQuaternion(box.quaternion).add(box.position) }));
-    }),
+    .map((box) => ({
+      body,
+      box,
+      half: new Vector3(...box.size).multiplyScalar(0.5),
+      inverse: new Matrix4(),
+    })),
 );
-const segment = new Line3();
-const nearest = new Vector3();
-const world3 = new Vector3();
-function withdrawn(): boolean {
+const movingPad = new Vector3(...movingPads[movingPads.length - 1]!.position);
+const local = new Vector3();
+const clamped = new Vector3();
+/** Points along the queen's axis, in the world. */
+function axisPoints(): Vector3[] {
   const axis = new Vector3(0, 1, 0).applyQuaternion(queenBody.quaternion);
-  segment.start.copy(queenBody.position);
-  segment.end.copy(queenBody.position).addScaledVector(axis, QUEEN_LENGTH * scale);
-  for (const body of hands) body.updateWorldMatrix(true, false);
-  return corners.every(({ body, local }) => {
-    world3.copy(local).applyMatrix4(body.matrixWorld);
-    segment.closestPointToPoint(world3, true, nearest);
-    return nearest.distanceTo(world3) - (QUEEN_BASE / 2) * scale >= 0.02;
+  return Array.from({ length: 41 }, (_, k) =>
+    queenBody.position.clone().addScaledVector(axis, (QUEEN_LENGTH * scale * k) / 40),
+  );
+}
+/** Whether the queen's axis passes between the jaws: across the gap between the pads, ±2 cm
+ * sideways, from the pad tips to the gripper body. */
+function betweenJaws(points: Vector3[]): boolean {
+  const pad = movingPad.clone().applyMatrix4(jawBody.matrixWorld);
+  const toGripper = gripperBody.matrixWorld.clone().invert();
+  pad.applyMatrix4(toGripper);
+  const fixed = fixedPads[fixedPads.length - 1]!.position[0];
+  const [low, high] = [Math.min(fixed, pad.x), Math.max(fixed, pad.x)];
+  return points.some((p) => {
+    local.copy(p).applyMatrix4(toGripper);
+    return local.x > low && local.x < high && Math.abs(local.y) < 0.02 && local.z > -0.11 && local.z < -0.03;
   });
+}
+/** The smallest distance between the queen and a hand collider, exactly for each box. */
+function clearance(points: Vector3[]): number {
+  let least = Infinity;
+  for (const { body, box, half, inverse } of boxes) {
+    inverse.copy(body.matrixWorld).multiply(box.matrix).invert();
+    for (const p of points) {
+      local.copy(p).applyMatrix4(inverse);
+      clamped.copy(local).clamp(half.clone().negate(), half);
+      least = Math.min(least, local.distanceTo(clamped));
+    }
+  }
+  return least - (QUEEN_BASE / 2) * scale;
+}
+function withdrawn(): boolean {
+  for (const body of hands) body.updateWorldMatrix(true, true);
+  const points = axisPoints();
+  return clearance(points) >= 0.02 && !betweenJaws(points);
 }
 
 /** The board where it is now: squares are judged on the board, not the table. */

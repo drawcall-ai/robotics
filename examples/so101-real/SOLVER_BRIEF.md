@@ -8,8 +8,8 @@ In front of the arm is a folding wooden chessboard; **rank 8 is the rank nearest
 a-file is on the robot's right**. A dark wooden chess queen lies on its side somewhere on the table
 near the board.
 
-**Goal:** the queen stands upright on d8, near the square's centre, released, the arm withdrawn,
-and it stays there. The episode succeeds once all of that has held for a second.
+**Goal:** the queen stands upright on d8, near the square's centre, released, the arm withdrawn
+(a couple of centimetres clear, the jaws not around it), and it stays there. The episode succeeds once all of that has held for a second.
 
 **The scene varies with the seed**, as it would between real sessions. Seed 0 is the real scene.
 Other seeds move and turn the board (still in front of the robot, rank 8 nearest, a-file on its

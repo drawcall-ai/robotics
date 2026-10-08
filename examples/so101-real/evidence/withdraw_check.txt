@@ -1,0 +1,4 @@
+PHASE held 49.9 gripper 7.8 load 174
+PHASE open 57.0
+PHASE lifted 65.0
+evaluation success queenOffD8 65.4
