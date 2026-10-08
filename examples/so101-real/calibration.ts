@@ -12,7 +12,7 @@ const deg = Math.PI / 180;
  * against the camera's turn about the roll axis. 65° puts the jaws where the real photos show
  * them: the white fixed jaw's tip near pixel (735, 670), the black moving jaw to its left.
  */
-export const ROLL_ERROR = 65;
+export const ROLL_ERROR = 100;
 /**
  * Wrist camera, OpenCV frame (x right, y down, z forward) in gripper_link, metres, row-major, as
  * the real arm's hand-eye calibration found it for a roll zero error of 0 (2026-10-08 evening,

@@ -1,0 +1,163 @@
+[
+ {
+  "op": "move",
+  "q": {
+   "shoulder_pan": 0,
+   "shoulder_lift": 0,
+   "elbow_flex": -13,
+   "wrist_flex": 80,
+   "wrist_roll": 0
+  },
+  "speed": 8,
+  "near": false
+ },
+ {
+  "op": "move",
+  "q": {
+   "shoulder_pan": -43.89,
+   "shoulder_lift": 28.98,
+   "elbow_flex": -45.68,
+   "wrist_flex": 82.3,
+   "wrist_roll": -121.2,
+   "gripper": 45.0
+  },
+  "speed": 8,
+  "near": false
+ },
+ {
+  "op": "move",
+  "q": {
+   "shoulder_pan": -43.89,
+   "shoulder_lift": 42.78,
+   "elbow_flex": -51.16,
+   "wrist_flex": 82.3,
+   "wrist_roll": -121.2
+  },
+  "speed": 5,
+  "near": false
+ },
+ {
+  "op": "descend",
+  "steps": [
+   {
+    "shoulder_pan": -43.89,
+    "shoulder_lift": 43.72,
+    "elbow_flex": -51.68,
+    "wrist_flex": 82.3,
+    "wrist_roll": -121.2
+   },
+   {
+    "shoulder_pan": -43.89,
+    "shoulder_lift": 44.68,
+    "elbow_flex": -52.22,
+    "wrist_flex": 82.3,
+    "wrist_roll": -121.2
+   },
+   {
+    "shoulder_pan": -43.89,
+    "shoulder_lift": 45.65,
+    "elbow_flex": -52.79,
+    "wrist_flex": 82.3,
+    "wrist_roll": -121.2
+   },
+   {
+    "shoulder_pan": -43.89,
+    "shoulder_lift": 46.64,
+    "elbow_flex": -53.38,
+    "wrist_flex": 82.3,
+    "wrist_roll": -121.2
+   },
+   {
+    "shoulder_pan": -43.89,
+    "shoulder_lift": 47.64,
+    "elbow_flex": -54.0,
+    "wrist_flex": 82.3,
+    "wrist_roll": -121.2
+   },
+   {
+    "shoulder_pan": -43.89,
+    "shoulder_lift": 48.66,
+    "elbow_flex": -54.64,
+    "wrist_flex": 82.3,
+    "wrist_roll": -121.2
+   },
+   {
+    "shoulder_pan": -43.89,
+    "shoulder_lift": 49.69,
+    "elbow_flex": -55.3,
+    "wrist_flex": 82.3,
+    "wrist_roll": -121.2
+   },
+   {
+    "shoulder_pan": -43.89,
+    "shoulder_lift": 50.73,
+    "elbow_flex": -55.99,
+    "wrist_flex": 82.3,
+    "wrist_roll": -121.2
+   },
+   {
+    "shoulder_pan": -43.89,
+    "shoulder_lift": 51.79,
+    "elbow_flex": -56.71,
+    "wrist_flex": 82.3,
+    "wrist_roll": -121.2
+   },
+   {
+    "shoulder_pan": -43.89,
+    "shoulder_lift": 52.86,
+    "elbow_flex": -57.45,
+    "wrist_flex": 82.3,
+    "wrist_roll": -121.2
+   },
+   {
+    "shoulder_pan": -43.89,
+    "shoulder_lift": 53.94,
+    "elbow_flex": -58.23,
+    "wrist_flex": 82.3,
+    "wrist_roll": -121.2
+   },
+   {
+    "shoulder_pan": -43.89,
+    "shoulder_lift": 55.05,
+    "elbow_flex": -59.02,
+    "wrist_flex": 82.3,
+    "wrist_roll": -121.2
+   },
+   {
+    "shoulder_pan": -43.89,
+    "shoulder_lift": 56.16,
+    "elbow_flex": -59.85,
+    "wrist_flex": 82.3,
+    "wrist_roll": -121.2
+   },
+   {
+    "shoulder_pan": -43.89,
+    "shoulder_lift": 57.3,
+    "elbow_flex": -60.71,
+    "wrist_flex": 82.3,
+    "wrist_roll": -121.2
+   },
+   {
+    "shoulder_pan": -43.89,
+    "shoulder_lift": 58.45,
+    "elbow_flex": -61.59,
+    "wrist_flex": 82.3,
+    "wrist_roll": -121.2
+   }
+  ],
+  "drop": 50,
+  "require_contact": false
+ },
+ {
+  "op": "state",
+  "tag": "pre-grasp L"
+ },
+ {
+  "op": "shot",
+  "name": "rr_L1"
+ },
+ {
+  "op": "await",
+  "s": 120
+ }
+]

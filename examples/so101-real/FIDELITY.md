@@ -14,9 +14,10 @@ Evidence is in `evidence/`, made by builder-only scripts that read the true join
 
 - **Readings ≠ joints** (`calibration.ts`): true angle = reading + offset. The offsets are the
   re-calibration's fit from 12 board views: pan 0, lift −0.09°, elbow +1.55°, wrist_flex −0.71°,
-  plus a +65° wrist_roll zero error. LeRobot's roll zero is the middle of a full turn, so it is
-  arbitrary, and a roll-0 calibration cannot see it; it puts the jaws where the real photos show
-  them. RO §1's earlier fit was 9° off on the elbow.
+  plus a +100° wrist_roll zero error. LeRobot's roll zero is the middle of a full turn, so it is
+  arbitrary, and a roll-0 calibration cannot see it. With 100° the fitted camera mount coincides
+  with the printed v47 gripper's designed camera (`v47_poses.json`): 5.4 mm, 0.5°. The earlier 65°
+  was an eyeball fit to the jaw tips. RO §1's earlier fit was 9° off on the elbow.
 - **No hidden bending.** A load-dependent bend between encoder and link has been removed. In the
   real touch test the load fell steadily at the P rate after contact (no unbending). The new
   offsets meet RO's table contacts without it. And unclamped, it let attempt 2 fling the queen.
@@ -30,13 +31,18 @@ Evidence is in `evidence/`, made by builder-only scripts that read the true join
   wall-clock time, up to 120 s, as holding time.
 - **Camera:** 1280×960, fx = fy = 1061, centred, at the re-calibration's mount. That mount is
   within 0.8° and 3 mm of RO §3's. No colour cast: the real images are strongly red/pink.
-- **Jaws:** the collision pads end at z = −0.095 in gripper_link, 3 mm above the URDF
-  gripper_frame point, as the real touch test found. The CAD pads reached −0.104; the visual
-  meshes still show the CAD jaws.
+- **Jaws:** stock SO-101. The printed v47 gripper is the stock fixed-jaw body (tip at z
+  −104.4 mm, gripping face at x −7.9 mm) fused with a Pi 4 frame near the wrist and the camera
+  plate; the moving jaw is stock. The collision pads are the original CAD-sized ones. The Pi
+  frame is not modelled.
 - **Scene:** white table at the base plane, base_link 3 mm above it.
   - Board as re-calibrated: 31.0 mm squares, a8 corner at (18.8, −9.8) cm, top 2.0 cm in
     base_link (2.28 cm above the table), yaw 3.5°, so d8 sits at (19.7, 1.1) cm.
   - Queen lying with its middle at about (24.5, 23.5) cm, crown away from the robot at 64°.
+    It is the CC0 Staunton queen scaled to the real one as measured with the re-calibrated camera
+    from above (rr_V3): base 2.26 cm, crown collar ≈1.5 cm, so ×0.56 in width, and 7.3 cm long.
+    RO §4's 2.9 cm base came through the old calibration. The old 2.9 cm, 7.55 cm sim queen was
+    bigger, so a real queen that looks the same in the camera stands farther away.
   - Seeds other than 0 move the board ±5 mm/±1° and the queen ±1 cm/±8°.
 - **Arm masses:** unchanged (URDF; about 0.42 kg beyond the shoulder). See Loads.
 
@@ -45,7 +51,7 @@ Evidence is in `evidence/`, made by builder-only scripts that read the true join
 | Item | Real | Sim | |
 | --- | --- | --- | --- |
 | Views at the new real readings (`cmp-r0*`, `cmp-rc*`) | — | same board layout, orientation, squares and queen; board within ≈50–120 px | ◐ |
-| Touch test (`touch.py`): jaw meets the table at model tool-point z | −0.006 (table −0.003) | −0.003 | ✅ |
+| Touch test (`touch.py`): jaw meets the table at model tool-point z | −0.006 (table −0.003) | +0.009: the real jaw sits ≈1.5 cm higher in this pitched-down pose; ≈3 mm of it is the fitted vs designed camera mount | ✗ |
 | Touch test: load after contact | +30 → 0 → −232 over 24 mm, at the P rate | 79 → 59 → 34 → 7 → −21 over 9 mm | ✅ |
 | Touch test: load while descending | +30 | 68–79 (≈1° more sag) | ◐ |
 | Survey (pan 0, lift 0.4, elbow −13, wrist 80): shoulder / elbow load (`loads.py`) | 36–76 / 144–160 (after integral) | 30 / 232 approaching with gravity; 265 / 226 nudged from below | ✅ / ◐ |
@@ -70,6 +76,9 @@ with goal = present, so its gravity torque is at most friction plus 36 units, ab
 the sim just meets. The touch descent hints the sim shoulder carries ≈0.1 N·m more than the real
 one. That is within friction's uncertainty, so the masses stay.
 
+| Real lying grasp + stand-up, replayed (`replay.py`, plans L1–L4, `lying.jsonl`) | clamps at 7.1, load 252; carried; stands on the board | queen placed at the noted base point: clamps at 12.7, load 227, then slips out while lifting. Placed by the noted head point instead: closes on nothing (`lyingB.jsonl`). The real queen pose is only known to ≈1 cm. With the earlier, top-heavier queen shape it clamped and stood the queen up at (33.9, 1.6) cm | ◐ |
+| Real neck regrasp of the standing queen, replayed (plans S1 + f, `neck.jsonl`, `cmp-neck.jpg`) | closes past the queen to 5.3, load ≤ 32; black jaw sweeps in front of it | queen where rr_S1 shows it, (34.7, −0.5) cm, back-projected; the solver's own estimate was 2 cm off because it assumed the bigger sim queen. Same view; the jaw pushes the crown aside, gripper 7.7, load 167, no clamp (its stop is 250) | ◐ |
+
 ## Failure modes the solver must be able to hit (RO §6)
 
 1. Weak grip, piece slides out: ◐. The squeeze load matches and the gripper is capped at 50 %.
@@ -89,6 +98,11 @@ at rest, untouched, and no gripper, jaw or camera collider point within 2 cm of 
 one second. The episode runs until that holds.
 
 ## Open
+
+- Near the table, pitched down, the real jaws sit ≈1–1.5 cm higher than the careful calibration
+  says (touch test; the neck regrasp agrees). The camera agrees within 2 mm there. So the
+  residual lies between camera and jaws: ≈3 mm is the fitted vs designed mount; the rest is
+  unexplained.
 
 - D: at D's exact (converted) readings the sim's jaw is 3.1 cm up; the real arm's was ≈0.5 cm by
   eye. B lands 3° of lift early. Both suggest the real arm hangs a little lower far out than the

@@ -1,0 +1,43 @@
+[
+ {
+  "op": "grip",
+  "g": 3.0,
+  "until_load": 250
+ },
+ {
+  "op": "move",
+  "q": {
+   "shoulder_pan": -43.89,
+   "shoulder_lift": 49.34,
+   "elbow_flex": -55.08,
+   "wrist_flex": 82.3,
+   "wrist_roll": -121.2
+  },
+  "speed": 4,
+  "near": true
+ },
+ {
+  "op": "move",
+  "q": {
+   "shoulder_pan": -43.89,
+   "shoulder_lift": 34.05,
+   "elbow_flex": -47.17,
+   "wrist_flex": 82.3,
+   "wrist_roll": -121.2
+  },
+  "speed": 5,
+  "near": false
+ },
+ {
+  "op": "state",
+  "tag": "lifted L"
+ },
+ {
+  "op": "shot",
+  "name": "rr_L2"
+ },
+ {
+  "op": "await",
+  "s": 120
+ }
+]
