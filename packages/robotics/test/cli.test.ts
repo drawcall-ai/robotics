@@ -42,6 +42,7 @@ const mocks = vi.hoisted(() => ({
     disposeAsync: vi.fn<() => Promise<void>>(),
     attachWorld: vi.fn(),
     attachRecording: vi.fn(),
+    resume: vi.fn(),
     connected: true,
     publish: vi.fn(),
     find: vi.fn((type: unknown) =>
@@ -352,6 +353,7 @@ it("releases the actuators at a pause and at the next play, splits the recording
     result: { result: 1 },
   });
   expect(actuator.release).toHaveBeenCalledTimes(2);
+  expect(mocks.runtime.resume).toHaveBeenCalledOnce();
   expect(await set({ state: { state: 3 } })).toMatchObject({
     result: { result: 1 },
   });

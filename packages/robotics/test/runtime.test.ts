@@ -203,3 +203,11 @@ it("logs through the connection, or to stderr where it cannot", async () => {
   expect(log).toHaveBeenCalledWith("to rosout");
   error.mockRestore();
 });
+
+it("tells devices how long a pause lasted when the simulation plays again", async () => {
+  const { ros } = await simulation();
+  const resumed = vi.fn();
+  ros.register({ resumed, dispose() {} });
+  ros.resume(42);
+  expect(resumed).toHaveBeenCalledWith(42);
+});

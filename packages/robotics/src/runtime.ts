@@ -43,6 +43,8 @@ export interface Device {
   beforeStep?(time: number, delta: number): void;
   afterStep?(time: number, delta: number): void;
   evaluate?(): void;
+  /** Called when a paused simulation plays again, with the wall-clock seconds the pause lasted. */
+  resumed?(wallSeconds: number): void;
   /** True while the device still works on a past step, such as a camera reading back its frame. */
   readonly busy?: boolean;
   stop?(): void;
@@ -203,6 +205,14 @@ export class ROS2 {
   log(message: string): void {
     if (this.connection.log) this.connection.log(message);
     else console.error(message);
+  }
+  /** Tells every device that the simulation plays again after a pause of `wallSeconds`. */
+  resume(wallSeconds: number): void {
+    try {
+      for (const device of this.devices) device.resumed?.(wallSeconds);
+    } catch (error) {
+      this.fail(error);
+    }
   }
   /** Records the first fault and stops every actuator; the runtime stays disconnected until disposed. */
   fail(error: unknown): void {

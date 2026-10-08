@@ -308,7 +308,10 @@ function serveControls(
     // A turn's commands end with it: the robot holds still at a pause, and again at the next
     // turn, in case the last policy's commands arrived after the pause.
     for (const actuator of ros.find(JointActuator)) actuator.release();
-    if (state === PLAYING) return result(OK);
+    if (state === PLAYING) {
+      ros.resume((performance.now() - controls.pausedAt) / 1000);
+      return result(OK);
+    }
     controls.pausedAt = performance.now();
     // Everything up to the pause becomes a closed, readable file.
     try {
