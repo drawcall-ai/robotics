@@ -10,15 +10,21 @@ import {
 } from "../evaluation.js";
 import type { RclConnection } from "../connections/rcl.js";
 import { stamp } from "../messages.js";
+import type { Recording } from "../runtime.js";
+import { PrivateRecording } from "./private.js";
 import { readResult } from "./recording.js";
 
-/** Owns rosbag through discovery, final delivery, graceful close and on-disk verification. */
-export class Recorder {
+/**
+ * Owns rosbag through discovery, final delivery, graceful close and on-disk verification, and
+ * records the privately published messages beside it.
+ */
+export class Recorder implements Recording {
   private stopping = false;
   private ended = false;
   private failure?: Error;
   private readonly child: ChildProcess;
   private readonly closed: Promise<void>;
+  private readonly hidden = new PrivateRecording();
   readonly path: string;
   /**
    * `exclude` is a regular expression of further topics to leave out, as rosbag2 takes it;
@@ -63,26 +69,40 @@ export class Recorder {
   }
   check(): void {
     if (this.failure) throw this.failure;
+    this.hidden.check();
   }
+  write(topic: string, type: string, message: unknown, time: number): void {
+    this.hidden.write(topic, type, message, time);
+  }
+  /**
+   * Waits until rosbag records: it receives /rosout, the retained topics and, unless private, the
+   * evaluation. Private messages are written from then on, into the folder rosbag has created.
+   */
   async ready(
     connection: RclConnection,
     time: number,
     signal: AbortSignal,
     retainedTopics: string[],
+    evaluation: Evaluator,
   ): Promise<void> {
-    connection.advertise(EVALUATION_TOPIC, EVALUATION_TYPE, { retain: true });
-    connection.advertise(SCORE_TOPIC, SCORE_TYPE, {
-      retain: true,
-    });
+    const topics = [...retainedTopics];
+    if (!evaluation.private) {
+      connection.advertise(EVALUATION_TOPIC, EVALUATION_TYPE, {
+        retain: true,
+      });
+      connection.advertise(SCORE_TOPIC, SCORE_TYPE, { retain: true });
+    }
     await this.wait(
       () => {
         connection.publish("/clock", "rosgraph_msgs/msg/Clock", {
           clock: stamp(time),
         });
         return (
-          connection.hasSubscriber(EVALUATION_TOPIC, "rosbag2_recorder") &&
-          connection.hasSubscriber(SCORE_TOPIC, "rosbag2_recorder") &&
-          retainedTopics.every(
+          connection.hasSubscriber("/rosout", "rosbag2_recorder") &&
+          (evaluation.private ||
+            (connection.hasSubscriber(EVALUATION_TOPIC, "rosbag2_recorder") &&
+              connection.hasSubscriber(SCORE_TOPIC, "rosbag2_recorder"))) &&
+          topics.every(
             (topic) =>
               connection.hasSubscriber(topic, "rosbag2_recorder") &&
               connection.acknowledged(topic),
@@ -92,17 +112,19 @@ export class Recorder {
       "Recorder did not acknowledge scene metadata and evaluation",
       signal,
     );
+    if (!signal.aborted) this.hidden.start(this.path);
   }
   async finish(
     connection: RclConnection,
     evaluation: Evaluator,
   ): Promise<void> {
-    await this.wait(
-      () =>
-        connection.acknowledged(EVALUATION_TOPIC) &&
-        connection.acknowledged(SCORE_TOPIC),
-      "Evaluation was not acknowledged",
-    );
+    if (!evaluation.private)
+      await this.wait(
+        () =>
+          connection.acknowledged(EVALUATION_TOPIC) &&
+          connection.acknowledged(SCORE_TOPIC),
+        "Evaluation was not acknowledged",
+      );
     await this.stop();
     const result = await readResult(this.path);
     if (JSON.stringify(result) !== JSON.stringify(evaluation.result))
@@ -119,6 +141,7 @@ export class Recorder {
       "/rosbag2_recorder/split_bagfile",
       {},
     );
+    await this.hidden.split();
   }
   private async wait(
     ready: () => boolean,
@@ -145,6 +168,7 @@ export class Recorder {
     }, 15000);
     try {
       await this.closed;
+      await this.hidden.close();
       this.check();
     } finally {
       clearTimeout(timeout);

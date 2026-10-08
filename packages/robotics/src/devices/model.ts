@@ -28,13 +28,13 @@ export class Model {
       robot.descriptionTopic,
       "std_msgs/msg/String",
       { data: robotURDF(robot) },
-      { retain: true },
+      { retain: true, private: robot.private },
     );
     robot.ros.publish(
       "/tf_static",
       "tf2_msgs/msg/TFMessage",
       { transforms: fixed },
-      { retain: true },
+      { retain: true, private: robot.private },
     );
   }
   publish(time: number): void {
@@ -54,7 +54,12 @@ export class Model {
         );
       });
     if (transforms.length)
-      this.robot.ros.publish("/tf", "tf2_msgs/msg/TFMessage", { transforms });
+      this.robot.ros.publish(
+        "/tf",
+        "tf2_msgs/msg/TFMessage",
+        { transforms },
+        { private: this.robot.private },
+      );
   }
 }
 

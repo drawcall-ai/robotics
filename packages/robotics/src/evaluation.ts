@@ -33,11 +33,18 @@ export interface EvaluatorOptions {
   failure?: Record<string, (context: EvaluationContext) => boolean>;
   score: (context: EvaluationContext) => number;
   ros?: ROS2;
+  /**
+   * Publishes /sim/evaluation and /sim/score privately: recorded, never seen by the robot's
+   * software. The run's result.json gets the final result either way.
+   */
+  private?: boolean;
 }
 
 /** One episode. The runner starts it after ROS and the recorder are ready. */
 export class Evaluator {
   readonly ros: ROS2;
+  /** Whether the evaluation is published privately. */
+  readonly private: boolean;
   private readonly unregister: () => void;
   private started?: number;
   private state?: EvaluationState;
@@ -57,6 +64,7 @@ export class Evaluator {
     ])
       identifier("condition", name);
     this.ros = options.ros ?? getROS2();
+    this.private = options.private ?? false;
     if (this.ros.find(Evaluator).length)
       throw new Error("Only one evaluator is allowed per runtime");
     this.unregister = this.ros.register(this);
@@ -158,22 +166,24 @@ export class Evaluator {
       this.publish(state);
   }
   private publish(state: EvaluationState): void {
-    // Runtime faults stop devices, but the final diagnostic must still reach ROS.
+    // Runtime faults stop devices, but the final diagnostic must still reach ROS. Private
+    // messages go to the recording, which a fault does not disconnect.
     const publisher =
-      state.status === "error" && this.ros.error
+      state.status === "error" && this.ros.error && !this.private
         ? this.ros.connection
         : this.ros;
+    const options = { retain: true, private: this.private };
     publisher.publish(
       SCORE_TOPIC,
       SCORE_TYPE,
       { data: state.metrics.score },
-      { retain: true },
+      options,
     );
     publisher.publish(
       EVALUATION_TOPIC,
       EVALUATION_TYPE,
       { data: JSON.stringify(state) },
-      { retain: true },
+      options,
     );
     this.published = state;
   }

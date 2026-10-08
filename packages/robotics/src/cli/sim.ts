@@ -139,8 +139,6 @@ async function run(scene: string, options: SimOptions): Promise<void> {
   ros.attachWorld(world);
   if (stop.signal.aborted) return;
   const robots = ros.find(Robot);
-  // Descriptions and static transforms go out before the first step, for the recorder to receive.
-  for (const robot of robots) robot.beforeStep(world.time);
   const [evaluation] = ros.find(Evaluator);
   if (!evaluation) throw new Error("The scene needs an Evaluator");
   const recorder = new Recorder(
@@ -149,11 +147,20 @@ async function run(scene: string, options: SimOptions): Promise<void> {
     options.recordAll,
   );
   resources.defer(() => recorder.stop());
+  ros.attachRecording(recorder);
+  // Descriptions and static transforms go out before the first step, for the recorder to receive.
+  for (const robot of robots) robot.beforeStep(world.time);
   world.update(world.fixedDelta);
-  await recorder.ready(connection, world.time, stop.signal, [
-    ...robots.map((robot) => robot.descriptionTopic),
-    "/tf_static",
-  ]);
+  const shown = robots.filter((robot) => !robot.private);
+  await recorder.ready(
+    connection,
+    world.time,
+    stop.signal,
+    shown.length
+      ? [...shown.map((robot) => robot.descriptionTopic), "/tf_static"]
+      : [],
+    evaluation,
+  );
   if (stop.signal.aborted) return;
   ros.publish("/clock", "rosgraph_msgs/msg/Clock", {
     clock: stamp(world.time),

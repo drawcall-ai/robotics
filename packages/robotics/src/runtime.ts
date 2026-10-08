@@ -5,6 +5,17 @@ import type { Camera, Object3D, RenderTarget, Texture } from "three";
 
 export interface PublishOptions {
   retain?: boolean;
+  /**
+   * Written to the episode's recording only, never sent to other ROS nodes: simulator truth that
+   * the robot's software must not see. Without a recording attached, it goes nowhere.
+   */
+  private?: boolean;
+}
+
+/** Where private messages go: the episode's recording. */
+export interface Recording {
+  /** Records `message` on `topic` at simulated `time`, in seconds. */
+  write(topic: string, type: string, message: unknown, time: number): void;
 }
 
 export interface Connection {
@@ -66,6 +77,7 @@ let current: ROS2 | undefined;
 /** The runtime devices register with. Creating one makes it the default that `getROS2()` returns to a scene. */
 export class ROS2 {
   private simulation?: PhysicsWorld;
+  private recording?: Recording;
   readonly renderer?: CaptureRenderer;
   readonly namespace: string;
   private readonly devices = new Set<Device>();
@@ -101,6 +113,11 @@ export class ROS2 {
       world.onBeforeStep((dt) => this.update("beforeStep", dt)),
       world.onAfterStep((dt) => this.update("afterStep", dt)),
     );
+  }
+  /** Receives the messages published privately from now on. */
+  attachRecording(recording: Recording): void {
+    if (this.recording) throw new Error("ROS runtime already has a recording");
+    this.recording = recording;
   }
   get world(): PhysicsWorld {
     if (!this.simulation)
@@ -146,6 +163,13 @@ export class ROS2 {
     message: unknown,
     options?: PublishOptions,
   ): void {
+    // Private messages bypass the connection, so a final diagnostic is recorded after a fault.
+    if (options?.private) {
+      if (this.disposed) throw new Error("ROS runtime is disposed");
+      const time = this.simulation?.time ?? 0;
+      this.recording?.write(this.topic(name), type, message, time);
+      return;
+    }
     if (!this.connected) throw new Error("ROS runtime is disconnected");
     this.connection.publish(this.topic(name), type, message, options);
   }

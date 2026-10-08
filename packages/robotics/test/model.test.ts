@@ -25,7 +25,7 @@ it("publishes a retained model and static frames once before motion, then live l
     "/robot/robot_description",
     "std_msgs/msg/String",
     { data: expect.stringContaining('<robot name="cart">') },
-    { retain: true },
+    { retain: true, private: false },
   );
   expect(publish).toHaveBeenCalledWith(
     "/tf_static",
@@ -38,7 +38,7 @@ it("publishes a retained model and static frames once before motion, then live l
         }),
       ]),
     },
-    { retain: true },
+    { retain: true, private: false },
   );
   const point = rosPosition(wheel.position.clone().sub(base.position));
   expect(connection.messages).toContainEqual({

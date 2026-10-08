@@ -32,6 +32,12 @@ export interface RobotOptions {
   namespace?: string;
   /** Joint state and TF publication rate in Hz. */
   rate?: number;
+  /**
+   * Publishes the robot's description, joint states and TF privately: recorded, never seen by the
+   * robot's software, for a scene whose robot reports only what its real hardware does. A private
+   * robot takes no joint commands either; devices of the scene drive its joints.
+   */
+  private?: boolean;
 }
 
 /**
@@ -45,6 +51,8 @@ export class Robot extends Group {
   readonly namespace: string;
   /** Prepended to every TF frame the robot publishes: empty, or its namespace and a slash. */
   readonly framePrefix: string;
+  /** Whether the robot publishes privately. */
+  readonly private: boolean;
   private readonly schedule: Schedule;
   private readonly unsubscribe: () => void;
   private readonly unregister: () => void;
@@ -52,9 +60,15 @@ export class Robot extends Group {
   private linkTree?: LinkTree;
   private disposed = false;
   private model?: Model;
-  constructor({ ros, namespace, rate = 100 }: RobotOptions = {}) {
+  constructor({
+    ros,
+    namespace,
+    rate = 100,
+    private: hidden = false,
+  }: RobotOptions = {}) {
     super();
     this.ros = ros ?? getROS2();
+    this.private = hidden;
     this.namespace = namespace ?? this.ros.namespace;
     this.framePrefix = namespace ? `${namespace.replace(/^\//, "")}/` : "";
     if (
@@ -65,14 +79,16 @@ export class Robot extends Group {
       );
     this.schedule = new Schedule(rate);
     // One command topic per robot, as the topic-based ros2_control hardware publishes it.
-    this.unsubscribe = this.ros.subscribe(
-      this.topic("joint_commands"),
-      "sensor_msgs/msg/JointState",
-      (message) => {
-        for (const actuator of this.actuators.values())
-          actuator.receive(message);
-      },
-    );
+    this.unsubscribe = hidden
+      ? () => {}
+      : this.ros.subscribe(
+          this.topic("joint_commands"),
+          "sensor_msgs/msg/JointState",
+          (message) => {
+            for (const actuator of this.actuators.values())
+              actuator.receive(message);
+          },
+        );
     this.unregister = this.ros.register(this);
   }
   /** The absolute topic for `name` in the robot's namespace. */
@@ -155,7 +171,12 @@ export class Robot extends Group {
   }
   /** Called after authoring, before the first physics step; also usable while paused at startup. */
   beforeStep(time: number): void {
-    this.model ??= new Model(this, time);
+    if (this.model) return;
+    if (this.private && this.actuators.size)
+      throw new Error(
+        `${this.name} is private and takes no joint commands; drive its joints from the scene instead of with JointActuators`,
+      );
+    this.model = new Model(this, time);
   }
   afterStep(time: number): void {
     const { joints } = this.structure();
@@ -163,13 +184,18 @@ export class Robot extends Group {
     this.model?.publish(time);
     if (!joints.size) return;
     const states = [...joints.values()].map((joint) => joint.getState());
-    this.ros.publish(this.topic("joint_states"), "sensor_msgs/msg/JointState", {
-      header: header(time, ""),
-      name: [...joints.keys()],
-      position: states.map((state) => state.position),
-      velocity: states.map((state) => state.velocity),
-      effort: [],
-    });
+    this.ros.publish(
+      this.topic("joint_states"),
+      "sensor_msgs/msg/JointState",
+      {
+        header: header(time, ""),
+        name: [...joints.keys()],
+        position: states.map((state) => state.position),
+        velocity: states.map((state) => state.velocity),
+        effort: [],
+      },
+      { private: this.private },
+    );
   }
   dispose(): void {
     if (this.disposed) return;

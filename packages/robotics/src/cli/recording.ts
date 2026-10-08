@@ -297,17 +297,22 @@ async function episode(run: string): Promise<Episode> {
 
 /**
  * Opens an episode's MCAP files into `recordings`, in name order. rosbag2 splits the bag at each
- * pause and writes the index of its last file only at the end, so a last file still being
- * recorded is skipped with a note.
+ * pause and writes the index of its last file only at the end, and so does the simulator for its
+ * private messages (private_<n>.mcap), so the last file of each series still being recorded is
+ * skipped with a note.
  */
 export async function openEpisode(
   episode: Episode,
   recordings: AsyncDisposableStack,
 ): Promise<{ file: string; reader: McapIndexedReader }[]> {
   const opened = [];
+  const series = (file: string) => file.replace(/_\d+\.mcap$/, "");
   for (const [index, file] of episode.files.entries()) {
+    const last = !episode.files
+      .slice(index + 1)
+      .some((later) => series(later) === series(file));
     const recording = await openRecording(file).catch((error: unknown) => {
-      if (!episode.bag || index < episode.files.length - 1) throw error;
+      if (!episode.bag || !last) throw error;
       console.error(`skipping ${file}: still being recorded`);
     });
     if (recording)
@@ -316,7 +321,7 @@ export async function openEpisode(
   return opened;
 }
 
-/** The messages on `topics` in an episode's MCAP files, read file by file in name order. */
+/** The messages on `topics` in an episode's MCAP files, merged in log time order. */
 async function* catEpisode(
   episode: Episode,
   options: { topics: string[]; start?: number; end?: number },
@@ -333,17 +338,34 @@ async function* catEpisode(
     s === undefined
       ? undefined
       : BigInt(Math.round(s * 1e9)) + (s < 0 ? last : 0n);
-  for (const { reader } of opened)
-    for await (const { topic, schema, logTime, msg } of decodeMessages(reader, {
+  const streams = opened.map(({ reader }) =>
+    decodeMessages(reader, {
       topics: options.topics,
       startTime: time(options.start),
       endTime: time(options.end),
-    })) {
-      const t = Number(logTime) / 1e9;
-      yield schema === IMAGE_TYPE
-        ? { t, topic, image: await writeImage(episode.images, t, msg) }
-        : { t, topic, msg };
-    }
+    }),
+  );
+  const heads = await Promise.all(streams.map((stream) => stream.next()));
+  for (;;) {
+    // The earliest message of any file; on a tie, the earlier file's.
+    let next = -1;
+    heads.forEach((head, i) => {
+      const current = heads[next];
+      if (
+        !head.done &&
+        (!current || current.done || head.value.logTime < current.value.logTime)
+      )
+        next = i;
+    });
+    const head = heads[next];
+    if (!head || head.done) return;
+    heads[next] = await streams[next]!.next();
+    const { topic, schema, logTime, msg } = head.value;
+    const t = Number(logTime) / 1e9;
+    yield schema === IMAGE_TYPE
+      ? { t, topic, image: await writeImage(episode.images, t, msg) }
+      : { t, topic, msg };
+  }
 }
 
 /** Write a CompressedImage to `<images>/<t>.<format>` and return its path. */

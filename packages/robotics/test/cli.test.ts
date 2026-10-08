@@ -41,6 +41,7 @@ const mocks = vi.hoisted(() => ({
   runtime: {
     disposeAsync: vi.fn<() => Promise<void>>(),
     attachWorld: vi.fn(),
+    attachRecording: vi.fn(),
     connected: true,
     publish: vi.fn(),
     find: vi.fn((type: unknown) =>
@@ -90,6 +91,7 @@ vi.mock("../src/cli/recorder.js", () => ({
   Recorder: class {
     ready = async () => {};
     check() {}
+    write() {}
     split = split;
     async stop() {}
   },
