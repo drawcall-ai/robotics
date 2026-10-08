@@ -1,0 +1,29 @@
+{
+  "name": "@drawcall/example-so101-real",
+  "private": true,
+  "dependencies": {
+    "@drawcall/physics": "0.13.0",
+    "@drawcall/robotics": "workspace:*",
+    "sharp": "^0.35.4",
+    "three": "^0.185.1"
+  },
+  "type": "module",
+  "scripts": {
+    "lib": "pnpm --filter @drawcall/robotics build",
+    "dev": "pnpm lib && pixi run drawcall-robotics run --viewer",
+    "start": "pnpm lib && pixi run drawcall-robotics run",
+    "cat": "pnpm lib && drawcall-robotics cat",
+    "view": "pnpm lib && drawcall-robotics view runs/latest/bag",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.0",
+    "@types/three": "^0.185.0",
+    "typescript": "^5.9.3"
+  },
+  "assetDependencies": {
+    "wood-01": "^1.0.0",
+    "wood-02": "^1.0.1",
+    "stark-white-brutalist-digital-sky": "^1.0.0"
+  }
+}

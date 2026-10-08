@@ -1,0 +1,4 @@
+<!-- The SO101 needs no persistent stack: the simulator, or the real arm's driver, serves its topics. -->
+<launch>
+  <arg name="use_sim_time" default="false"/>
+</launch>
