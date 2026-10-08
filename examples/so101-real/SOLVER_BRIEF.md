@@ -10,6 +10,19 @@ near the board.
 
 **Goal:** the queen stands upright on d8, near the square's centre, released, the arm withdrawn,
 and it stays there. The episode succeeds once all of that has held for a second.
+
+**The scene varies with the seed**, as it would between real sessions. Seed 0 is the real scene.
+Other seeds move and turn the board (still in front of the robot, rank 8 nearest, a-file on its
+right) and change its square size, frame, height and wood colours. The queen may stand or lie in
+any direction, anywhere within reach on the table or the board (never already on d8). It comes in
+somewhat different sizes and dark-to-medium wood tones. The light runs from neutral to the real
+camera's strong red/pink cast. Develop a policy that works on any seed, not on seed 0.
+
+**The opposite task**, for testing a policy repeatedly: with `TASK=scatter` (e.g.
+`TASK=scatter pixi run drawcall-robotics run --seed 5 …`) the queen starts upright on d8. The
+goal is the queen at rest a square or more away from d8's centre, on the board or the table, the
+arm withdrawn, the board not moved. Running scatter and place in turn resets the scene, as an
+operator would between real attempts.
 Knocking the board off its place or the queen off the table fails the episode. The episode ends
 after 30 simulated minutes.
 

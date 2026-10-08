@@ -8,9 +8,9 @@ import { BoxCollider, RigidBody } from "@drawcall/physics";
 import { Evaluator, getROS2 } from "@drawcall/robotics";
 import { Line3, Quaternion, Vector3 } from "three";
 import { QUEEN_BASE, QUEEN_LENGTH } from "./pieces.ts";
-import { board, boardBody, bus, queenBody, robot, table } from "./environment.ts";
+import { board, boardBody, bus, queenBody, robot, scale, table, task } from "./environment.ts";
 import { ORDER } from "./robot.ts";
-import { deskHeight, ros, squareAt, tilt, type Board } from "./task.ts";
+import { deskHeight, ros, squareAt, squareCenter, tilt, type Board } from "./task.ts";
 
 export { show } from "./environment.ts";
 
@@ -159,12 +159,12 @@ const world3 = new Vector3();
 function withdrawn(): boolean {
   const axis = new Vector3(0, 1, 0).applyQuaternion(queenBody.quaternion);
   segment.start.copy(queenBody.position);
-  segment.end.copy(queenBody.position).addScaledVector(axis, QUEEN_LENGTH);
+  segment.end.copy(queenBody.position).addScaledVector(axis, QUEEN_LENGTH * scale);
   for (const body of hands) body.updateWorldMatrix(true, false);
   return corners.every(({ body, local }) => {
     world3.copy(local).applyMatrix4(body.matrixWorld);
     segment.closestPointToPoint(world3, true, nearest);
-    return nearest.distanceTo(world3) - QUEEN_BASE / 2 >= 0.02;
+    return nearest.distanceTo(world3) - (QUEEN_BASE / 2) * scale >= 0.02;
   });
 }
 
@@ -177,6 +177,43 @@ function current(): Board {
 const initial = boardBody.position.clone();
 let boardShift = 0;
 let rest: { since: number; position: Vector3; rotation: Quaternion } | undefined;
+/** Upright on d8, centred within 9 mm, standing on the board top. */
+function onD8(): boolean {
+  const [x, y] = ros(queenBody.position);
+  return (
+    squareAt(current(), x, y, 0.2 * board.s) === "d8" &&
+    tilt(queenBody.quaternion) < Math.PI / 18 &&
+    Math.abs(queenBody.position.y - boardBody.position.y) < 0.004
+  );
+}
+/** The queen's middle a square or more from d8's centre, standing or lying. */
+function offD8(): boolean {
+  const axis = new Vector3(0, 1, 0).applyQuaternion(queenBody.quaternion);
+  const middle = queenBody.position.clone().addScaledVector(axis, (QUEEN_LENGTH * scale) / 2);
+  const [x, y] = ros(middle);
+  const [dx, dy] = squareCenter(current(), "d8");
+  return Math.hypot(x - dx, y - dy) >= board.s;
+}
+/** True once the queen has met `where`, untouched and with the arm withdrawn, for a second. */
+function settled(elapsed: number, where: boolean): boolean {
+  if (!where || holding.size > 0 || !withdrawn()) {
+    rest = undefined;
+    return false;
+  }
+  if (
+    !rest ||
+    rest.position.distanceTo(queenBody.position) > 0.001 ||
+    rest.rotation.angleTo(queenBody.quaternion) > Math.PI / 90
+  ) {
+    rest = {
+      since: elapsed,
+      position: queenBody.position.clone(),
+      rotation: queenBody.quaternion.clone(),
+    };
+    return false;
+  }
+  return elapsed - rest.since >= 1;
+}
 new Evaluator({
   private: true,
   timeout: 1800,
@@ -200,36 +237,11 @@ new Evaluator({
     queenFell: () => queenBody.position.y < deskHeight - 0.04,
     boardMoved: () => boardShift > 0.015,
   },
-  success: {
-    // Upright on d8, centred within 9 mm, standing on the board top, let go of, the arm withdrawn
-    // 2 cm, and all of that for a second. Rest is judged by pose: contact solvers keep bodies
-    // trembling slightly.
-    queenOnD8: ({ elapsed }) => {
-      const [x, y] = ros(queenBody.position);
-      const placed =
-        holding.size === 0 &&
-        withdrawn() &&
-        squareAt(current(), x, y, 0.2 * board.s) === "d8" &&
-        tilt(queenBody.quaternion) < Math.PI / 18 &&
-        Math.abs(queenBody.position.y - boardBody.position.y) < 0.004;
-      if (!placed) {
-        rest = undefined;
-        return false;
-      }
-      if (
-        !rest ||
-        rest.position.distanceTo(queenBody.position) > 0.001 ||
-        rest.rotation.angleTo(queenBody.quaternion) > Math.PI / 90
-      ) {
-        rest = {
-          since: elapsed,
-          position: queenBody.position.clone(),
-          rotation: queenBody.quaternion.clone(),
-        };
-        return false;
-      }
-      return elapsed - rest.since >= 1;
-    },
-  },
+  // Success needs the queen where the task wants it, let go of, the arm withdrawn 2 cm, and all
+  // of that for a second. Rest is judged by pose: contact solvers keep bodies trembling slightly.
+  success:
+    task === "place"
+      ? { queenOnD8: ({ elapsed }) => settled(elapsed, onD8()) }
+      : { queenOffD8: ({ elapsed }) => settled(elapsed, offD8()) },
   score: ({ status }) => (status === "success" ? 100 : 0),
 });

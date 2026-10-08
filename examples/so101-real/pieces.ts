@@ -26,15 +26,16 @@ const [map, packed, normalMap] = await Promise.all([
 for (const t of [map, packed, normalMap]) t.flipY = false;
 
 /**
- * A dynamic queen standing on its base at the body origin, +Y up. Lacquered wood, about 30 g
- * with a small weight in the base, friction 0.35 against the printed jaws.
+ * A dynamic queen standing on its base at the body origin, +Y up, `scale` times the real one's
+ * size and tinted `tint` over the dark wood texture. Lacquered wood, about 20 g at scale 1 with a
+ * small weight in the base, friction 0.35 against the printed jaws.
  */
-export function queen(): RigidBody {
+export function queen(scale = 1, tint = new Color("#a07060")): RigidBody {
   const body = new RigidBody();
   body.name = "queen";
   body.setMaterial({ staticFriction: 0.35, dynamicFriction: 0.35, restitution: 0 });
   const material = new MeshStandardMaterial({
-    color: new Color("#a07060"),
+    color: tint,
     map,
     normalMap,
     aoMap: packed,
@@ -44,11 +45,13 @@ export function queen(): RigidBody {
     metalness: 1,
   });
   const mesh = new Mesh(geometry, material);
+  mesh.scale.setScalar(scale);
   mesh.castShadow = mesh.receiveShadow = true;
   const collider = new MeshCollider({ approximation: "trimesh" }).setGeometry(shape);
+  collider.scale.setScalar(scale);
   collider.setMaterial({ density: 700 });
-  const weight = new BoxCollider({ size: [0.012, 0.006, 0.012] });
-  weight.position.y = 0.005;
+  const weight = new BoxCollider({ size: [0.012 * scale, 0.006 * scale, 0.012 * scale] });
+  weight.position.y = 0.005 * scale;
   weight.setMaterial({ density: 11000 });
   body.add(mesh, collider, weight);
   return body;

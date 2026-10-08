@@ -43,7 +43,11 @@ Evidence is in `evidence/`, made by builder-only scripts that read the true join
     from above (rr_V3): base 2.26 cm, crown collar ≈1.5 cm, so ×0.56 in width, and 7.3 cm long.
     RO §4's 2.9 cm base came through the old calibration. The old 2.9 cm, 7.55 cm sim queen was
     bigger, so a real queen that looks the same in the camera stands farther away.
-  - Seeds other than 0 move the board ±5 mm/±1° and the queen ±1 cm/±8°.
+  - Seeds other than 0 vary widely, for robustness rather than fidelity. Board: ±5 cm, ±15°,
+    28–35 mm squares, 10–22 mm frame, ±4 mm height, wood colours. Queen: standing or lying,
+    anywhere within reach off d8, any heading, 0.85–1.15× size, dark to medium tint. Light:
+    a red/pink cast from 0 to the real camera's and 0.6–1.3× brightness, as a light colour
+    rather than a camera filter. Contact sheet: `evidence/seeds-sheet.jpg`.
 - **Arm masses:** unchanged (URDF; about 0.42 kg beyond the shoulder). See Loads.
 
 ## Checks
@@ -92,6 +96,10 @@ one. That is within friction's uncertainty, so the masses stay.
 7. Camera model valid only near the calibration poses: ◐ (roll offset).
 
 ## Evaluation
+
+`TASK=scatter` (the antagonist task): the queen starts upright on d8. Success means its middle is
+at rest a square or more from d8's centre, untouched, with the arm withdrawn. Board moved or queen
+fallen off fail as in the main task. Checked with a temporary edit: a queen on a8 succeeds at 1.0 s.
 
 Success needs the queen upright on d8 (centred within 9 mm, tilted under 10°, on the board top),
 at rest, untouched, and no gripper, jaw or camera collider point within 2 cm of it, all held for

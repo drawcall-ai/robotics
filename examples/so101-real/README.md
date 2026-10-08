@@ -16,8 +16,12 @@ pixi run drawcall-robotics run --seed 0 --timeout 30 -- python3 policy/policy.py
   behaviour of the real robot to how the simulation reproduces it, with evidence in `evidence/`;
   [PACKAGE_CHANGES.md](PACKAGE_CHANGES.md) lists what the robotics package had to add (done).
 
-Seed 0 is the scene as measured; other seeds move the board (±5 mm, ±1°) and the queen (±1 cm,
-±8°) within the measurements' uncertainty.
+Seed 0 is the scene as measured. Other seeds vary the board (±5 cm, ±15°, squares of 28–35 mm,
+frame, height, woods), the queen (standing or lying anywhere within reach off d8, any heading,
+0.85–1.15× size, dark to medium tone) and the light (neutral to the real camera's red/pink cast).
+Each is resampled until d8 and the queen are within reach. `TASK=scatter` is the opposite task:
+the queen starts on d8 and must end a square or more away from it. `evidence/seeds-sheet.jpg`
+shows a few seeds.
 
 | File | What |
 | --- | --- |
