@@ -94,6 +94,9 @@ ros2.register({
           tiltDeg: (tilt(queenBody.quaternion) * 180) / Math.PI,
           axis: [-axis.z, -axis.x, axis.y],
         },
+        linkTorques: Object.fromEntries(
+          (bus.torques ?? []).map((t, i) => [ORDER[i]!, Math.round(t * 1000) / 1000]),
+        ),
         temperature: Object.fromEntries(
           bus.states.map((s, i) => [ORDER[i]!, Math.round(s.temperature * 10) / 10]),
         ),

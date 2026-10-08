@@ -9,13 +9,19 @@ All runs use seed 0, the measured scene. Status: ✅ reproduced, ◐ partly, ✗
 
 ## How it is built (simple on purpose)
 
-- **Readings ≠ joints** (`calibration.ts`): true angle = reading + offset + share·extra, with
-  offsets (0, +4.4, −10.8, +5.2, +65)° for pan, lift, elbow, wrist_flex, roll, and extra = +10° on
-  the shoulder. The share rises linearly from 0 at a lift reading of 5° to 1 at 35°. The first
-  four offsets are the camera calibration's fit (§1), valid where the upper arm is near vertical.
-  The extra shoulder term reproduces the §5 near-table error. The +65° roll offset is invisible to
-  a roll-0 camera calibration (LeRobot's roll zero is the middle of a full turn, so arbitrary). It
-  puts the jaws where the real photos show them.
+- **Readings ≠ joints** (`calibration.ts`, `load.ts`): true angle = reading + offset − bending·τ,
+  where τ is the torque the joint passes on to its link (gravity on everything beyond it plus
+  contacts with the table, board or queen; at rest that is motor plus gear-friction torque). The
+  bending, 8°/N·m on shoulder_lift and elbow_flex, stands for gear backlash and printed-plastic
+  flex between the servo's output encoder and the link. The offsets are (0, +4.4, −10.8, +5.2,
+  +65)° for pan, lift, elbow, wrist_flex, roll at the link torques of the calibration poses
+  (lift −0.54, elbow −0.42 N·m), where the camera calibration fitted them (§1). Holding the arm
+  in the air bends it a little more than there. Resting it on the table unbends it: the link sits
+  higher than its readings suggest, and pressing harder moves the readings without moving the
+  link. Friction does not bend the link, so a 3° goal step at rest changes the load but not the
+  reading (§2). The +65° roll offset is invisible to a roll-0 camera calibration (LeRobot's roll
+  zero is the middle of a full turn, so arbitrary). It puts the jaws where the real photos show
+  them.
 - **Servos** (`servo.ts`): P-only, torque = K(goal − present) capped at stall (2.94 N·m; gripper
   50 %), K = 7.9 N·m/rad at P=16 (47 load units/°). Gear friction: MuJoCo joint friction
   (Coulomb) of 0.35 N·m on the arm joints, §2's ±120 load units of hysteresis; a joint at rest
@@ -44,7 +50,7 @@ All runs use seed 0, the measured scene. Status: ✅ reproduced, ◐ partly, ✗
 | Intrinsics 1280×960, f = 1061, centred | ✅ | `robot.ts`; CameraInfo k = [1061, 0, 640, 0, 1061, 480] |
 | Calibrated mount, jaws bottom-centre, fixed tip ≈ (710–735, 650–670) px | ✅ | `cmp-01-wrist40.jpg`, `cmp-03-pan-30.jpg`: black jaw left of white, as in the real images; projected fixed tip ≈ (735, 670) |
 | Views in the calibration region | ✅ | `cmp-03-pan-30.jpg`: board corner within ≈40 px; `cmp-01-wrist40.jpg` board rows within ≈40 px |
-| Views near the table (§5 poses) | ◐ | `cmp-26-view.jpg`, `cmp-30-sA/sB.jpg`, `cmp-20-pre.jpg`: same content and layout; queen within 30–110 px, board edge 50–175 px off (≈1–2 cm on the table); `fit.txt` |
+| Views near the table (§5 poses) | ◐ | `cmp-26-view.jpg`, `cmp-30-sA/sB.jpg`, `cmp-20-pre.jpg`: same content and layout, but the sim camera sits higher than the real one: the real arm hangs ≈3.5° of shoulder lower in these free-air poses than the calibrated model says (fitting the photos alone, `fit.txt`), which the bending does not produce (see D below) |
 | Calibration only valid at roll ±20° (§6.7) | ◐ | The roll offset makes any roll-0 calibration wrong about where the jaws are; views at other rolls are off by about as much as at roll 0 (see the previous row), so the solver's own calibration will degrade there. Not separately modelled. |
 | Magenta cast, libcamera | ✗ skipped | Not relevant to the task |
 
@@ -56,10 +62,10 @@ P=16. *Reached*: goals nudged until the readings match, like the real sag correc
 
 | Event | Real | Sim | Status |
 | --- | --- | --- | --- |
-| B (−46.5, 53.3, −49.0, 83.2, −64.7) | fixed jaw on table, model says −0.3 cm | plain: jaw on table, blocked at lift 41.2 (load −565), peak 15.1 N; reached: on table, lift 44.4, the correction drives the shoulder to −1000, peak 44.9 N | ✅ |
-| C (−48.7, 48.8, −44.7, 83.0, −71.7) | on table again, model +0.6 | plain: on table at lift 38.4 (load −487), peak 15.1 N; reached: on table, peak 23.7 N | ✅ |
-| D (−48.7, 34.8, −36.0, 83.2, −71.7), "up 4 cm" from C | ≈0.5 cm above table, model +4.5 | reached (34.6, −36.0, 82.7): **0.73 cm**; plain from C: stays on the table (sag + friction) | ✅ |
-| Descent at (−44.8, 37.5, −31.4, 82.5, −62.5) | jaw apparently resting on the queen's base | jaw on the table beside the base; reached: brushes the queen for 0.06 s at 2.7 N | ✗ (queen pose or jaw shape off by ~1 cm) |
+| B (−46.5, 53.3, −49.0, 83.2, −64.7) | fixed jaw on table at these readings; model −0.3 cm | reached: jaw on table (0.04 cm) at readings (53.4, −49.3); plain (P=16 sag): stops at lift 51.0, elbow −46.3, jaw 2.8 cm up | ✅ |
+| C (−48.7, 48.8, −44.7, 83.0, −71.7) | on table again; model +0.6 | reached: 0.54 cm at readings (48.8, −44.8); plain: on the table at (50.1, −39.7) | ✅ |
+| D (−48.7, 34.8, −36.0, 83.2, −71.7) after "up 4 cm" from C | ≈0.5 cm above the table (by eye); model +4.5; the commanded 3.9 cm lift was really 0.5–1 cm | plain from C (the real sequence): readings stop at (42.1, −36.2) under sag and friction, jaw **1.4 cm** above the table; at D's readings exactly (reached): **4.45 cm** | ◐ the lift from C comes out as small as on the real arm, but D's readings themselves leave the jaw 4 cm higher than observed |
+| Descent at (−44.8, 37.5, −31.4, 82.5, −62.5) | jaw resting on the lying queen's base (≈2.9 cm) | reached: jaw 2.26 cm above the table at (37.4, −31.5); the measured queen pose puts its base beside the jaw, not under it | ◐ height right, contact not |
 | Early test (0, −30.7, 93.4, 0, 0) | gripper pressed into table | elbow goal clamped to the calibrated 86.8°; tip 3.5 cm above table | ✗ (a reading beyond the calibrated range; unclear on hardware) |
 | Light contacts, low forces; load misses them | yes | every touch is logged on `/sim/audit` with links, duration, servo loads and its peak contact force (`world.contacts`); metrics `maxForce_table`, `_chessboard`, `_queen`. Plain touches 15 N, sag-corrected ones 24–45 N; the real forces were not measured | ✅ |
 | Contact force = weight at rest | — | queen standing on the table: 0.323 N = m·g (32.9 g), error 0 % (`weight.ts`) | ✅ |
@@ -72,12 +78,12 @@ the shoulder settled coming up from below, as the real holding load of 320–336
 
 | Item | Real | Sim | Status |
 | --- | --- | --- | --- |
-| Holding sag, extended pose, P=16 | lift −6.8° at load 320 | lift −5.3° at load 335, elbow −4.8° | ✅ |
-| Holding load by approach direction | 104…344 at an identical pose | 93 from above, 335 from below | ✅ |
-| 3° down from holding: no motion | load 336 → 212, no motion | no motion, load 335 → 148 | ✅ |
-| Larger downward move: unload, then sudden drop | yes | the next 3°: load 148 → −35, then the arm drops 2.3° within 0.3 s | ✅ |
-| Interpolating from present position | load +320 → −168, arm drops | from a low-load hold: load 100 → 17, arm drops 1.5° | ✅ |
-| Free-air lag at 4°/s | ≤ 12 raw (1°) descending, P=32 + integral nudges | descending: 0.8–1.2° at P=16, ≤ 0.4° at P=32; rising against gravity and friction: 6–7° at P=16, ≈3° at P=32; no nudges | ✅ |
+| Holding sag, extended pose, P=16 | lift −6.8° at load 320 | lift −7.1° at load 331, elbow −4.9° (readings; the link sags further, unseen) | ✅ |
+| Holding load by approach direction | 104…344 at an identical pose | 87 from above, 331 from below | ✅ |
+| 3° down from holding: no motion | load 336 → 212, no motion | no motion, reading unchanged, load 331 → 191 | ✅ |
+| Larger downward move: unload, then drop | yes | the next 3°: load 191 → 55, then the arm drops 0.9° within 0.3 s | ✅ |
+| Interpolating from present position | load +320 → −168, arm drops | from a low-load hold: load 95 → 20, arm drops 1.9° | ✅ |
+| Free-air lag at 4°/s | ≤ 12 raw (1°) descending, P=32 + integral nudges | descending: 1.4–1.7° at P=16, 0.5–0.7° at P=32; rising against gravity and friction: ≈7.4° at P=16, ≈3.5° at P=32; no nudges | ✅ |
 | P=32 halves the holding offset | yes | yes (stiffness ∝ P) | ✅ |
 | Overheat → torque off → arm drops | after ≈1 h of holding at 300–360 | model: 58 min at load 330; others ≤ 35 °C at load ≤ 150. Run: pressing into the table at 1000 trips in 140 s, torque off, arm drops 1.8° onto the table | ✅ |
 | Heating while paused between turns | (operator thinking time) | a 32 s pause holding at load 1000: 31 → 41 °C | ✅ |
@@ -90,7 +96,7 @@ the shoulder settled coming up from below, as the real holding load of 320–336
 | 1. Weak grip, piece slides out | ◐ | Low friction (0.35), gripper torque cap 50 %, squeeze load matches. In `grip.py` (standing queen at the real spot, `cmp-grip.jpg`) the lift came up empty rather than lifting and then slipping. |
 | 2. Tool-down unreachable far out (wrist ±86) | ✅ | Goals clamped to the calibrated ranges; the grip test's best pose at 32 cm radius tilts the tool 10–20° |
 | 3. Open fixed jaw lands on the piece | ✅ | Real jaw geometry and the moving jaw's 130° travel; in the grip test the jaw landed on the queen (audit: queen contact with load −1000) |
-| 4. Near-table kinematic error | ✅ | §5 rows B, C, D |
+| 4. Near-table kinematic error | ◐ | §5: on the table the readings match the real ones; pressing moves the readings, not the link; lifting off the table gains less than the readings say. The free-air error near the table (D, the near-table photos) is smaller in the sim. |
 | 5. Sag + friction dead band, jerky descents | ✅ | §2 rows |
 | 6. Overheating, sudden drop | ✅ | §2 last rows |
 | 7. Camera model valid only near calibration poses | ◐ | See §3 |
@@ -99,3 +105,17 @@ the shoulder settled coming up from below, as the real holding load of 320–336
 
 Colour cast; load noise and the exact hysteresis shape; the real v47 gripper and camera mount
 geometry (CAD gripper used, camera board as a 25×24×12 mm box); queen mass beyond "tens of grams".
+
+## Open: D against B, C and the calibration
+
+D's 4 cm error was observed in free air, holding the arm's weight. The calibration poses are also
+in free air, and in the sim the shoulder and elbow carry about the same torque in both (lift
+−0.54 vs −0.6…−0.67 N·m, elbow −0.42 vs −0.35). Any bending driven by that torque therefore moves
+D by about as much as it moves the calibration poses, where the fitted offsets have to hold.
+Bending stiff enough to lower D by 4 cm relative to them (≈60–90°/N·m) would move the readings by
+degrees whenever the queen is picked up or the jaw brushes the table. So the bending reproduces
+the contacts (B, C, Q) and the small lift-off from C, but not D's absolute height. The near-table
+free-air photos agree with D in direction (the real arm hangs ≈3.5° of shoulder lower than the
+model there). Something pose-dependent in free air remains unexplained. It could be the earlier
+lift-dependent shoulder term (`git show 9d9109a:examples/so101-real/calibration.ts`) at about
+3.5–10°, at the price of B, C and Q. A measured contact at lift ≈35° in free air would settle it.

@@ -33,35 +33,36 @@ export const GRIPPER_TRAVEL = 130 * deg;
 
 /**
  * Zero errors, degrees, in the order pan, lift, elbow, wrist_flex, wrist_roll: the offsets the
- * camera calibration fitted where it was valid (upper arm near vertical), true = reading + offset.
+ * camera calibration fitted where it was valid (upper arm near vertical, wrist 40–75°),
+ * model = reading + offset.
  */
-const OFFSET = [0, 4.4, -10.8, 5.2, ROLL_ERROR];
+const FITTED = [0, 4.4, -10.8, 5.2, ROLL_ERROR];
 /**
- * The part the calibration could not see: grows with the shoulder's reading from 5° to 35° and
- * stays there, lowering the extended arm by about 4 cm near the table (§5).
+ * How far each joint's link bends away from its encoder's reading, degrees per N·m of the torque
+ * it passes on to the link (`load.ts`): gear backlash and printed-plastic flex, which the encoder
+ * on the servo's output cannot see. Holding the extended arm in the air sags it by a few more
+ * degrees than in the calibration poses; resting on the table, the link sits higher than the
+ * readings suggest. Fitted to the contacts of REAL_OBSERVATIONS §5.
  */
-const EXTENDED = [0, 10, 0, 0, 0];
-const share = (lift: number) => Math.min(1, Math.max(0, (lift - 5) / 30));
+const BENDING = [0, 8, 8, 0, 0];
+/** The link torques, N·m, in the calibration poses: there the fitted offsets hold. */
+const REFERENCE = [0, -0.54, -0.42, 0, 0];
+/** Zero errors with the links unloaded: true = reading + offset − bending·torque. */
+const OFFSET = FITTED.map((f, i) => f + BENDING[i]! * REFERENCE[i]!);
 
 export const calibration: Calibration = {
-  angles(readings) {
-    const g = share(readings[1]!);
+  angles(readings, torques) {
     return readings.map((r, i) =>
       i === 5
         ? GRIPPER_CLOSED + (r / 100) * GRIPPER_TRAVEL
-        : (r + OFFSET[i]! + g * EXTENDED[i]!) * deg,
+        : (r + OFFSET[i]! - BENDING[i]! * torques[i]!) * deg,
     );
   },
-  readings(angles) {
-    // The shoulder's reading decides the error: solve for it first, by fixed-point iteration.
-    let lift = angles[1]! / deg - OFFSET[1]!;
-    for (let k = 0; k < 8; k++)
-      lift = angles[1]! / deg - OFFSET[1]! - share(lift) * EXTENDED[1]!;
-    const g = share(lift);
+  readings(angles, torques) {
     return angles.map((a, i) =>
       i === 5
         ? ((a - GRIPPER_CLOSED) / GRIPPER_TRAVEL) * 100
-        : a / deg - OFFSET[i]! - g * EXTENDED[i]!,
+        : a / deg - OFFSET[i]! + BENDING[i]! * torques[i]!,
     );
   },
 };

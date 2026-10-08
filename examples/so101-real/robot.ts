@@ -27,6 +27,7 @@ import {
   ROLL_ERROR,
 } from "./calibration.ts";
 import { joints as authored, links as allLinks } from "./model.ts";
+import { linkTorques, type Link } from "./load.ts";
 import { ServoBus, type ServoJoint } from "./servo.ts";
 
 // The CAD camera mount is not the real one: the real camera sits where its calibration says.
@@ -104,6 +105,17 @@ export function arm(height: number) {
   );
   base.position.y = height + 0.003;
   base.updateMatrix();
+  // Each body's centre of mass, from its collision shapes: hull vertices, or box centres
+  // weighted by volume.
+  const shapes = new Map<RigidBody, { sum: Vector3; weight: number }>();
+  function shape(body: RigidBody, points: ArrayLike<number>, weight: number) {
+    const entry = shapes.get(body) ?? { sum: new Vector3(), weight: 0 };
+    for (let k = 0; k < points.length; k += 3) {
+      entry.sum.add(new Vector3(points[k], points[k + 1], points[k + 2]).multiplyScalar(weight));
+      entry.weight += weight;
+    }
+    shapes.set(body, entry);
+  }
   const servoJoints = new Map<string, RevoluteJoint>();
   const placed = new Set(["base_link"]);
   while (placed.size < links.length) {
@@ -181,6 +193,7 @@ export function arm(height: number) {
       );
       hull.scale(visual.scale[0], visual.scale[1], visual.scale[2]);
       hull.applyMatrix4(pose);
+      shape(body, hull.getAttribute("position").array as Float32Array, 1);
       const collider = new MeshCollider({
         approximation: "convexHull",
       }).setGeometry(hull);
@@ -199,6 +212,7 @@ export function arm(height: number) {
     const collider = new BoxCollider({ size });
     collider.position.set(...position);
     place(name).body.add(collider);
+    shape(place(name).body, position, size[0] * size[1] * size[2]);
   }
   box("gripper_link", [0.04, 0.035, 0.035], [0, 0, -0.022]);
   for (const pad of fixedPads) box("gripper_link", pad.size, pad.position);
@@ -237,6 +251,7 @@ export function arm(height: number) {
     .add(camera.position);
   board.setCollisionGroups({ membership: 4, filter: 2 });
   gripperBody.add(board);
+  shape(gripperBody, board.position.toArray(), 0.025 * 0.024 * 0.012);
   const servos: ServoJoint[] = ORDER.map((name) => ({
     name,
     joint: servoJoints.get(name)!,
@@ -246,6 +261,15 @@ export function arm(height: number) {
     unitsPerDegree: name === "gripper" ? 100 / ((GRIPPER_TRAVEL * 180) / Math.PI) : 1,
     friction: name !== "gripper",
   }));
-  const bus = new ServoBus(servos, calibration);
+  // The links beyond each joint, for the torque that bends them away from the encoder's reading.
+  const chain: Link[] = ORDER.map((name) => {
+    const body = servoJoints.get(name)!.options.body1;
+    const { sum, weight } = shapes.get(body)!;
+    return { body, mass: body.options.mass!, centre: sum.divideScalar(weight) };
+  });
+  const joints5 = ORDER.map((name) => servoJoints.get(name)!);
+  const bus = new ServoBus(servos, calibration, () =>
+    linkTorques(joints5, chain.map((_, i) => chain.slice(i)), robot),
+  );
   return { robot, bus };
 }
