@@ -1,0 +1,136 @@
+diff --git a/dist/model/joints.js b/dist/model/joints.js
+index 93f344e71ae59bfe64c740964f9624a0fa662359..875f9c47af85c0b8f2b5cc190b694dd29b911c9c 100644
+--- a/dist/model/joints.js
++++ b/dist/model/joints.js
+@@ -14,11 +14,19 @@ export function jointXml(joint, record, reading, coordinates) {
+         const key = coordinate.name;
+         // Back-EMF resists motion whenever the motor is connected, so it belongs on the joint, where
+         // MuJoCo integrates it implicitly. It is what settles a saturated drive at its rated speed.
+-        const backEmf = driveOf(coordinate)?.backEmf;
++        const drive = driveOf(coordinate);
++        const backEmf = drive?.backEmf;
+         const damping = backEmf === undefined ? "" : ` damping="${backEmf}"`;
++        // Gear friction and the rotor's inertia belong to the joint too, as MuJoCo models them. The
++        // friction constraint is made hard (a 4 ms time constant, twice the usual step, and an
++        // impedance near 1) so that a joint held by friction does not creep under a steady load.
++        const friction = drive?.options.frictionLoss
++            ? ` frictionloss="${drive.options.frictionLoss}" solreffriction="0.004 1" solimpfriction="0.999 0.9999 0.001"`
++            : "";
++        const armature = drive?.options.armature ? ` armature="${drive.options.armature}"` : "";
+         if (limits && limits[0] === limits[1])
+             throw new Error("MuJoCo scalar limits must have a nonzero range; use a locked dof instead");
+-        return `<joint name="${key}" type="${type}" pos="${position}" axis="${axis.applyQuaternion(rotation).toArray().join(" ")}" ${limits ? `range="${limits.join(" ")}" limited="true"` : 'limited="false"'}${damping}/>`;
++        return `<joint name="${key}" type="${type}" pos="${position}" axis="${axis.applyQuaternion(rotation).toArray().join(" ")}" ${limits ? `range="${limits.join(" ")}" limited="true"` : 'limited="false"'}${damping}${friction}${armature}/>`;
+     };
+     if (joint instanceof FixedJoint) {
+         // The child joins its parent's rigid body, and MuJoCo never collides a body with itself.
+diff --git a/dist/queries.d.ts b/dist/queries.d.ts
+index f68e116492e1ca602873ebcf29a5fa74fe2412be..13186f32d85128ac8e888da9f27f1604c00b19cc 100644
+--- a/dist/queries.d.ts
++++ b/dist/queries.d.ts
+@@ -1,7 +1,8 @@
+ import type { MainModule } from "@mujoco/mujoco";
+-import { type RaycastHit, type RaycastOptions } from "@drawcall/physics";
++import { RigidBody, type Contact, type RaycastHit, type RaycastOptions } from "@drawcall/physics";
+ import { Vector3 } from "three";
+ import type { Compiled } from "./model/compile.js";
+ import type { Interactions } from "@drawcall/physics";
+ export declare function sample(api: MainModule, compiled: Compiled, interactions: Interactions): void;
++export declare function contactsOf(api: MainModule, compiled: Compiled, body: RigidBody): Contact[];
+ export declare function raycast(api: MainModule, compiled: Compiled, origin: Vector3, direction: Vector3, maxDistance: number, options?: RaycastOptions): RaycastHit | null;
+diff --git a/dist/queries.js b/dist/queries.js
+index 9c937bb9cd7c34c2a66c1be04d0979c01f200069..54ff5f9a4f6213d5cb38b6c788dc44aeef669ec4 100644
+--- a/dist/queries.js
++++ b/dist/queries.js
+@@ -1,6 +1,6 @@
+ import { RigidBody, Trigger, ancestorBody, validateVector, } from "@drawcall/physics";
+ import { Vector3 } from "three";
+-import { array, at } from "./values.js";
++import { array, at, vector } from "./values.js";
+ import { matches } from "./model/shapes.js";
+ export function sample(api, compiled, interactions) {
+     const overlaps = new Map(), contacts = new Map();
+@@ -60,6 +60,47 @@ export function sample(api, compiled, interactions) {
+ }
+ /** MuJoCo filters rays by geometry group; the adapter filters by collider instead. */
+ const everyGroup = [1, 1, 1, 1, 1, 1];
++/** The contacts of `body` in the last step's solution, with their normal forces. */
++export function contactsOf(api, compiled, body) {
++    const found = [];
++    const values = compiled.data.contact;
++    const force = new api.DoubleBuffer(6);
++    try {
++        for (let i = 0; i < values.size(); i++) {
++            const contact = values.get(i);
++            if (!contact)
++                throw new Error("Missing MuJoCo contact");
++            try {
++                // Contacts within the margin but not yet touching carry no constraint.
++                if (contact.efc_address < 0)
++                    continue;
++                const first = compiled.geometries.get(contact.geom1)?.owner, second = compiled.geometries.get(contact.geom2)?.owner;
++                const other = first === body ? second : second === body ? first : undefined;
++                if (!(other instanceof RigidBody) || other === body)
++                    continue;
++                api.mj_contactForce(compiled.model, compiled.data, i, force);
++                // The frame's first row is the normal from geom1 to geom2, along which geom2 is pushed.
++                const normal = vector(contact.frame, 0);
++                if (first === body)
++                    normal.negate();
++                found.push({
++                    otherBody: other,
++                    point: vector(contact.pos, 0),
++                    normal,
++                    force: at(force.GetView(), 0),
++                });
++            }
++            finally {
++                contact.delete();
++            }
++        }
++    }
++    finally {
++        force.delete();
++        values.delete();
++    }
++    return found;
++}
+ export function raycast(api, compiled, origin, direction, maxDistance, options = {}) {
+     validateVector(origin);
+     validateVector(direction);
+diff --git a/dist/world.d.ts b/dist/world.d.ts
+index 3106fa71bfe73454a6b398e39547a7d798b9e0b6..4f809bd5b0134186d0f6624c367d7056399ed00f 100644
+--- a/dist/world.d.ts
++++ b/dist/world.d.ts
+@@ -41,5 +41,6 @@ export declare class MujocoWorld extends SteppedWorld {
+     wake(body: RigidBody): void;
+     sleep(body: RigidBody): never;
+     readJoint(joint: Joint): import("@drawcall/physics").JointReading;
++    contacts(body: RigidBody): import("@drawcall/physics").Contact[];
+     raycast(origin: Vector3, direction: Vector3, maxDistance: number, options?: RaycastOptions): import("@drawcall/physics").RaycastHit | null;
+ }
+diff --git a/dist/world.js b/dist/world.js
+index cd0bb50998b1e13816843cbf25d2375c76b3515e..e756ee9168ea16a0bd6d08f8ec9050cf6221296c 100644
+--- a/dist/world.js
++++ b/dist/world.js
+@@ -6,7 +6,7 @@ import { bodyId, velocity, writeVelocity, writePose, synchronize, refreshPoses,
+ import { applyBodyForces, wrench } from "./forces.js";
+ import { Scene } from "./scene.js";
+ import { applyDrives } from "./drives.js";
+-import { sample, raycast } from "./queries.js";
++import { sample, raycast, contactsOf } from "./queries.js";
+ export class MujocoWorld extends SteppedWorld {
+     api;
+     scene;
+@@ -188,6 +188,11 @@ export class MujocoWorld extends SteppedWorld {
+             reading.angle = record.angle;
+         return reading;
+     }
++    contacts(body) {
++        assertOwned(this, body);
++        const compiled = this.scene.compiled;
++        return compiled ? contactsOf(this.api, compiled, body) : [];
++    }
+     raycast(origin, direction, maxDistance, options) {
+         assertLive(this);
+         for (const body of options?.excludeBodies ?? [])
