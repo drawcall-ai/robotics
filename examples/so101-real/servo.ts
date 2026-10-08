@@ -53,22 +53,15 @@ export interface ServoJoint {
   friction: boolean;
 }
 
-/** How the links are loaded: what bends them away from the readings. */
-export interface Loading {
-  /** The torques, N·m, the joints pass on to their links. */
-  torques: readonly number[];
-  /**
-   * For each joint, how much of the torque holding its links up against gravity it carries
-   * itself: 1 with the arm hanging free, 0 with the gripper resting on something.
-   */
-  hanging: readonly number[];
-}
-/** The hidden map between readings and true joint angles, both in a joint order. */
+/**
+ * The hidden map between readings and true joint angles, both in a joint order, given the
+ * torques, N·m, the joints pass on to their links.
+ */
 export interface Calibration {
   /** True joint angles, radians, for readings. */
-  angles(readings: readonly number[], loading: Loading): number[];
+  angles(readings: readonly number[], torques: readonly number[]): number[];
   /** Readings for true joint angles. */
-  readings(angles: readonly number[], loading: Loading): number[];
+  readings(angles: readonly number[], torques: readonly number[]): number[];
 }
 /** How fast the bending follows the link torque, s: it also keeps the P loop through it stable. */
 const BENDING = 0.05;
@@ -93,14 +86,13 @@ export class ServoBus {
   readonly events: ((message: string) => void)[] = [];
   readonly joints: readonly ServoJoint[];
   readonly calibration: Calibration;
-  private readonly linkTorques: () => { total: number[]; gravity: number[] };
-  /** The link torques, N·m, as the bending has followed them, total and against gravity. */
+  private readonly linkTorques: () => number[];
+  /** The link torques, N·m, as the bending has followed them. */
   torques?: number[];
-  private gravity?: number[];
   constructor(
     joints: readonly ServoJoint[],
     calibration: Calibration,
-    linkTorques: () => { total: number[]; gravity: number[] },
+    linkTorques: () => number[],
   ) {
     this.joints = joints;
     this.calibration = calibration;
@@ -168,12 +160,10 @@ export class ServoBus {
   beforeStep(_time: number, dt: number): void {
     const { angles } = this.measure();
     const now = this.linkTorques();
-    const follow = (was: number[] | undefined, to: number[]) =>
-      (was ?? to).map((t, i) => t + (to[i]! - t) * Math.min(1, dt / BENDING));
-    this.torques = follow(this.torques, now.total);
-    this.gravity = follow(this.gravity, now.gravity);
-    const loading = this.loading();
-    const present = this.calibration.readings(angles, loading);
+    this.torques ??= now;
+    const torques = this.torques.map((t, i) => t + (now[i]! - t) * Math.min(1, dt / BENDING));
+    this.torques = torques;
+    const present = this.calibration.readings(angles, torques);
     // On power-up the servos hold where they are, as LeRobot's connect does.
     if (!this.states.length)
       for (const reading of present)
@@ -187,7 +177,7 @@ export class ServoBus {
     // The goal as a true angle, were the link to bend as it does now: the P law on the reading.
     const goals = this.calibration.angles(
       this.states.map((s) => s.goal),
-      loading,
+      torques,
     );
     const base = 16 * STIFFNESS_PER_P;
     this.joints.forEach(({ torqueLimit }, i) => {
@@ -209,17 +199,6 @@ export class ServoBus {
       if (drive.target?.position !== position) drive.setTarget({ position });
     });
   }
-  /** The links' loading now; unloaded before the first step. */
-  loading(): Loading {
-    const torques = this.torques ?? this.joints.map(() => 0);
-    const gravity = this.gravity ?? torques;
-    return {
-      torques,
-      hanging: torques.map((t, i) =>
-        Math.abs(gravity[i]!) < 1e-3 ? 1 : Math.min(1, Math.max(0, t / gravity[i]!)),
-      ),
-    };
-  }
   /** The arm held its pose all through a pause between turns. */
   resumed(wallSeconds: number): void {
     this.states.forEach((_, i) => this.heat(i, Math.min(PAUSE, wallSeconds)));
@@ -239,7 +218,7 @@ export class ServoBus {
     if (time - this.last < 0.02 - 1e-9) return;
     this.last = time;
     const { angles, velocities } = this.measure();
-    const readings = this.calibration.readings(angles, this.loading());
+    const readings = this.calibration.readings(angles, this.torques ?? angles.map(() => 0));
     const units = this.joints.map((j) => j.unitsPerDegree);
     this.ros.publish("/follower/joint_states", "sensor_msgs/msg/JointState", {
       header: header(time, ""),
