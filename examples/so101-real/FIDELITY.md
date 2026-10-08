@@ -119,3 +119,10 @@ free-air photos agree with D in direction (the real arm hangs ≈3.5° of should
 model there). Something pose-dependent in free air remains unexplained. It could be the earlier
 lift-dependent shoulder term (`git show 9d9109a:examples/so101-real/calibration.ts`) at about
 3.5–10°, at the price of B, C and Q. A measured contact at lift ≈35° in free air would settle it.
+
+**Tried and reverted (orchestrator decision, KISS):** a 4° shoulder term that applies only while the
+arm hangs free far out (commit bb1e1c2, reverted). It improved the near-table photo fit only from
+75 to 70 px rms but made the real C → "up 4 cm" sequence stay on the table (real: rose 0.5–1 cm)
+and moved Q. Not worth a mechanism. Final state: compliance only; D's absolute height remains the
+known residual (sim ≈4.5 cm vs real ≈0.5 cm at D's exact readings; the real sequence from C is
+reproduced at 1.4 cm vs 0.5–1 cm).
