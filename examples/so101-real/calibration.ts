@@ -15,14 +15,15 @@ const deg = Math.PI / 180;
 export const ROLL_ERROR = 65;
 /**
  * Wrist camera, OpenCV frame (x right, y down, z forward) in gripper_link, metres, row-major, as
- * the hand-eye calibration of REAL_OBSERVATIONS §3 found it for a roll zero error of 0. The
+ * the real arm's hand-eye calibration found it for a roll zero error of 0 (2026-10-08 evening,
+ * 12 board views, 3–6 px; within 0.8° and 3 mm of REAL_OBSERVATIONS §3). The
  * camera is mounted at this turned back by ROLL_ERROR about the roll axis, so views at any
  * reading are the calibrated ones.
  */
 export const CAMERA = [
-  0.1523, -0.7021, -0.6956, 0.1006,
-  -0.9879, -0.0883, -0.1273, 0.0191,
-  0.028, 0.7065, -0.7071, -0.0294,
+  0.1476, -0.7005, -0.6983, 0.0999,
+  -0.9889, -0.0942, -0.1144, 0.0165,
+  0.0144, 0.7074, -0.7066, -0.03,
   0, 0, 0, 1,
 ];
 
@@ -32,43 +33,25 @@ export const GRIPPER_CLOSED = -0.19;
 export const GRIPPER_TRAVEL = 130 * deg;
 
 /**
- * Zero errors, degrees, in the order pan, lift, elbow, wrist_flex, wrist_roll: the offsets the
- * camera calibration fitted where it was valid (upper arm near vertical, wrist 40–75°),
- * model = reading + offset.
+ * Zero errors, degrees, in the order pan, lift, elbow, wrist_flex, wrist_roll: what the real arm's
+ * careful calibration fitted (12 board views in free air, upper arm near vertical; readings in
+ * today's calibration), model = reading + offset. REAL_OBSERVATIONS §1's earlier, rougher fit
+ * (+4.4, −10.8, +5.2 before the rest-pose shift) was 9° off on the elbow.
  */
-// REAL_OBSERVATIONS measured +4.4 and −10.8 on lift and elbow before the calibration was widened
-// to take in the rest pose (lift range_min 991 → 869, elbow range_max 2989 → 3069), which moved
-// their readings by +5.36° and −3.52°.
-const FITTED = [0, 4.4 - 5.36, -10.8 + 3.52, 5.2, ROLL_ERROR];
-/**
- * How far each joint's link bends away from its encoder's reading, degrees per N·m of the torque
- * it passes on to the link (`load.ts`): gear backlash and printed-plastic flex, which the encoder
- * on the servo's output cannot see. Holding the extended arm in the air sags it by a few more
- * degrees than in the calibration poses; resting on the table, the link sits higher than the
- * readings suggest. Fitted to the contacts of REAL_OBSERVATIONS §5.
- */
-const BENDING = [0, 8, 8, 0, 0];
-/** The link torques, N·m, in the calibration poses: there the fitted offsets hold. */
-const REFERENCE = [0, -0.54, -0.42, 0, 0];
-/** Backlash and flex end somewhere: the bend away from the calibration poses' stays within ±3°. */
-const LIMIT = 3;
-/** Degrees the link bends beyond the calibration poses' bend, against the reading's direction. */
-const bend = (torques: readonly number[], i: number) =>
-  Math.max(-LIMIT, Math.min(LIMIT, BENDING[i]! * (torques[i]! - REFERENCE[i]!)));
-
+const FITTED = [0, -0.09, 1.55, -0.71, ROLL_ERROR];
 export const calibration: Calibration = {
-  angles(readings, torques) {
+  angles(readings) {
     return readings.map((r, i) =>
       i === 5
         ? GRIPPER_CLOSED + (r / 100) * GRIPPER_TRAVEL
-        : (r + FITTED[i]! - bend(torques, i)) * deg,
+        : (r + FITTED[i]!) * deg,
     );
   },
-  readings(angles, torques) {
+  readings(angles) {
     return angles.map((a, i) =>
       i === 5
         ? ((a - GRIPPER_CLOSED) / GRIPPER_TRAVEL) * 100
-        : a / deg - FITTED[i]! + bend(torques, i),
+        : a / deg - FITTED[i]!,
     );
   },
 };
@@ -78,5 +61,5 @@ export const calibration: Calibration = {
  * sits when its torque is off and where the simulation starts.
  */
 export const REST = [-5.7, -94.5, 89.5, 16.9, -5.6, 5.2];
-/** The rest pose's true joint angles, radians: folded, its links carry next to no torque. */
-export const restAngles = () => calibration.angles(REST, REST.map(() => 0));
+/** The rest pose's true joint angles, radians. */
+export const restAngles = () => calibration.angles(REST);

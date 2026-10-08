@@ -1,5 +1,5 @@
 // The real SO-101 queen scene as measured on 2026-10-07/08 (see FIDELITY.md): a white table the
-// arm is screwed to, a folding wooden chessboard with 31.4 mm squares in front of it, and one dark
+// arm is screwed to, a folding wooden chessboard with 31 mm squares in front of it, and one dark
 // wooden queen lying on the table to the board's left. SEED=0 is the measured scene; other seeds
 // move the board and queen within the measurements' uncertainty.
 //
@@ -68,15 +68,16 @@ table.add(new BoxCollider({ size: [1.2, 0.05, 0.9] }), tableTop);
 export const { robot, bus } = arm(deskHeight);
 scene.add(table, robot);
 
-// The folding board: 31.4 mm squares, a 15 mm frame, playing surface 30 mm above the table,
-// rank 8 nearest the robot and the a-file on its right; d8 at about (18.4, 0.1) cm.
+// The folding board as the real arm's careful calibration found it (2026-10-08 evening): 31.0 mm
+// squares, a 15 mm frame, playing surface 22.8 mm above the table, yawed 3.5°, rank 8 nearest the
+// robot and the a-file on its right; the a8 corner at (18.8, −9.8) cm, d8 at about (19.7, 1.1).
 export const board: Board = {
-  s: 0.0314,
+  s: 0.031,
   border: 0.015,
-  thickness: 0.03,
-  x: 0.2935 + jitter(0.005),
-  y: 0.0165 + jitter(0.005),
-  yaw: (2 + jitter(1)) * deg,
+  thickness: 0.0228,
+  x: 0.304 + jitter(0.005),
+  y: 0.033 + jitter(0.005),
+  yaw: (3.5 + jitter(1)) * deg,
 };
 const { s, border, thickness } = board;
 const width = 8 * s + 2 * border;
@@ -146,10 +147,11 @@ top.receiveShadow = true;
 boardBody.add(slab, slabMesh, top);
 scene.add(boardBody);
 
-// The queen lies on the table: base end at about (23.0, 17.4) cm, crown at (26.3, 24.2).
+// The queen lies on the table, its middle at about (24.5, 23.5) cm, the crown pointing away from
+// the robot at 64° (REAL_OBSERVATIONS §4 and the later real views).
 const heading = Math.atan2(24.2 - 17.4, 26.3 - 23.0) + jitter(8) * deg;
-const baseX = 0.23 + jitter(0.01);
-let baseY = 0.174 + jitter(0.01);
+const baseX = 0.2285 + jitter(0.01);
+let baseY = 0.201 + jitter(0.01);
 // Never inside the board's frame: the base's rim keeps 5 mm off its left edge.
 {
   const [u] = boardCoordinates(board, baseX, baseY);
