@@ -19,20 +19,22 @@ export interface Link {
 
 /**
  * For each joint, the torque about its axis, N·m, the joint exerts on its link to hold `beyond`
- * (that joint's link and every link after it) still against gravity and outside contacts.
+ * (that joint's link and every link after it) still against gravity and outside contacts, and
+ * the part of it that holds them against gravity alone.
  */
 export function linkTorques(
   joints: readonly RevoluteJoint[],
   beyond: readonly (readonly Link[])[],
   robot: object,
-): number[] {
+): { total: number[]; gravity: number[] } {
   const world = getROS2().world;
   const frame = new Matrix4();
   const axis = new Vector3();
   const origin = new Vector3();
   const arm = new Vector3();
   const point = new Vector3();
-  return joints.map((joint, i) => {
+  const gravity: number[] = [];
+  const total = joints.map((joint, i) => {
     const parent = joint.options.body0!;
     parent.updateWorldMatrix(true, false);
     frame.multiplyMatrices(parent.matrixWorld, joint.options.frame0!);
@@ -43,6 +45,9 @@ export function linkTorques(
       body.updateWorldMatrix(true, false);
       point.copy(centre).applyMatrix4(body.matrixWorld);
       load += arm.subVectors(point, origin).cross(GRAVITY).multiplyScalar(mass).dot(axis);
+    }
+    gravity.push(-load);
+    for (const { body } of beyond[i]!) {
       for (const contact of world.contacts(body)) {
         if (contact.otherBody.parent === robot) continue;
         const force = contact.normal.clone().multiplyScalar(contact.force);
@@ -51,4 +56,5 @@ export function linkTorques(
     }
     return -load;
   });
+  return { total, gravity };
 }

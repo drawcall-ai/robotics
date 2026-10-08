@@ -50,19 +50,32 @@ const REFERENCE = [0, -0.54, -0.42, 0, 0];
 /** Zero errors with the links unloaded: true = reading + offset − bending·torque. */
 const OFFSET = FITTED.map((f, i) => f + BENDING[i]! * REFERENCE[i]!);
 
+/**
+ * What the bending does not explain: hanging free far out, the real shoulder sits about 4° lower
+ * than the calibrated model says (the near-table photos of §5; D). It ramps in with the lift
+ * reading from 5° to 35° and only while the arm hangs: it fades as the gripper comes to rest on
+ * the table, board or queen.
+ */
+const HANGING = [0, 4, 0, 0, 0];
+const share = (lift: number) => Math.min(1, Math.max(0, (lift - 5) / 30));
+
 export const calibration: Calibration = {
-  angles(readings, torques) {
+  angles(readings, { torques, hanging }) {
+    const g = share(readings[1]!) * hanging[1]!;
     return readings.map((r, i) =>
       i === 5
         ? GRIPPER_CLOSED + (r / 100) * GRIPPER_TRAVEL
-        : (r + OFFSET[i]! - BENDING[i]! * torques[i]!) * deg,
+        : (r + OFFSET[i]! - BENDING[i]! * torques[i]! + g * HANGING[i]!) * deg,
     );
   },
-  readings(angles, torques) {
+  readings(angles, { torques, hanging }) {
+    const plain = angles.map((a, i) => a / deg - OFFSET[i]! + BENDING[i]! * torques[i]!);
+    // The shoulder's reading decides the hanging term: solve for it by fixed-point iteration.
+    let lift = plain[1]!;
+    for (let k = 0; k < 8; k++) lift = plain[1]! - share(lift) * hanging[1]! * HANGING[1]!;
+    const g = share(lift) * hanging[1]!;
     return angles.map((a, i) =>
-      i === 5
-        ? ((a - GRIPPER_CLOSED) / GRIPPER_TRAVEL) * 100
-        : a / deg - OFFSET[i]! + BENDING[i]! * torques[i]!,
+      i === 5 ? ((a - GRIPPER_CLOSED) / GRIPPER_TRAVEL) * 100 : plain[i]! - g * HANGING[i]!,
     );
   },
 };
