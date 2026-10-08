@@ -4,9 +4,10 @@
 // peak contact force and the servo loads during it, peak loads and temperatures, and overheating
 // trips. Both are private: recorded in the run's bag, never seen by the policy. A policy must not
 // read this file.
-import type { RigidBody } from "@drawcall/physics";
+import { BoxCollider, RigidBody } from "@drawcall/physics";
 import { Evaluator, getROS2 } from "@drawcall/robotics";
-import { Quaternion, Vector3 } from "three";
+import { Line3, Quaternion, Vector3 } from "three";
+import { QUEEN_BASE, QUEEN_LENGTH } from "./pieces.ts";
 import { board, boardBody, bus, queenBody, robot, table } from "./environment.ts";
 import { ORDER } from "./robot.ts";
 import { deskHeight, ros, squareAt, tilt, type Board } from "./task.ts";
@@ -135,6 +136,41 @@ ros2.register({
   dispose() {},
 });
 
+// The arm has withdrawn when no point of the gripper's, jaws' or camera's colliders comes within
+// 2 cm of the queen. The queen counts as a capsule along its axis as wide as its base, so the
+// margin is up to 7 mm larger at its neck.
+const hands = robot.children.filter(
+  (child): child is RigidBody =>
+    child instanceof RigidBody &&
+    (child.name === "gripper_link" || child.name === "moving_jaw_so101_v1_link"),
+);
+const corners = hands.flatMap((body) =>
+  body.children
+    .filter((child): child is BoxCollider => child instanceof BoxCollider)
+    .flatMap((box) => {
+      const [sx, sy, sz] = box.size;
+      const points = [new Vector3()];
+      for (const a of [-0.5, 0.5])
+        for (const b of [-0.5, 0.5])
+          for (const c of [-0.5, 0.5]) points.push(new Vector3(a * sx, b * sy, c * sz));
+      return points.map((p) => ({ body, local: p.applyQuaternion(box.quaternion).add(box.position) }));
+    }),
+);
+const segment = new Line3();
+const nearest = new Vector3();
+const world3 = new Vector3();
+function withdrawn(): boolean {
+  const axis = new Vector3(0, 1, 0).applyQuaternion(queenBody.quaternion);
+  segment.start.copy(queenBody.position);
+  segment.end.copy(queenBody.position).addScaledVector(axis, QUEEN_LENGTH);
+  for (const body of hands) body.updateWorldMatrix(true, false);
+  return corners.every(({ body, local }) => {
+    world3.copy(local).applyMatrix4(body.matrixWorld);
+    segment.closestPointToPoint(world3, true, nearest);
+    return nearest.distanceTo(world3) - QUEEN_BASE / 2 >= 0.02;
+  });
+}
+
 /** The board where it is now: squares are judged on the board, not the table. */
 function current(): Board {
   const [x, y] = ros(boardBody.position);
@@ -168,12 +204,14 @@ new Evaluator({
     boardMoved: () => boardShift > 0.015,
   },
   success: {
-    // Upright on d8, centred within 9 mm, standing on the board top, let go of and still a
-    // second later. Rest is judged by pose: contact solvers keep bodies trembling slightly.
+    // Upright on d8, centred within 9 mm, standing on the board top, let go of, the arm withdrawn
+    // 2 cm, and all of that for a second. Rest is judged by pose: contact solvers keep bodies
+    // trembling slightly.
     queenOnD8: ({ elapsed }) => {
       const [x, y] = ros(queenBody.position);
       const placed =
         holding.size === 0 &&
+        withdrawn() &&
         squareAt(current(), x, y, 0.2 * board.s) === "d8" &&
         tilt(queenBody.quaternion) < Math.PI / 18 &&
         Math.abs(queenBody.position.y - boardBody.position.y) < 0.004;

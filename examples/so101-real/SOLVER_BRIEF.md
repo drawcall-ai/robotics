@@ -8,7 +8,8 @@ In front of the arm is a folding wooden chessboard; **rank 8 is the rank nearest
 a-file is on the robot's right**. A dark wooden chess queen lies on its side somewhere on the table
 near the board.
 
-**Goal:** the queen stands upright on d8, near the square's centre, released, and stays there.
+**Goal:** the queen stands upright on d8, near the square's centre, released, the arm withdrawn,
+and it stays there. The episode succeeds once all of that has held for a second.
 Knocking the board off its place or the queen off the table fails the episode. The episode ends
 after 30 simulated minutes.
 

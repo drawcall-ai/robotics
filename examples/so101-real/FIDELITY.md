@@ -19,7 +19,9 @@ All runs use seed 0, the measured scene. Status: ✅ reproduced, ◐ partly, ✗
   in the air bends it a little more than there. Resting it on the table unbends it: the link sits
   higher than its readings suggest, and pressing harder moves the readings without moving the
   link. Friction does not bend the link, so a 3° goal step at rest changes the load but not the
-  reading (§2). The +65° roll offset is invisible to a roll-0 camera calibration (LeRobot's roll
+  reading (§2). The bend beyond the calibration poses' is clamped to ±3° per joint: real
+  backlash and PLA flex end within a degree or two. Unclamped, squeezing the queen against the
+  table swung the shoulder 19° unseen and flung the queen up (audit 2). The +65° roll offset is invisible to a roll-0 camera calibration (LeRobot's roll
   zero is the middle of a full turn, so arbitrary). It puts the jaws where the real photos show
   them.
 - **Servos** (`servo.ts`): P-only, torque = K(goal − present) capped at stall (2.94 N·m; gripper
@@ -62,8 +64,8 @@ P=16. *Reached*: goals nudged until the readings match, like the real sag correc
 
 | Event | Real | Sim | Status |
 | --- | --- | --- | --- |
-| B (−46.5, 53.3, −49.0, 83.2, −64.7) | fixed jaw on table at these readings; model −0.3 cm | reached: jaw on table (0.04 cm) at readings (53.4, −49.3); plain (P=16 sag): stops at lift 51.0, elbow −46.3, jaw 2.8 cm up | ✅ |
-| C (−48.7, 48.8, −44.7, 83.0, −71.7) | on table again; model +0.6 | reached: 0.54 cm at readings (48.8, −44.8); plain: on the table at (50.1, −39.7) | ✅ |
+| B (−46.5, 53.3, −49.0, 83.2, −64.7) | fixed jaw on table at these readings; model −0.3 cm | reached: jaw on table (0.04 cm) at readings (53.3, −49.0); plain (P=16 sag): stops at lift 51.0, elbow −46.3, jaw 2.8 cm up | ✅ |
+| C (−48.7, 48.8, −44.7, 83.0, −71.7) | on table again; model +0.6 | reached: 0.56 cm at readings (48.8, −44.9); plain: on the table at (50.1, −39.7) | ✅ |
 | D (−48.7, 34.8, −36.0, 83.2, −71.7) after "up 4 cm" from C | ≈0.5 cm above the table (by eye); model +4.5; the commanded 3.9 cm lift was really 0.5–1 cm | plain from C (the real sequence): readings stop at (42.1, −36.2) under sag and friction, jaw **1.4 cm** above the table; at D's readings exactly (reached): **4.45 cm** | ◐ the lift from C comes out as small as on the real arm, but D's readings themselves leave the jaw 4 cm higher than observed |
 | Descent at (−44.8, 37.5, −31.4, 82.5, −62.5) | jaw resting on the lying queen's base (≈2.9 cm) | reached: jaw 2.26 cm above the table at (37.4, −31.5); the measured queen pose puts its base beside the jaw, not under it | ◐ height right, contact not |
 | Early test (0, −30.7, 93.4, 0, 0) | gripper pressed into table | elbow goal clamped to the calibrated 86.8°; tip 3.5 cm above table | ✗ (a reading beyond the calibrated range; unclear on hardware) |
@@ -106,6 +108,22 @@ the shoulder settled coming up from below, as the real holding load of 320–336
 Colour cast; load noise and the exact hysteresis shape; the real v47 gripper and camera mount
 geometry (CAD gripper used, camera board as a 25×24×12 mm box); queen mass beyond "tens of grams".
 
+## Audit 2's launch, with the clamp
+
+`launch.py`, `launch.jsonl`: attempt 2's arm goals at t = 208 s and its gripper closing sequence
+(18 → 0), with the queen lying where it lay then (a temporary scene edit). The shoulder's reading
+runs at most 3.0° ahead of its true angle (lift 23.6 vs 20.6) while the gripper pushes at load 381
+and 16 N on the queen. The queen is squeezed out sideways along the table (z unchanged, tilt
+94.6°) instead of being flung up.
+
+## Evaluation: the arm must withdraw
+
+Success needs the queen upright on d8 (9 mm, 10°, on the board top), at rest, untouched, and no
+corner or centre of a gripper, jaw or camera collider within 2 cm of the queen. The queen counts
+as a capsule as wide as its base, so the margin is up to 7 mm more at its neck. All of this must
+hold for a full second; the episode goes on until it does. Checked with a temporary edit: a jaw
+hovering ≈2 cm over the crown kept success off, which came 1 s after the arm had pulled away.
+
 ## Open: D against B, C and the calibration
 
 D's 4 cm error was observed in free air, holding the arm's weight. The calibration poses are also
@@ -125,4 +143,5 @@ arm hangs free far out (commit bb1e1c2, reverted). It improved the near-table ph
 75 to 70 px rms but made the real C → "up 4 cm" sequence stay on the table (real: rose 0.5–1 cm)
 and moved Q. Not worth a mechanism. Final state: compliance only; D's absolute height remains the
 known residual (sim ≈4.5 cm vs real ≈0.5 cm at D's exact readings; the real sequence from C is
-reproduced at 1.4 cm vs 0.5–1 cm).
+reproduced at 1.4 cm vs 0.5–1 cm). Clamping the bend at ±3° changed none of these (B 0.04, C 0.56,
+D 4.45, D from C 1.4, Q 2.26 cm; §2 sag, 3° step and approach loads identical).

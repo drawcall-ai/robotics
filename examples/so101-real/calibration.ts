@@ -47,22 +47,25 @@ const FITTED = [0, 4.4, -10.8, 5.2, ROLL_ERROR];
 const BENDING = [0, 8, 8, 0, 0];
 /** The link torques, N·m, in the calibration poses: there the fitted offsets hold. */
 const REFERENCE = [0, -0.54, -0.42, 0, 0];
-/** Zero errors with the links unloaded: true = reading + offset − bending·torque. */
-const OFFSET = FITTED.map((f, i) => f + BENDING[i]! * REFERENCE[i]!);
+/** Backlash and flex end somewhere: the bend away from the calibration poses' stays within ±3°. */
+const LIMIT = 3;
+/** Degrees the link bends beyond the calibration poses' bend, against the reading's direction. */
+const bend = (torques: readonly number[], i: number) =>
+  Math.max(-LIMIT, Math.min(LIMIT, BENDING[i]! * (torques[i]! - REFERENCE[i]!)));
 
 export const calibration: Calibration = {
   angles(readings, torques) {
     return readings.map((r, i) =>
       i === 5
         ? GRIPPER_CLOSED + (r / 100) * GRIPPER_TRAVEL
-        : (r + OFFSET[i]! - BENDING[i]! * torques[i]!) * deg,
+        : (r + FITTED[i]! - bend(torques, i)) * deg,
     );
   },
   readings(angles, torques) {
     return angles.map((a, i) =>
       i === 5
         ? ((a - GRIPPER_CLOSED) / GRIPPER_TRAVEL) * 100
-        : a / deg - OFFSET[i]! + BENDING[i]! * torques[i]!,
+        : a / deg - FITTED[i]! + bend(torques, i),
     );
   },
 };
