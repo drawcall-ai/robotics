@@ -23,8 +23,13 @@ it("reports the normal force of a body resting on another as its weight", async 
   floor.position.y = -0.05;
   const box = new RigidBody({ mass: 0.02 });
   box.add(new BoxCollider({ size: [0.03, 0.03, 0.03] }));
-  box.position.y = 0.015;
-  for (let step = 0; step < 500; step++) physics.update(0.002);
+  // Dropped from 2 cm: forces stay those of the contacts reported, also while it bounces.
+  box.position.y = 0.035;
+  for (let step = 0; step < 500; step++) {
+    physics.update(0.002);
+    for (const contact of physics.contacts(box))
+      expect(contact.force).toBeGreaterThanOrEqual(0);
+  }
   const contacts = physics.contacts(box);
   expect(contacts.length).toBeGreaterThan(0);
   expect(contacts.every((contact) => contact.otherBody === floor)).toBe(true);

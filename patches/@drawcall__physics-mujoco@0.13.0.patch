@@ -25,21 +25,28 @@ index 93f344e71ae59bfe64c740964f9624a0fa662359..875f9c47af85c0b8f2b5cc190b694dd2
      if (joint instanceof FixedJoint) {
          // The child joins its parent's rigid body, and MuJoCo never collides a body with itself.
 diff --git a/dist/queries.d.ts b/dist/queries.d.ts
-index f68e116492e1ca602873ebcf29a5fa74fe2412be..13186f32d85128ac8e888da9f27f1604c00b19cc 100644
+index f68e116492e1ca602873ebcf29a5fa74fe2412be..8010fd7f57abbe65c591d0fcd4b36faa33d08ae4 100644
 --- a/dist/queries.d.ts
 +++ b/dist/queries.d.ts
-@@ -1,7 +1,8 @@
+@@ -1,7 +1,15 @@
  import type { MainModule } from "@mujoco/mujoco";
 -import { type RaycastHit, type RaycastOptions } from "@drawcall/physics";
-+import { RigidBody, type Contact, type RaycastHit, type RaycastOptions } from "@drawcall/physics";
++import { RigidBody, type RaycastHit, type RaycastOptions } from "@drawcall/physics";
  import { Vector3 } from "three";
  import type { Compiled } from "./model/compile.js";
  import type { Interactions } from "@drawcall/physics";
  export declare function sample(api: MainModule, compiled: Compiled, interactions: Interactions): void;
-+export declare function contactsOf(api: MainModule, compiled: Compiled, body: RigidBody): Contact[];
++export interface SolvedContact {
++    first: RigidBody;
++    second: RigidBody;
++    point: Vector3;
++    normal: Vector3;
++    force: number;
++}
++export declare function solvedContacts(api: MainModule, compiled: Compiled): SolvedContact[];
  export declare function raycast(api: MainModule, compiled: Compiled, origin: Vector3, direction: Vector3, maxDistance: number, options?: RaycastOptions): RaycastHit | null;
 diff --git a/dist/queries.js b/dist/queries.js
-index 9c937bb9cd7c34c2a66c1be04d0979c01f200069..54ff5f9a4f6213d5cb38b6c788dc44aeef669ec4 100644
+index 9c937bb9cd7c34c2a66c1be04d0979c01f200069..ca3aa198918c6f4075be282e71db2438068213fe 100644
 --- a/dist/queries.js
 +++ b/dist/queries.js
 @@ -1,6 +1,6 @@
@@ -50,12 +57,15 @@ index 9c937bb9cd7c34c2a66c1be04d0979c01f200069..54ff5f9a4f6213d5cb38b6c788dc44ae
  import { matches } from "./model/shapes.js";
  export function sample(api, compiled, interactions) {
      const overlaps = new Map(), contacts = new Map();
-@@ -60,6 +60,47 @@ export function sample(api, compiled, interactions) {
+@@ -60,6 +60,49 @@ export function sample(api, compiled, interactions) {
  }
  /** MuJoCo filters rays by geometry group; the adapter filters by collider instead. */
  const everyGroup = [1, 1, 1, 1, 1, 1];
-+/** The contacts of `body` in the last step's solution, with their normal forces. */
-+export function contactsOf(api, compiled, body) {
++/**
++ * Every contact between bodies with the normal force the last solve gave it. Call it between
++ * mj_step2 and the next mj_step1, which detects new contacts while the forces stay the old ones.
++ */
++export function solvedContacts(api, compiled) {
 +    const found = [];
 +    const values = compiled.data.contact;
 +    const force = new api.DoubleBuffer(6);
@@ -69,18 +79,17 @@ index 9c937bb9cd7c34c2a66c1be04d0979c01f200069..54ff5f9a4f6213d5cb38b6c788dc44ae
 +                if (contact.efc_address < 0)
 +                    continue;
 +                const first = compiled.geometries.get(contact.geom1)?.owner, second = compiled.geometries.get(contact.geom2)?.owner;
-+                const other = first === body ? second : second === body ? first : undefined;
-+                if (!(other instanceof RigidBody) || other === body)
++                if (!(first instanceof RigidBody) ||
++                    !(second instanceof RigidBody) ||
++                    first === second)
 +                    continue;
 +                api.mj_contactForce(compiled.model, compiled.data, i, force);
-+                // The frame's first row is the normal from geom1 to geom2, along which geom2 is pushed.
-+                const normal = vector(contact.frame, 0);
-+                if (first === body)
-+                    normal.negate();
 +                found.push({
-+                    otherBody: other,
++                    first,
++                    second,
 +                    point: vector(contact.pos, 0),
-+                    normal,
++                    // The frame's first row: the normal from geom1 to geom2, along which geom2 is pushed.
++                    normal: vector(contact.frame, 0),
 +                    force: at(force.GetView(), 0),
 +                });
 +            }
@@ -99,10 +108,19 @@ index 9c937bb9cd7c34c2a66c1be04d0979c01f200069..54ff5f9a4f6213d5cb38b6c788dc44ae
      validateVector(origin);
      validateVector(direction);
 diff --git a/dist/world.d.ts b/dist/world.d.ts
-index 3106fa71bfe73454a6b398e39547a7d798b9e0b6..4f809bd5b0134186d0f6624c367d7056399ed00f 100644
+index 3106fa71bfe73454a6b398e39547a7d798b9e0b6..2cd9791b8021af1d975d274ac4bbfc079a3160ea 100644
 --- a/dist/world.d.ts
 +++ b/dist/world.d.ts
-@@ -41,5 +41,6 @@ export declare class MujocoWorld extends SteppedWorld {
+@@ -23,6 +23,8 @@ export declare class MujocoWorld extends SteppedWorld {
+     private readonly scene;
+     private readonly pending;
+     private readonly targets;
++    /** The last step's contacts and their forces. */
++    private solved;
+     constructor(api: MainModule, options?: MujocoOptions);
+     register(object: RigidBody | Joint | Trigger): void;
+     unregister(object: RigidBody | Joint | Trigger): void;
+@@ -41,5 +43,6 @@ export declare class MujocoWorld extends SteppedWorld {
      wake(body: RigidBody): void;
      sleep(body: RigidBody): never;
      readJoint(joint: Joint): import("@drawcall/physics").JointReading;
@@ -110,26 +128,69 @@ index 3106fa71bfe73454a6b398e39547a7d798b9e0b6..4f809bd5b0134186d0f6624c367d7056
      raycast(origin: Vector3, direction: Vector3, maxDistance: number, options?: RaycastOptions): import("@drawcall/physics").RaycastHit | null;
  }
 diff --git a/dist/world.js b/dist/world.js
-index cd0bb50998b1e13816843cbf25d2375c76b3515e..e756ee9168ea16a0bd6d08f8ec9050cf6221296c 100644
+index cd0bb50998b1e13816843cbf25d2375c76b3515e..1dedc56f4bc78554d113c84c54c36071a55cbec3 100644
 --- a/dist/world.js
 +++ b/dist/world.js
-@@ -6,7 +6,7 @@ import { bodyId, velocity, writeVelocity, writePose, synchronize, refreshPoses,
+@@ -6,12 +6,13 @@ import { bodyId, velocity, writeVelocity, writePose, synchronize, refreshPoses,
  import { applyBodyForces, wrench } from "./forces.js";
  import { Scene } from "./scene.js";
  import { applyDrives } from "./drives.js";
 -import { sample, raycast } from "./queries.js";
-+import { sample, raycast, contactsOf } from "./queries.js";
++import { sample, raycast, solvedContacts } from "./queries.js";
  export class MujocoWorld extends SteppedWorld {
      api;
      scene;
-@@ -188,6 +188,11 @@ export class MujocoWorld extends SteppedWorld {
+     pending = [];
+     targets = new Map();
++    solved = [];
+     constructor(api, options = {}) {
+         super(options);
+         this.api = api;
+@@ -36,8 +37,10 @@ export class MujocoWorld extends SteppedWorld {
+     unregister(object) {
+         if (!(object instanceof Joint))
+             this.interactions.remove(object);
+-        if (object instanceof RigidBody)
++        if (object instanceof RigidBody) {
+             this.targets.delete(object);
++            this.solved = this.solved.filter(({ first, second }) => first !== object && second !== object);
++        }
+         cleanup([() => this.scene.unregister(object), () => this.dispatch()], "Physics object removal failed");
+     }
+     prepare() {
+@@ -64,6 +67,7 @@ export class MujocoWorld extends SteppedWorld {
+         // Split step: the state already holds step1 results for this pose (the last mj_step1 or any
+         // mj_forward), so collision and the solve run once per step rather than in mj_step and mj_forward.
+         this.api.mj_step2(compiled.model, compiled.data);
++        this.solved = solvedContacts(this.api, compiled);
+         this.api.mj_step1(compiled.model, compiled.data);
+         validateState(this.api, compiled);
+         array(compiled.data.qfrc_applied).fill(0);
+@@ -73,11 +77,13 @@ export class MujocoWorld extends SteppedWorld {
+         sample(this.api, compiled, this.interactions);
+     }
+     restore() {
++        this.solved = [];
+         this.pending.length = 0;
+         this.targets.clear();
+         this.scene.reset();
+     }
+     disposeObjects() {
++        this.solved = [];
+         this.pending.length = 0;
+         this.targets.clear();
+         this.scene.dispose();
+@@ -188,6 +194,14 @@ export class MujocoWorld extends SteppedWorld {
              reading.angle = record.angle;
          return reading;
      }
 +    contacts(body) {
 +        assertOwned(this, body);
-+        const compiled = this.scene.compiled;
-+        return compiled ? contactsOf(this.api, compiled, body) : [];
++        return this.solved.flatMap(({ first, second, point, normal, force }) => first === body
++            ? [{ otherBody: second, point: point.clone(), normal: normal.clone().negate(), force }]
++            : second === body
++                ? [{ otherBody: first, point: point.clone(), normal: normal.clone(), force }]
++                : []);
 +    }
      raycast(origin, direction, maxDistance, options) {
          assertLive(this);

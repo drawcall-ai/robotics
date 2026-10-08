@@ -6,7 +6,7 @@ settings:
 
 patchedDependencies:
   '@drawcall/physics-mujoco@0.13.0':
-    hash: 207d8e11a919ac80748c29df4bb7ca552a8a5c92480bf0f408aca773abf5cc79
+    hash: 97c3aab7e7afc9afdf05a73eb497f2a615b003f8995d8bc3ef89fd530aca9e67
     path: patches/@drawcall__physics-mujoco@0.13.0.patch
   '@drawcall/physics@0.13.0':
     hash: 987f21ffa319ff2f0f5afa2d65d4a26cff8a61c90a50caa60d627f2c1e8c33f1
@@ -108,7 +108,7 @@ importers:
     dependencies:
       '@drawcall/physics-mujoco':
         specifier: 0.13.0
-        version: 0.13.0(patch_hash=207d8e11a919ac80748c29df4bb7ca552a8a5c92480bf0f408aca773abf5cc79)(@drawcall/physics@0.13.0(patch_hash=987f21ffa319ff2f0f5afa2d65d4a26cff8a61c90a50caa60d627f2c1e8c33f1)(three@0.185.1))(three@0.185.1)
+        version: 0.13.0(patch_hash=97c3aab7e7afc9afdf05a73eb497f2a615b003f8995d8bc3ef89fd530aca9e67)(@drawcall/physics@0.13.0(patch_hash=987f21ffa319ff2f0f5afa2d65d4a26cff8a61c90a50caa60d627f2c1e8c33f1)(three@0.185.1))(three@0.185.1)
       '@foxglove/rosmsg':
         specifier: ^5.0.5
         version: 5.0.5
@@ -1357,7 +1357,7 @@ snapshots:
 
   '@dimforge/rapier3d-compat@0.12.0': {}
 
-  '@drawcall/physics-mujoco@0.13.0(patch_hash=207d8e11a919ac80748c29df4bb7ca552a8a5c92480bf0f408aca773abf5cc79)(@drawcall/physics@0.13.0(patch_hash=987f21ffa319ff2f0f5afa2d65d4a26cff8a61c90a50caa60d627f2c1e8c33f1)(three@0.185.1))(three@0.185.1)':
+  '@drawcall/physics-mujoco@0.13.0(patch_hash=97c3aab7e7afc9afdf05a73eb497f2a615b003f8995d8bc3ef89fd530aca9e67)(@drawcall/physics@0.13.0(patch_hash=987f21ffa319ff2f0f5afa2d65d4a26cff8a61c90a50caa60d627f2c1e8c33f1)(three@0.185.1))(three@0.185.1)':
     dependencies:
       '@drawcall/physics': 0.13.0(patch_hash=987f21ffa319ff2f0f5afa2d65d4a26cff8a61c90a50caa60d627f2c1e8c33f1)(three@0.185.1)
       '@mujoco/mujoco': 3.13.0
