@@ -22,7 +22,10 @@ Evidence is in `evidence/`, made by builder-only scripts that read the true join
   real touch test the load fell steadily at the P rate after contact (no unbending). The new
   offsets meet RO's table contacts without it. And unclamped, it let attempt 2 fling the queen.
 - **Calibrated ranges** (goals clamped): pan ±101.6°, lift ±95.4°, elbow ±90.3°, wrist_flex ±85.9°,
-  roll ±180°, gripper 0..100 over 130°. The arm starts in the real rest pose: readings
+  roll ±180°, gripper 0..100 over 130°. The camera ribbon stops the roll at readings −37° and +74.5°
+  (`robot.ts` ROLL_STOPS; real load −620 at 74.3°, 2026-10-09 17:42). Pushed past, the sim's roll load
+  goes to ±1000. Real plan L1 (2026-10-08) rolled to −121°, so the ribbon's range has changed since; that
+  replay no longer reaches its roll. The arm starts in the real rest pose: readings
   (−5.7, −94.5, 89.5, 16.9, −5.6, 5.2) real, (−5.7, −94.5, 89.6, 17.0, −5.6, 5.2) sim.
 - **Servos** (`servo.ts`): P-only on the reading, K = 7.9 N·m/rad at P=16, capped at stall
   (2.94 N·m; gripper 50 %). MuJoCo Coulomb friction is 0.35 N·m on the arm joints.

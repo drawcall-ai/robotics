@@ -43,6 +43,12 @@ const RANGES: Record<string, readonly [number, number]> = {
   gripper: [0, 100],
 };
 export const ORDER = Object.keys(RANGES);
+/**
+ * The camera ribbon stops the real roll, in readings: its load stayed ≤ 68 up to 55°, rose from
+ * 72° and reached −620 at 74.3° (2026-10-09 17:42), and 18k real samples never went past
+ * −36.7…+74.3°. The servo would turn a full turn; the cable is a hard stop here.
+ */
+const ROLL_STOPS = [-37, 74.5] as const;
 
 function transform(
   xyz: readonly [number, number, number],
@@ -142,12 +148,11 @@ export function arm(height: number) {
         frame1: new Matrix4(),
         axis: "Z",
         // The real gripper opens 130° from closed; the CAD limit allowed 110°.
-        // The real roll turns a full turn around its arbitrary zero.
         limits:
           spec.name === "gripper"
             ? [GRIPPER_CLOSED - 0.05, GRIPPER_CLOSED + GRIPPER_TRAVEL + 0.02]
             : spec.name === "wrist_roll"
-              ? [((ROLL_ERROR - 180) * Math.PI) / 180, ((ROLL_ERROR + 180) * Math.PI) / 180]
+              ? [((ROLL_ERROR + ROLL_STOPS[0]) * Math.PI) / 180, ((ROLL_ERROR + ROLL_STOPS[1]) * Math.PI) / 180]
               : spec.limits,
       });
       joint.name = spec.name;

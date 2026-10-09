@@ -52,3 +52,17 @@ At frictionImpedanceRatio 100 (private copy of the package):
     off and is pinched (contact 7.5, load 190); at 100 it sticks, the arm stalls ~5 mm high and the moving jaw hits
     the board edge (contact 33, no lift). Its approach is marginal, not the model.
   solver's policy (seed 0): success queenOnD8 at 254 s; the neck grip carried the queen 47 s to d8.
+
+Stand-up, set-down and release replayed from the real 16:48 run (pnp.py, policy/real/autologs/20261009-164852-pnpgrasp/
+joints.csv; gripper goal = reading - load/62). Queen lying on the board, base (0.338, 0.023), crown towards (0.370, 0.025):
+the grasp point the real jaw tip had (0.370, 0.022) and the base 3.2 cm below the tip at the real base touch. With the queen
+3 mm closer to the fixed jaw the descending gripper pushes it 5 cm aside.
+  grasp: contact at 8.8, load 292 then 253 (real 9.0, 312 then 200)
+  stand-up held at lean 23-24° (real 21° at this pitch, 69°); tip-to-base along the axis 33-35 mm throughout
+  set-down: the queen's base meets the board and the arm stops 0.4-0.8° short of the real final readings (tip z 58 mm
+    vs 52 mm at the real readings), shoulder load +20; the queen does not slide in the jaws. Real: the readings
+    arrived, so the queen slid ~6 mm through the grip (7.5 mm in the solver's model), with no shoulder-load change.
+  release: the sim queen, leaning 24° away from the robot, rights itself and stands (base (0.321, 0.032)). Real: fell
+    away from the robot.
+  pad friction 0.5: the same. Pad friction 0.3: the queen slips out of the jaws during the stand-up at lean ~60°,
+    which the real arm held. So pad friction alone cannot give both.
