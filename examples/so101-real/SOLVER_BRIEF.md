@@ -125,3 +125,9 @@ positions. Your final policy goes in `policy/` and is started by `policy.launch.
 5. Edit only your own `policy/` folder and scratch files. Do not change the example, the robotics
    package, the skill or the configuration.
 6. No models trained on this simulation; off-the-shelf models and classic vision are fine.
+
+**Exception for diagnosis.** To root-cause a failure or a sim/real difference you may read the
+simulator's recorded truth in the run's bag (`/robot/joint_states`, `/tf`, `/sim/audit`,
+`/sim/evaluation` metrics) and `evidence/`. Use it only to understand what happened. It must never
+become an input to your policy: no constants tuned from it and no reading it at run time. The
+sources in rule 2 and `REAL_OBSERVATIONS.md` stay off limits.
