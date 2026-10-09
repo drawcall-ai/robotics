@@ -96,10 +96,11 @@ one. That is within friction's uncertainty, so the masses stay.
 ## Failure modes the solver must be able to hit (RO §6)
 
 1. Weak grip, piece slides out: ◐. The squeeze load matches and the gripper is capped at 50 %.
-   But the sim queen also tilts out of firm neck grips while carried (`reconcile.txt`), which the real one never
-   did: a 5 cm lift raises it 3.3 cm with 13° tilt, and policy carries drop it within 10–20 s, at queen friction 0.5
-   as at 0.2 and with or without the jaw shift. Likely cause: contacts are condim 3, so there is no torsional
-   friction, and the queen pivots about the closing axis between two pads. That needs a package change.
+   The jaw pads now have torsional friction 0.02 m (condim 4). It changes no matched check (`reconcile.txt`), and
+   policy carries still drop the queen: lifted to 9.3 cm with a steady 11° tilt, it creeps down through the closed
+   jaws (true jaw angle −2.4° → −4.9° over 5 s) and lands upright. `grip.py` holds at load 188 or 297 for 25 s
+   (tilt 14°, from the first lift, with or without torsion). So the drop depends on the policy's grasp (pitch ≈77°,
+   its height on the neck), not on pad friction. The real carries clamped at load 250–290 and never dropped.
 2. Tool-down poses unreachable far out (wrist ±86°): ✅.
 3. The open jaw lands on the piece: ✅.
 4. Near-table kinematic error: ◐. The sim now follows the careful calibration, so the remaining

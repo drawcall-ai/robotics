@@ -211,11 +211,16 @@ export function arm(height: number) {
     const collider = new BoxCollider({ size });
     collider.position.set(...position).applyMatrix4(place(name).frame);
     place(name).body.add(collider);
+    return collider;
   }
+  // The printed pads grip over an area, so they resist a pinched piece turning about the closing
+  // axis: torsional friction, 2 cm (MuJoCo lets a held piece creep at a rate set by it, ≈1°/s
+  // here). A collider's material replaces the body's, so the friction is repeated.
+  const pad = { staticFriction: 0.8, dynamicFriction: 0.8, restitution: 0, torsionalFriction: 0.02 };
   box("gripper_link", [0.04, 0.035, 0.035], [0, 0, -0.022]);
-  for (const pad of fixedPads) box("gripper_link", pad.size, pad.position);
-  for (const pad of movingPads)
-    box("moving_jaw_so101_v1_link", pad.size, pad.position);
+  for (const { size, position } of fixedPads) box("gripper_link", size, position).setMaterial(pad);
+  for (const { size, position } of movingPads)
+    box("moving_jaw_so101_v1_link", size, position).setMaterial(pad);
   // Raspberry Pi Camera V2.1, 1280x960 from the binned 1640x1232 mode: fx = fy = 1061 px,
   // principal point centred, no distortion; mounted as calibrated (OpenCV frame in gripper_link).
   const camera = new CameraSensor({

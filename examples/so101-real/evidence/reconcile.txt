@@ -22,3 +22,12 @@ Policy carries (solver's policy snapshot, seed 0), queen friction 0.2 vs 0.5 (ef
   0.5: lifted to 9.6 cm, carried, tilt 3-4.5°, falls out at 214 s.
   The jaw-queen friction is max(0.8, queen) = 0.8 in both: the backend writes condim="3" friction="mu 0 0", no pairs
   or priorities, so MuJoCo takes the larger value.
+
+With torsional friction 0.02 m on the jaw pads (robot.ts; package a9e64a4):
+  lying L1-L4 at the real pose: grip 5.1, load 130; carried; stood on the board, end (0.334, 0.003), tilt 6.7
+  real Q neck grasp: grip 7.6, load 221
+  grip.py: contact 7.6, squeeze load 188; held 25 s after the lift at z 3.5 cm, tilt 14.4. Squeeze 5 units: load 297, held, tilt 13.8
+  push replay: queen slides 6.8 cm to (0.251, 0.009), upright (tilt 0.05 at the end)
+  policy carry (seed 0, solver's snapshot): first neck hold lifted to 9.3 cm, tilt 11°, released at 203.7 s and landed
+    upright; second hold the same at 303.4 s. Jaws stay closed (true jaw angle creeps −2.4° → −4.9°) while the queen
+    slides down out of them.
