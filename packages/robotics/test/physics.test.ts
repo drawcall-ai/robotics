@@ -6,8 +6,11 @@ import {
   JointDrive,
   RevoluteJoint,
   RigidBody,
+  SphereCollider,
+  registry,
 } from "@drawcall/physics";
 import { buildWorld } from "@drawcall/physics-mujoco";
+import { Quaternion } from "three";
 import { defer } from "./fixture.js";
 
 async function world(gravity: [number, number, number]) {
@@ -63,4 +66,46 @@ it("holds a joint still against torques below its friction loss", async () => {
   expect(joint.getState().position).toBeGreaterThan(2);
   expect(joint.getState().position).toBeLessThan(3);
   expect(() => new JointDrive({ frictionLoss: -1 })).toThrow();
+});
+
+it("keeps a pinched body from spinning about the pinch with torsional friction", async () => {
+  const pinch = async (torsionalFriction: number) => {
+    // As the simulator builds it: stiff elliptic friction, which holds instead of creeping.
+    const physics = await buildWorld({
+      gravity: [0, -9.81, 0],
+      fixedDelta: 0.002,
+      frictionCone: "elliptic",
+      frictionImpedanceRatio: 10,
+    });
+    // Two round pads, one contact point each, squeeze a bar near one end along X.
+    for (const side of [-1, 1]) {
+      const pad = new RigidBody({ type: "static" });
+      pad.add(
+        new SphereCollider({ radius: 0.005 }).setMaterial({
+          staticFriction: 1,
+          dynamicFriction: 1,
+          torsionalFriction,
+        }),
+      );
+      pad.position.x = side * 0.0148;
+    }
+    // Its weight, 4 cm from the pinch, turns it about X.
+    const bar = new RigidBody({ mass: 0.03 });
+    bar.add(new BoxCollider({ size: [0.02, 0.02, 0.1] }));
+    bar.position.z = 0.04;
+    for (let step = 0; step < 500; step++) physics.update(0.002);
+    const squeeze = physics
+      .contacts(bar)
+      .reduce((sum, c) => sum + Math.abs(c.force * c.normal.x), 0);
+    physics.dispose();
+    registry.clear();
+    return { angle: bar.quaternion.angleTo(new Quaternion()), squeeze };
+  };
+  const without = await pinch(0);
+  // MuJoCo softens a friction dimension by (sliding / torsional friction)², so a held body
+  // creeps: about 20°/s at 0.003 m, 2°/s at 0.01 m, under 0.6°/s at 0.03 m here.
+  const held = await pinch(0.03);
+  expect(without.angle).toBeGreaterThan(0.5);
+  expect(held.angle).toBeLessThan(0.01);
+  expect(held.squeeze).toBeGreaterThan(1);
 });

@@ -6,10 +6,10 @@ settings:
 
 patchedDependencies:
   '@drawcall/physics-mujoco@0.13.0':
-    hash: 97c3aab7e7afc9afdf05a73eb497f2a615b003f8995d8bc3ef89fd530aca9e67
+    hash: 984cb13e6d03ab350ca98faacbd31aa598aefa9aaa5d76aa0261c6cd4339e508
     path: patches/@drawcall__physics-mujoco@0.13.0.patch
   '@drawcall/physics@0.13.0':
-    hash: 987f21ffa319ff2f0f5afa2d65d4a26cff8a61c90a50caa60d627f2c1e8c33f1
+    hash: 49ef8c0d6b94deb1690e697dfebd3f4ebc4bba285314256aa0ee73537e7f25b8
     path: patches/@drawcall__physics@0.13.0.patch
   rclnodejs@2.2.0:
     hash: be98ba268729fcbd7842f34a8badf26aa9853cb64c26f133927d07377a92eae0
@@ -39,7 +39,7 @@ importers:
     dependencies:
       '@drawcall/physics':
         specifier: 0.13.0
-        version: 0.13.0(patch_hash=987f21ffa319ff2f0f5afa2d65d4a26cff8a61c90a50caa60d627f2c1e8c33f1)(three@0.185.1)
+        version: 0.13.0(patch_hash=49ef8c0d6b94deb1690e697dfebd3f4ebc4bba285314256aa0ee73537e7f25b8)(three@0.185.1)
       '@drawcall/robotics':
         specifier: workspace:*
         version: link:../../packages/robotics
@@ -64,7 +64,7 @@ importers:
     dependencies:
       '@drawcall/physics':
         specifier: 0.13.0
-        version: 0.13.0(patch_hash=987f21ffa319ff2f0f5afa2d65d4a26cff8a61c90a50caa60d627f2c1e8c33f1)(three@0.185.1)
+        version: 0.13.0(patch_hash=49ef8c0d6b94deb1690e697dfebd3f4ebc4bba285314256aa0ee73537e7f25b8)(three@0.185.1)
       '@drawcall/robotics':
         specifier: workspace:*
         version: link:../../packages/robotics
@@ -89,7 +89,7 @@ importers:
     dependencies:
       '@drawcall/physics':
         specifier: 0.13.0
-        version: 0.13.0(patch_hash=987f21ffa319ff2f0f5afa2d65d4a26cff8a61c90a50caa60d627f2c1e8c33f1)(three@0.185.1)
+        version: 0.13.0(patch_hash=49ef8c0d6b94deb1690e697dfebd3f4ebc4bba285314256aa0ee73537e7f25b8)(three@0.185.1)
       '@drawcall/robotics':
         specifier: workspace:*
         version: link:../../packages/robotics
@@ -108,7 +108,7 @@ importers:
     dependencies:
       '@drawcall/physics-mujoco':
         specifier: 0.13.0
-        version: 0.13.0(patch_hash=97c3aab7e7afc9afdf05a73eb497f2a615b003f8995d8bc3ef89fd530aca9e67)(@drawcall/physics@0.13.0(patch_hash=987f21ffa319ff2f0f5afa2d65d4a26cff8a61c90a50caa60d627f2c1e8c33f1)(three@0.185.1))(three@0.185.1)
+        version: 0.13.0(patch_hash=984cb13e6d03ab350ca98faacbd31aa598aefa9aaa5d76aa0261c6cd4339e508)(@drawcall/physics@0.13.0(patch_hash=49ef8c0d6b94deb1690e697dfebd3f4ebc4bba285314256aa0ee73537e7f25b8)(three@0.185.1))(three@0.185.1)
       '@foxglove/rosmsg':
         specifier: ^5.0.5
         version: 5.0.5
@@ -145,7 +145,7 @@ importers:
     devDependencies:
       '@drawcall/physics':
         specifier: 0.13.0
-        version: 0.13.0(patch_hash=987f21ffa319ff2f0f5afa2d65d4a26cff8a61c90a50caa60d627f2c1e8c33f1)(three@0.185.1)
+        version: 0.13.0(patch_hash=49ef8c0d6b94deb1690e697dfebd3f4ebc4bba285314256aa0ee73537e7f25b8)(three@0.185.1)
       '@types/node':
         specifier: ^26.6.0
         version: 26.6.0
@@ -1357,13 +1357,13 @@ snapshots:
 
   '@dimforge/rapier3d-compat@0.12.0': {}
 
-  '@drawcall/physics-mujoco@0.13.0(patch_hash=97c3aab7e7afc9afdf05a73eb497f2a615b003f8995d8bc3ef89fd530aca9e67)(@drawcall/physics@0.13.0(patch_hash=987f21ffa319ff2f0f5afa2d65d4a26cff8a61c90a50caa60d627f2c1e8c33f1)(three@0.185.1))(three@0.185.1)':
+  '@drawcall/physics-mujoco@0.13.0(patch_hash=984cb13e6d03ab350ca98faacbd31aa598aefa9aaa5d76aa0261c6cd4339e508)(@drawcall/physics@0.13.0(patch_hash=49ef8c0d6b94deb1690e697dfebd3f4ebc4bba285314256aa0ee73537e7f25b8)(three@0.185.1))(three@0.185.1)':
     dependencies:
-      '@drawcall/physics': 0.13.0(patch_hash=987f21ffa319ff2f0f5afa2d65d4a26cff8a61c90a50caa60d627f2c1e8c33f1)(three@0.185.1)
+      '@drawcall/physics': 0.13.0(patch_hash=49ef8c0d6b94deb1690e697dfebd3f4ebc4bba285314256aa0ee73537e7f25b8)(three@0.185.1)
       '@mujoco/mujoco': 3.13.0
       three: 0.185.1
 
-  '@drawcall/physics@0.13.0(patch_hash=987f21ffa319ff2f0f5afa2d65d4a26cff8a61c90a50caa60d627f2c1e8c33f1)(three@0.185.1)':
+  '@drawcall/physics@0.13.0(patch_hash=49ef8c0d6b94deb1690e697dfebd3f4ebc4bba285314256aa0ee73537e7f25b8)(three@0.185.1)':
     dependencies:
       three: 0.185.1
 

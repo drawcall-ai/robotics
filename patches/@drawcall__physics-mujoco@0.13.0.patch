@@ -1,3 +1,20 @@
+diff --git a/dist/model/contacts.js b/dist/model/contacts.js
+index b95a3d6f50fab8844b0bdd6036a6203b6b54c68b..dd6554e6d4a25de474aa37955af57f40d23e0924 100644
+--- a/dist/model/contacts.js
++++ b/dist/model/contacts.js
+@@ -30,7 +30,11 @@ export function contacts(bodies, fixedDelta) {
+             ? 1
+             : -Math.log(restitution) /
+                 Math.sqrt(Math.PI ** 2 + Math.log(restitution) ** 2);
+-        return `contype="${contype}" conaffinity="${conaffinity}" condim="3" friction="${geometry.friction} 0 0" solref="${stiffness} ${damping}"`;
++        // MuJoCo gives a contact the larger condim and friction of its two geometries, so one
++        // collider with torsional or rolling friction gives it to all of its contacts.
++        const { torsionalFriction: torsion, rollingFriction: rolling } = geometry;
++        const condim = rolling > 0 ? 6 : torsion > 0 ? 4 : 3;
++        return `contype="${contype}" conaffinity="${conaffinity}" condim="${condim}" friction="${geometry.friction} ${torsion} ${rolling}" solref="${stiffness} ${damping}"`;
+     };
+ }
+ /** contype and conaffinity for each group, colliding exactly as `matches` says. */
 diff --git a/dist/model/joints.js b/dist/model/joints.js
 index 93f344e71ae59bfe64c740964f9624a0fa662359..875f9c47af85c0b8f2b5cc190b694dd29b911c9c 100644
 --- a/dist/model/joints.js
@@ -24,6 +41,32 @@ index 93f344e71ae59bfe64c740964f9624a0fa662359..875f9c47af85c0b8f2b5cc190b694dd2
      };
      if (joint instanceof FixedJoint) {
          // The child joins its parent's rigid body, and MuJoCo never collides a body with itself.
+diff --git a/dist/model/shapes.d.ts b/dist/model/shapes.d.ts
+index e3768fa9033e8b0a77e725884ad0b0bc9946d8d6..ef478d93a53ed4e3b042aaf789e00489d60fd634 100644
+--- a/dist/model/shapes.d.ts
++++ b/dist/model/shapes.d.ts
+@@ -7,6 +7,8 @@ export interface Geometry {
+     groups: CollisionGroups;
+     friction: number;
+     restitution: number;
++    torsionalFriction: number;
++    rollingFriction: number;
+ }
+ interface Shapes {
+     xml: string;
+diff --git a/dist/model/shapes.js b/dist/model/shapes.js
+index 6d93f35220e58a30fe84c1d88de17e29a266472a..7ccf1c6adc4e330045e3ed5b02e015ac8cdf70f0 100644
+--- a/dist/model/shapes.js
++++ b/dist/model/shapes.js
+@@ -26,6 +26,8 @@ export function shapes(owner, contact) {
+                     groups: resolveCollisionGroups(collider, owner),
+                     friction: material?.dynamicFriction ?? 0,
+                     restitution: material?.restitution ?? 0,
++                    torsionalFriction: material?.torsionalFriction ?? 0,
++                    rollingFriction: material?.rollingFriction ?? 0,
+                 };
+                 geometries.push(geometry);
+                 xml.push(`<geom name="${key}" ${placement(matrix)} ${attributes} density="${unitDensity ? 1 : (material?.density ?? 0)}" ${contact(geometry)}/>`);
 diff --git a/dist/queries.d.ts b/dist/queries.d.ts
 index f68e116492e1ca602873ebcf29a5fa74fe2412be..8010fd7f57abbe65c591d0fcd4b36faa33d08ae4 100644
 --- a/dist/queries.d.ts

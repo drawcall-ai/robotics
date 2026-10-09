@@ -1,3 +1,34 @@
+diff --git a/dist/body.js b/dist/body.js
+index 2a738bbe40ad46f1a8bb4d9a4219cdd6a849ef83..caae6728068391c072ed1a88eb254b211a774f87 100644
+--- a/dist/body.js
++++ b/dist/body.js
+@@ -230,6 +230,8 @@ export class RigidBody extends Group {
+             dynamicFriction: material?.dynamicFriction ?? 0.5,
+             restitution: material?.restitution ?? 0,
+             density: material?.density ?? 1000,
++            torsionalFriction: material?.torsionalFriction ?? 0,
++            rollingFriction: material?.rollingFriction ?? 0,
+         };
+     }
+     validate() {
+diff --git a/dist/colliders.d.ts b/dist/colliders.d.ts
+index 0fa8fee1a9b93c2acf873ece4b091c7af96eba8b..f8804b67e76c83e3983574fd4e800f2bd083ccc9 100644
+--- a/dist/colliders.d.ts
++++ b/dist/colliders.d.ts
+@@ -6,6 +6,13 @@ export interface PhysicsMaterial {
+     readonly dynamicFriction?: number;
+     readonly restitution?: number;
+     readonly density?: number;
++    /**
++     * Resistance to spinning about the contact normal, m: the torque it can hold is this times
++     * the normal force. Contacts have none unless a collider in them sets it.
++     */
++    readonly torsionalFriction?: number;
++    /** Resistance to rolling, m, likewise. */
++    readonly rollingFriction?: number;
+ }
+ export interface CollisionGroups {
+     readonly membership: number;
 diff --git a/dist/drive.d.ts b/dist/drive.d.ts
 index 208c6e736d8b8fb2568968159a941081ae77aa33..6a8c349b6cb5c9d669ede7de40462de8e1080bac 100644
 --- a/dist/drive.d.ts
