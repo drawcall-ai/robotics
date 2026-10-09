@@ -27,7 +27,10 @@ Evidence is in `evidence/`, made by builder-only scripts that read the true join
   2026-10-08). Pushed past, the sim's roll load goes to ±1000. The arm starts in the real rest pose: readings
   (−5.7, −94.5, 89.5, 16.9, −5.6, 5.2) real, (−5.7, −94.5, 89.6, 17.0, −5.6, 5.2) sim.
 - **Servos** (`servo.ts`): P-only on the reading, K = 7.9 N·m/rad at P=16, capped at stall
-  (2.94 N·m; gripper 50 %). MuJoCo Coulomb friction is 0.35 N·m on the arm joints.
+  (2.94 N·m; gripper 50 %). MuJoCo Coulomb friction is 0.35 N·m on the shoulder
+  and elbow, 0.2 on wrist_flex, 0.15 on the pan and 0.12 on the roll (`robot.ts` FRICTION), scaled by
+  the real logs' breakaway loads. On a combined move the wrist therefore leads the loaded shoulder:
+  after the real 16:53 release its jaw tip dipped 4.0 mm, the sim's (same goals) 5.0 mm.
   Present_Load = K(present − goal) in ‰ of stall. Heat: dT/dt = 0.3125·load² − (T − 25)/1440 s,
   torque off at 70 °C until below 55 °C and a new goal. A pause between turns counts its
   wall-clock time, up to 120 s, as holding time.

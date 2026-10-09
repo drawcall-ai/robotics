@@ -49,6 +49,21 @@ export const ORDER = Object.keys(RANGES);
  * load 40 (2026-10-08 lying grasp). The servo would turn a full turn; the cable is a hard stop.
  */
 const ROLL_STOPS = [-121.5, 74.5] as const;
+/**
+ * Coulomb gear friction per joint, N·m. RO §2's ±120-unit load hysteresis on the shoulder gives
+ * 0.35. In the 2026-10-09 real logs a joint's load swings before it breaks away by about 110–160
+ * units on the shoulder and elbow, 60–80 on wrist_flex, 50–60 on the pan and 40–48 on the roll;
+ * the others scale with that. So on a combined move the loaded shoulder lags the wrist, as the
+ * real one did after the 16:53 release (its jaw tip dipped 4 mm).
+ */
+const FRICTION: Record<string, number> = {
+  shoulder_pan: 0.15,
+  shoulder_lift: 0.35,
+  elbow_flex: 0.35,
+  wrist_flex: 0.2,
+  wrist_roll: 0.12,
+  gripper: 0,
+};
 
 function transform(
   xyz: readonly [number, number, number],
@@ -266,7 +281,7 @@ export function arm(height: number) {
     // LeRobot limits the gripper to half the stall torque.
     torqueLimit: name === "gripper" ? 0.5 : 1,
     unitsPerDegree: name === "gripper" ? 100 / ((GRIPPER_TRAVEL * 180) / Math.PI) : 1,
-    friction: name !== "gripper",
+    friction: FRICTION[name]!,
   }));
   const bus = new ServoBus(servos, calibration);
   return { robot, bus };

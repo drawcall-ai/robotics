@@ -7,9 +7,10 @@
 // - P-only position control on the reading, torque = K·(goal − present) capped at the torque
 //   limit, K set by the P coefficient (16 by default, K = 7.9 N·m/rad). Gravity makes the arm sag
 //   by degrees.
-// - Gear friction: Coulomb friction of 0.35 N·m on each arm joint. A joint at rest ignores goal
-//   changes smaller than that torque over K (2.5° at P=16), and where it settles, and so its
-//   load, depends on the side it came from.
+// - Gear friction: Coulomb friction per joint (0.35 N·m on the shoulder and elbow, less on the
+//   lighter-loaded joints). A joint at rest ignores goal changes smaller than that torque over K
+//   (2.5° at P=16 for 0.35 N·m), and where it settles, and so its load, depends on the side it
+//   came from.
 // - Present_Load: the commanded torque K·(present − goal), in tenths of a percent of stall torque.
 // - Temperature: dT/dt = 0.3125·load² − (T − 25)/1440 s; at 70 °C the motor cuts its torque and
 //   stays off until it is below 55 °C and receives a new goal. Heat follows simulated time; a
@@ -28,8 +29,6 @@ import { getROS2, header, type ROS2 } from "@drawcall/robotics";
 export const STALL = 2.94;
 /** Joint stiffness per unit of P coefficient, N·m/rad: P=16 gives 47 load units per degree (§2). */
 const STIFFNESS_PER_P = 7.9 / 16;
-/** Coulomb friction of a geared servo, N·m: §2's load hysteresis, ±120 units of 2.94 N·m. */
-const FRICTION = 0.35;
 /** The longest pause charged as holding time, s. */
 const PAUSE = 120;
 const AMBIENT = 25;
@@ -48,8 +47,8 @@ export interface ServoJoint {
   torqueLimit: number;
   /** Reading units per degree of motor rotation: 1 for the arm, 100/130 for the gripper. */
   unitsPerDegree: number;
-  /** Whether gear friction holds the joint; off for the light, fast gripper. */
-  friction: boolean;
+  /** Coulomb gear friction, N·m; 0 for the light, fast gripper. */
+  friction: number;
 }
 
 /** The hidden map between readings and true joint angles, both in a joint order. */
@@ -91,7 +90,7 @@ export class ServoBus {
         maxForce: torqueLimit * STALL,
         // No-load speed of the STS3215 at 12 V, 0.222 s per 60°.
         maxVelocity: 4.7,
-        frictionLoss: friction ? FRICTION : 0,
+        frictionLoss: friction,
       });
       joint.setDrive(drive);
       return drive;

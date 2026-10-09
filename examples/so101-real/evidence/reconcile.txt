@@ -66,3 +66,14 @@ the grasp point the real jaw tip had (0.370, 0.022) and the base 3.2 cm below th
     away from the robot.
   pad friction 0.5: the same. Pad friction 0.3: the queen slips out of the jaws during the stand-up at lean ~60°,
     which the real arm held. So pad friction alone cannot give both.
+
+The move after the 16:53 release (pnp.py with GOALS_FROM=208: goals rebuilt as reading - load/47, no integral).
+Real: the wrist turned -82.5 -> -80.5 while the shoulder held still, its load 28 -> 200; the jaw tip dipped 4.0 mm
+(52.3 -> 48.3) before the shoulder moved. Sim, every arm joint at 0.35 N·m: the shoulder held (load 35 -> 277) but
+the wrist lagged too, so the tip dipped 0.9 mm. Per-joint friction from the real breakaway loads (shoulder and
+elbow 0.35, wrist_flex 0.2, pan 0.15, roll 0.12 N·m): the wrist leads and the tip dips 5.0 mm (49.9 -> 44.9).
+The sim queen still stands: it had righted itself at the opening, clear of the jaws, because it never slid down
+the grip at set-down (above). Unchanged with it: lying L1-L4 (5.1 / 125, stood on the board, 7.1° tilt), real
+Q neck grasp (7.8 / 229), push (6.8 cm, upright). The solver's policy succeeds on seed 3 (neck grip, carry,
+place on d8). grip_pose.py's single 6 cm move along a pitched axis now swings the jaws onto the crown (the wrist
+leads), so that check needs a policy-like stepped approach; with the old friction it clamped (6.3 / 186) and held.

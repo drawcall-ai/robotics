@@ -5,6 +5,7 @@ past contact give load ≈186), so a held piece is squeezed as hard as the real 
 jaw tip point and gripper load every second, to set against the queen's heartbeat."""
 import csv
 import json
+import os
 import sys
 
 import numpy as np
@@ -25,21 +26,39 @@ for r in rows:
         break
     q = dict(zip(J, map(float, r[1:7])))
     q["gripper"] -= float(r[12]) / 62
-    path.append((t, q))
+    # The real goals: Present_Load = K (present - goal), K = 47 load units per degree at P=16.
+    goal = {j: q[j] - float(r[7 + i]) / 47 for i, j in enumerate(J[:5])}
+    path.append((t, q, goal))
 d = Driver()
 r = d.robot
 bias = {j: 0.0 for j in J[:5]}
+# RAMP=t0,t1: from t0 on, the integral holds still and the arm's goals ramp linearly by the change in
+# the logged readings from t0 to t1 (a plain combined move, as a policy commands it), then hold.
+ramp = [float(v) for v in os.environ["RAMP"].split(",")] if os.environ.get("RAMP") else None
+if ramp:
+    at = lambda when: min(path, key=lambda p: abs(p[0] - when))[1]
+    q0, q1 = at(ramp[0]), at(ramp[1])
+# GOALS_FROM=t: from t on, command the real goals reconstructed from readings and loads, no integral.
+goals_from = float(os.environ.get("GOALS_FROM", 1e9))
 start = r.time
 mark = 0.0
-for t, q in path:
+for t, q, real_goal in path:
     while r.time - start < t:
         r.wait(0.02)
-    for j in J[:5]:
-        bias[j] = max(-8.0, min(8.0, bias[j] + 0.2 * (q[j] - r.joints[j])))
-    d.goal.update({j: q[j] + bias.get(j, 0.0) for j in J})
+    if t >= goals_from:
+        d.goal.update(real_goal)
+        d.goal["gripper"] = q["gripper"]
+    elif ramp and t >= ramp[0]:
+        f = min(1.0, (t - ramp[0]) / (ramp[1] - ramp[0]))
+        d.goal.update({j: q0[j] + bias[j] + f * (q1[j] - q0[j]) for j in J[:5]})
+        d.goal["gripper"] = q["gripper"]
+    else:
+        for j in J[:5]:
+            bias[j] = max(-8.0, min(8.0, bias[j] + 0.2 * (q[j] - r.joints[j])))
+        d.goal.update({j: q[j] + bias.get(j, 0.0) for j in J})
     r.goal(**d.goal)
     if t >= mark:
-        mark = t + 1.0
+        mark = t + (0.25 if ramp and t >= ramp[0] - 1 else 1.0)
         tq = {k: v for k, v in d.truth.q.items() if k in J[:5]}
         d.log("RESULT " + json.dumps({"name": "pnp", "t": round(t, 1), "gripper": round(r.joints["gripper"], 1),
                                       "load": int(r.loads["gripper"]), "shoulder_load": int(r.loads["shoulder_lift"]), "loads": {k: int(v) for k, v in r.loads.items()},
