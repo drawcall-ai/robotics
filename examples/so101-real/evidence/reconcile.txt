@@ -1,0 +1,24 @@
+Lying grasp and neck grasps against the current model (20c544b: JAW_SHIFT 4 mm, folded term 2.2°), 2026-10-09.
+Temporary scene edits; replay.py with real plans; queen = /sim/audit heartbeat (base point x, y, z, tilt°).
+
+Lying grasp L1-L4 (evidence/real3/plan_L1..L4), queen lying where the solver located it before L1
+(policy/real/plan_lying.py: base (0.2585, 0.2486), head towards (0.2704, 0.1950); photo policy/real/shots/rr_lying1.jpg):
+  current model:         grip 4.9, load 117; carried; stood on the board, end (0.330, 0.003, 0.024), tilt 7.1
+  JAW_SHIFT 0, FOLDED 0: grip 5.3, load 142; carried; stood on the board, end (0.338, 0.003, 0.024), tilt 7.3
+  real:                  grip 7.1, load 252; carried; stood on the board at about (0.336, 0.0)
+Queen at the seed-0 measured pose instead (base (0.229, 0.202), crown away at 64°): the gripper lands on the base rim,
+pushes the queen ~1 cm and closes on nothing (grip 3, load 0). The same at 1b1af4d and with JAW_SHIFT 0 / FOLDED 0, so the
+miss comes from the queen pose, not from the jaw shift or the folded term. The real queen had moved by 21:05 on 2026-10-08.
+
+Neck grasp Q1-Q2 (policy/real/plan_Q1, plan_Q2; real queen at (0.215, -0.009), policy/real/q3.json), queen standing there:
+  current model: grip 7.6, load 219, queen undisturbed until the close.  Real: grip 5.7 (rq_3), lifted.
+
+grip.py (RO §4, queen standing on the table at (0.248, 0.208)), now through the current calibration:
+  contact 7.6, squeeze load 186 (real 184). The 5 cm lift raises the queen only 3.3 cm and it tilts 13° in the jaws;
+  the same with JAW_SHIFT 0 (load 185, tilt 13.7).
+
+Policy carries (solver's policy snapshot, seed 0), queen friction 0.2 vs 0.5 (effective before 20c544b):
+  0.2: neck-gripped queen lifted to 9.4 cm, tilt grows 3 -> 8°, falls out at 206 s; again at 474 s (from 7.5 cm).
+  0.5: lifted to 9.6 cm, carried, tilt 3-4.5°, falls out at 214 s.
+  The jaw-queen friction is max(0.8, queen) = 0.8 in both: the backend writes condim="3" friction="mu 0 0", no pairs
+  or priorities, so MuJoCo takes the larger value.

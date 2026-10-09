@@ -14,16 +14,17 @@ from drive import Driver  # noqa: E402
 from truth import gripper  # noqa: E402
 
 J = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
-OFF = np.array([0, 4.4, -10.8, 5.2, 65.0])
-LIM = np.array([101, 89, 86, 85.5, 179])
+# calibration.ts: model = reading + FITTED (roll: ROLL_ERROR), the shoulder 2.2° back when folded.
+OFF = np.array([0, -0.09, 1.55, -0.71, 100.0])
+LIM = np.array([101.6, 95.4, 90.3, 85.9, 180])
 
 
 def true_from_readings(r):
-    g = min(1, max(0, (r[1] - 5) / 30))
-    return np.radians(np.array(r) + OFF + g * np.array([0, 10, 0, 0, 0]))
+    folded = 2.2 * min(1, max(0, (r[2] - 47) / 9))
+    return np.radians(np.array(r) + OFF - np.array([0, folded, 0, 0, 0]))
 
 
-GRASP = np.array([-0.004, 0, -0.098, 1])  # between the jaw pads, by the fixed jaw
+GRASP = np.array([-0.004, 0, -0.098 + 0.004, 1])  # between the jaw pads, by the fixed jaw (JAW_SHIFT)
 
 
 def solve(p, close_dir, r0):

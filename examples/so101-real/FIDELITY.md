@@ -72,7 +72,7 @@ Evidence is in `evidence/`, made by builder-only scripts that read the true join
 | RO §2: 3° step down at rest | no motion, load 336 → 212 | no motion, 321 → 180 | ✅ |
 | RO §2: approach-direction loads | 104…344 | 78 / 321 | ✅ |
 | RO §2: overheat trip | after ≈1 h at load 300–360 | model: 58 min at 330; pressing the table at 1000: 140 s (`thermal.py`) | ✅ |
-| RO §4: gentle squeeze (contact + 3) | gripper load 184 | 188 (`grip.py`). Re-run after the jaw shift: its planned neck grasp now closes on nothing (queen on the table, untouched), so its targets need refitting | ◐ |
+| RO §4: gentle squeeze (contact + 3) | gripper load 184 | 186 (`grip.py`, now through the current calibration and jaw shift) | ✅ |
 | RO §5 B, reached (`contacts.py`, readings converted) | jaw on table at 58.7 / −52.5 | on table at 55.7 / −53.3 (new offsets put B 1.4 cm below the table) | ◐ |
 | RO §5 C, reached | on table at 54.2 / −48.2 | on table at 53.0 / −48.6 | ✅ |
 | RO §5 C → "up 4 cm", plain P=16 | jaw ≈0.5–1 cm up | 0.45 cm (readings stop at 47.4 / −39.8 under sag and friction) | ✅ |
@@ -88,13 +88,18 @@ with goal = present, so its gravity torque is at most friction plus 36 units, ab
 the sim just meets. The touch descent hints the sim shoulder carries ≈0.1 N·m more than the real
 one. That is within friction's uncertainty, so the masses stay.
 
-| Real lying grasp + stand-up, replayed (`replay.py`, plans L1–L4, `lying.jsonl`) | clamps at 7.1, load 252; carried; stands on the board | queen placed at the noted base point: clamps at 12.7, load 227, then slips out while lifting. Placed by the noted head point instead: closes on nothing (`lyingB.jsonl`). The real queen pose is only known to ≈1 cm. With the earlier, top-heavier queen shape it clamped and stood the queen up at (33.9, 1.6) cm. Since the jaw shift and the folded-pose term, the L1 descent lands the gripper on the base rim, shoves the queen ≈1 cm and closes on nothing (gripper 3, load 0), the same before and after the friction fix, so stand-up and set-down are not replayed | ✗ |
+| Real lying grasp + stand-up, replayed (`replay.py`, plans L1–L4, `reconcile.txt`) | clamps at 7.1, load 252; carried; stands on the board at ≈(33.6, 0) cm | with the queen where the solver located it before L1 (base (25.9, 24.9) cm, crown towards (27.0, 19.5) cm, `rr_lying1.jpg`): clamps at 4.9, load 117; carried; stands on the board at (33.0, 0.3) cm, tilt 7°. The same without the jaw shift and folded term (5.3, 142). At the seed-0 lying pose, which is older (the queen had moved by then), the gripper lands on the base rim and closes on nothing, at 1b1af4d too. The earlier clamp in `lying.jsonl` came from an uncommitted state | ✅ |
+| Real neck grasp Q1–Q2 at (21.5, −0.9) cm, replayed (`reconcile.txt`) | clamps at 5.7, lifted | clamps at 7.6, load 219 | ✅ |
 | Real push (`push.py`, `real7/push_joints.csv`, `push.jsonl`): real readings from rest to the end of the push, at real timing, with an integral like the real harness; queen standing at (18.3, 0.9) cm | slid ≈4 cm outward, stayed upright | slides 6.8 cm outward, max tilt 3.7°. Before the friction fix it tipped over at the first jaw touch (0.33 N) | ✅ |
 | Real neck regrasp of the standing queen, replayed (plans S1 + f, `neck.jsonl`, `cmp-neck.jpg`) | closes past the queen to 5.3, load ≤ 32; black jaw sweeps in front of it | queen where rr_S1 shows it, (34.7, −0.5) cm, back-projected; the solver's own estimate was 2 cm off because it assumed the bigger sim queen. Same view; the jaw pushes the crown aside, gripper 7.7, load 167, no clamp (its stop is 250) | ◐ |
 
 ## Failure modes the solver must be able to hit (RO §6)
 
 1. Weak grip, piece slides out: ◐. The squeeze load matches and the gripper is capped at 50 %.
+   But the sim queen also tilts out of firm neck grips while carried (`reconcile.txt`), which the real one never
+   did: a 5 cm lift raises it 3.3 cm with 13° tilt, and policy carries drop it within 10–20 s, at queen friction 0.5
+   as at 0.2 and with or without the jaw shift. Likely cause: contacts are condim 3, so there is no torsional
+   friction, and the queen pivots about the closing axis between two pads. That needs a package change.
 2. Tool-down poses unreachable far out (wrist ±86°): ✅.
 3. The open jaw lands on the piece: ✅.
 4. Near-table kinematic error: ◐. The sim now follows the careful calibration, so the remaining
