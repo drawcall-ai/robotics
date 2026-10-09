@@ -39,19 +39,30 @@ export const GRIPPER_TRAVEL = 130 * deg;
  * (+4.4, −10.8, +5.2 before the rest-pose shift) was 9° off on the elbow.
  */
 const FITTED = [0, -0.09, 1.55, -0.71, ROLL_ERROR];
+/**
+ * Folded near the base the real arm reaches less far down than the calibration says: board touches
+ * with the elbow at 56–58° (the d8 row) met the board 5–7 mm higher than at elbow ≤ 46°, where the
+ * calibration is right to about a millimetre (the solver's D1/D2 touches, 2026-10-09). The shoulder
+ * sits 2.2° further back than its reading says, ramped in as the elbow reading goes from 47° to 56°.
+ */
+const FOLDED = 2.2;
+const folded = (elbow: number) => FOLDED * Math.min(1, Math.max(0, (elbow - 47) / 9));
+
 export const calibration: Calibration = {
   angles(readings) {
     return readings.map((r, i) =>
       i === 5
         ? GRIPPER_CLOSED + (r / 100) * GRIPPER_TRAVEL
-        : (r + FITTED[i]!) * deg,
+        : (r + FITTED[i]! - (i === 1 ? folded(readings[2]!) : 0)) * deg,
     );
   },
   readings(angles) {
+    // The elbow's reading decides the shoulder's term, and does not depend on it.
+    const elbow = angles[2]! / deg - FITTED[2]!;
     return angles.map((a, i) =>
       i === 5
         ? ((a - GRIPPER_CLOSED) / GRIPPER_TRAVEL) * 100
-        : a / deg - FITTED[i]!,
+        : a / deg - FITTED[i]! + (i === 1 ? folded(elbow) : 0),
     );
   },
 };

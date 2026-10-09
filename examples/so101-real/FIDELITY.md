@@ -112,6 +112,12 @@ wide around it for 5 s, give no success; it comes 0.4 s after the arm has lifted
 
 ## Open
 
+- Board touches D1/D2 (`touch_fit.py`, `touch_fit.txt`, readings in `real5/`). At the real
+  contact readings the sim's lowest jaw point is −3.6 to −5.5 mm below the board (mean −4.6) at
+  all eight spots, after the folded-pose term; without it the d8 row gave −9.4 to −10.7. So the
+  pose dependence is gone, but the sim's jaws sit a constant ≈4.6 mm lower than the real ones
+  relative to the model. A tool-point or jaw correction from the solver should settle that.
+
 - Near the table, pitched down, the real jaws sit ≈1–1.5 cm higher than the careful calibration
   says (touch test; the neck regrasp agrees). The camera agrees within 2 mm there. So the
   residual lies between camera and jaws: ≈3 mm is the fitted vs designed mount; the rest is
