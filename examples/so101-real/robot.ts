@@ -17,7 +17,7 @@ import {
   Vector3,
 } from "three";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
-import { fixedPads, movingPads } from "./gripper.ts";
+import { fixedPads, JAW_SHIFT, movingPads } from "./gripper.ts";
 import { hulls } from "./hulls.ts";
 import {
   calibration,
@@ -90,7 +90,15 @@ export function arm(height: number) {
       dynamicFriction: 0.8,
       restitution: 0,
     });
-    frames.set(link.name, { body, frame: new Matrix4() });
+    // The gripper's own geometry sits JAW_SHIFT up its z axis; the body, the roll axis and the
+    // camera mount stay where the calibration put them.
+    frames.set(link.name, {
+      body,
+      frame:
+        link.name === "gripper_link"
+          ? new Matrix4().makeTranslation(0, 0, JAW_SHIFT)
+          : new Matrix4(),
+    });
     robot.add(body);
   }
   function place(name: string) {
@@ -201,7 +209,7 @@ export function arm(height: number) {
     position: readonly [number, number, number],
   ) {
     const collider = new BoxCollider({ size });
-    collider.position.set(...position);
+    collider.position.set(...position).applyMatrix4(place(name).frame);
     place(name).body.add(collider);
   }
   box("gripper_link", [0.04, 0.035, 0.035], [0, 0, -0.022]);

@@ -18,7 +18,7 @@ OFF = [0, -0.09, 1.55, -0.71, 0]
 ROLL = 100.0
 BOARD = 0.0198
 TCP = np.array([-0.0079, -0.0002, -0.0981, 1])  # URDF gripper_frame point
-FIXED_TIP = np.array([-0.0119, 0, -0.1044, 1])  # fixed pad, tip centre
+FIXED_TIP = np.array([-0.0119, 0, -0.1044 + 0.004, 1])  # fixed pad, tip centre (JAW_SHIFT)
 GRIPPER_CLOSED, TRAVEL = -0.19, math.radians(130)
 
 
@@ -34,7 +34,7 @@ def rz(a):
 
 def moving_tip(g, jaw):
     t = np.eye(4)
-    t[:3, 3] = [0.0202, 0.0188, -0.0234]
+    t[:3, 3] = [0.0202, 0.0188, -0.0234 + 0.004]  # JAW_SHIFT
     return (g @ t @ rx(1.5708) @ rz(jaw) @ np.array([-0.0083, -0.082, 0.0189, 1]))[:3]
 
 

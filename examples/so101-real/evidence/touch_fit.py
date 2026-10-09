@@ -26,7 +26,7 @@ def lowest(readings, fold, lo, hi):
     q["wrist_roll"] = math.radians(readings["wrist_roll"] + 100)
     g = gripper(q)
     jaw = GRIPPER_CLOSED + readings["gripper"] / 100 * TRAVEL
-    pts = [(g @ np.array([-0.0119 + a * 0.004, b * 0.006, -0.08 + c * 0.0244, 1]))[2]
+    pts = [(g @ np.array([-0.0119 + a * 0.004, b * 0.006, -0.08 + 0.004 + c * 0.0244, 1]))[2]
            for a in (-1, 1) for b in (-1, 1) for c in (-1, 1)]
     pts.append(moving_tip(g, jaw)[2])
     return min(pts) - BOARD

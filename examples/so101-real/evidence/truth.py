@@ -14,7 +14,7 @@ CHAIN = [
     ("wrist_roll", [5.55112e-17, -0.0611, 0.0181], [1.5708, 0.0486795, 3.14159]),
 ]
 # The fixed (white) jaw's lowest point and the camera board, gripper_link frame.
-FIXED_TIP = np.array([-0.012, 0.0, -0.1044, 1.0])
+FIXED_TIP = np.array([-0.012, 0.0, -0.1044 + 0.004, 1.0])  # jaws shifted by JAW_SHIFT
 TABLE = -0.003  # table plane in base_link z
 
 

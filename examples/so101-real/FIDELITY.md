@@ -33,8 +33,10 @@ Evidence is in `evidence/`, made by builder-only scripts that read the true join
   within 0.8° and 3 mm of RO §3's. No colour cast: the real images are strongly red/pink.
 - **Jaws:** stock SO-101. The printed v47 gripper is the stock fixed-jaw body (tip at z
   −104.4 mm, gripping face at x −7.9 mm) fused with a Pi 4 frame near the wrist and the camera
-  plate; the moving jaw is stock. The collision pads are the original CAD-sized ones. The Pi
-  frame is not modelled.
+  plate; the moving jaw is stock. The Pi frame is not modelled. Relative to the calibrated camera,
+  the gripper body and moving jaw (visuals and colliders) sit 4 mm further up gripper_link's z
+  (`JAW_SHIFT`). The real board touches say 4.6 mm; the closed tips' pixels in the touch photos
+  say about 3 mm (`cmp-touch-tips.jpg`); 4 mm fits both within their precision.
 - **Scene:** white table at the base plane, base_link 3 mm above it.
   - Board as re-calibrated: 31.0 mm squares, a8 corner at (18.8, −9.8) cm, top 2.0 cm in
     base_link (2.28 cm above the table), yaw 3.5°, so d8 sits at (19.7, 1.1) cm.
@@ -113,10 +115,9 @@ wide around it for 5 s, give no success; it comes 0.4 s after the arm has lifted
 ## Open
 
 - Board touches D1/D2 (`touch_fit.py`, `touch_fit.txt`, readings in `real5/`). At the real
-  contact readings the sim's lowest jaw point is −3.6 to −5.5 mm below the board (mean −4.6) at
-  all eight spots, after the folded-pose term; without it the d8 row gave −9.4 to −10.7. So the
-  pose dependence is gone, but the sim's jaws sit a constant ≈4.6 mm lower than the real ones
-  relative to the model. A tool-point or jaw correction from the solver should settle that.
+  contact readings the sim's lowest jaw point is now −1.7 to +0.2 mm from the board (mean
+  −0.7) at all ten touches. The D1 x 0.33 touch is a false start. Before the folded-pose term and
+  the jaw shift it was −9.4 to −10.7 mm on the d8 row and −3.6 to −5.5 mm elsewhere.
 
 - Near the table, pitched down, the real jaws sit ≈1–1.5 cm higher than the careful calibration
   says (touch test; the neck regrasp agrees). The camera agrees within 2 mm there. So the
