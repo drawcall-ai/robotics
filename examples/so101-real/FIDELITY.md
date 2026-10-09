@@ -45,6 +45,12 @@ Evidence is in `evidence/`, made by builder-only scripts that read the true join
     from above (rr_V3): base 2.26 cm, crown collar ≈1.5 cm, so ×0.56 in width, and 7.3 cm long.
     RO §4's 2.9 cm base came through the old calibration. The old 2.9 cm, 7.55 cm sim queen was
     bigger, so a real queen that looks the same in the camera stands farther away.
+  - Friction (MuJoCo takes the larger of the two): queen 0.2 (felt base), board top 0.2, table
+    0.5, arm 0.8. So only the queen on the board slides easily. A queen pushed near its head
+    slides when friction is below base radius / push height, ≈0.2–0.26, and tips otherwise. The
+    real one slid upright. Before this the queen ran at the default 0.5, because each of its
+    colliders carried its own material, which replaces the body's whole one. The 0.35 it named
+    never applied.
   - Seeds other than 0 vary widely, for robustness rather than fidelity. Board: ±5 cm, ±15°,
     28–35 mm squares, 10–22 mm frame, ±4 mm height, wood colours. Queen: standing or lying,
     anywhere within reach off d8, any heading, 0.85–1.15× size, dark to medium tint. Light:
@@ -66,7 +72,7 @@ Evidence is in `evidence/`, made by builder-only scripts that read the true join
 | RO §2: 3° step down at rest | no motion, load 336 → 212 | no motion, 321 → 180 | ✅ |
 | RO §2: approach-direction loads | 104…344 | 78 / 321 | ✅ |
 | RO §2: overheat trip | after ≈1 h at load 300–360 | model: 58 min at 330; pressing the table at 1000: 140 s (`thermal.py`) | ✅ |
-| RO §4: gentle squeeze (contact + 3) | gripper load 184 | 188 (`grip.py`) | ✅ |
+| RO §4: gentle squeeze (contact + 3) | gripper load 184 | 188 (`grip.py`). Re-run after the jaw shift: its planned neck grasp now closes on nothing (queen on the table, untouched), so its targets need refitting | ◐ |
 | RO §5 B, reached (`contacts.py`, readings converted) | jaw on table at 58.7 / −52.5 | on table at 55.7 / −53.3 (new offsets put B 1.4 cm below the table) | ◐ |
 | RO §5 C, reached | on table at 54.2 / −48.2 | on table at 53.0 / −48.6 | ✅ |
 | RO §5 C → "up 4 cm", plain P=16 | jaw ≈0.5–1 cm up | 0.45 cm (readings stop at 47.4 / −39.8 under sag and friction) | ✅ |
@@ -82,7 +88,8 @@ with goal = present, so its gravity torque is at most friction plus 36 units, ab
 the sim just meets. The touch descent hints the sim shoulder carries ≈0.1 N·m more than the real
 one. That is within friction's uncertainty, so the masses stay.
 
-| Real lying grasp + stand-up, replayed (`replay.py`, plans L1–L4, `lying.jsonl`) | clamps at 7.1, load 252; carried; stands on the board | queen placed at the noted base point: clamps at 12.7, load 227, then slips out while lifting. Placed by the noted head point instead: closes on nothing (`lyingB.jsonl`). The real queen pose is only known to ≈1 cm. With the earlier, top-heavier queen shape it clamped and stood the queen up at (33.9, 1.6) cm | ◐ |
+| Real lying grasp + stand-up, replayed (`replay.py`, plans L1–L4, `lying.jsonl`) | clamps at 7.1, load 252; carried; stands on the board | queen placed at the noted base point: clamps at 12.7, load 227, then slips out while lifting. Placed by the noted head point instead: closes on nothing (`lyingB.jsonl`). The real queen pose is only known to ≈1 cm. With the earlier, top-heavier queen shape it clamped and stood the queen up at (33.9, 1.6) cm. Since the jaw shift and the folded-pose term, the L1 descent lands the gripper on the base rim, shoves the queen ≈1 cm and closes on nothing (gripper 3, load 0), the same before and after the friction fix, so stand-up and set-down are not replayed | ✗ |
+| Real push (`push.py`, `real7/push_joints.csv`, `push.jsonl`): real readings from rest to the end of the push, at real timing, with an integral like the real harness; queen standing at (18.3, 0.9) cm | slid ≈4 cm outward, stayed upright | slides 6.8 cm outward, max tilt 3.7°. Before the friction fix it tipped over at the first jaw touch (0.33 N) | ✅ |
 | Real neck regrasp of the standing queen, replayed (plans S1 + f, `neck.jsonl`, `cmp-neck.jpg`) | closes past the queen to 5.3, load ≤ 32; black jaw sweeps in front of it | queen where rr_S1 shows it, (34.7, −0.5) cm, back-projected; the solver's own estimate was 2 cm off because it assumed the bigger sim queen. Same view; the jaw pushes the crown aside, gripper 7.7, load 167, no clamp (its stop is 250) | ◐ |
 
 ## Failure modes the solver must be able to hit (RO §6)

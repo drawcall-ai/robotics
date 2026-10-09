@@ -169,7 +169,8 @@ export const boardBody = new RigidBody({ mass: 1.0 });
 boardBody.name = "chessboard";
 boardBody.position.copy(world(board.x, board.y, deskHeight + thickness));
 boardBody.rotation.y = board.yaw;
-boardBody.setMaterial({ staticFriction: 0.5, dynamicFriction: 0.5, restitution: 0 });
+// Lacquered top: 0.2, so the felted queen slides on it (the table's 0.5 still holds the board).
+boardBody.setMaterial({ staticFriction: 0.2, dynamicFriction: 0.2, restitution: 0 });
 const slab = new BoxCollider({ size: [width, thickness, width] });
 slab.position.y = -thickness / 2;
 const sides = { ...woods[1]!, color: frame, roughness: 0.6 };

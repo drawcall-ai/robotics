@@ -25,15 +25,18 @@ const [map, packed, normalMap] = await Promise.all([
 ]);
 for (const t of [map, packed, normalMap]) t.flipY = false;
 
+const felt = { staticFriction: 0.2, dynamicFriction: 0.2, restitution: 0 };
+
 /**
  * A dynamic queen standing on its base at the body origin, +Y up, `scale` times the real one's
  * size and tinted `tint` over the dark wood texture. Lacquered wood, about 20 g at scale 1 with a
- * small weight in the base, friction 0.35 against the printed jaws.
+ * small weight in the base, on a felt pad: friction 0.2, so a push near the head slides it on
+ * the board rather than tipping it, as the real queen did (contacts take the larger friction).
+ * Each collider carries the friction: a collider's own material replaces the body's whole.
  */
 export function queen(scale = 1, tint = new Color("#a07060")): RigidBody {
   const body = new RigidBody();
   body.name = "queen";
-  body.setMaterial({ staticFriction: 0.35, dynamicFriction: 0.35, restitution: 0 });
   const material = new MeshStandardMaterial({
     color: tint,
     map,
@@ -49,10 +52,10 @@ export function queen(scale = 1, tint = new Color("#a07060")): RigidBody {
   mesh.castShadow = mesh.receiveShadow = true;
   const collider = new MeshCollider({ approximation: "trimesh" }).setGeometry(shape);
   collider.scale.setScalar(scale);
-  collider.setMaterial({ density: 700 });
+  collider.setMaterial({ ...felt, density: 700 });
   const weight = new BoxCollider({ size: [0.012 * scale, 0.006 * scale, 0.012 * scale] });
   weight.position.y = 0.005 * scale;
-  weight.setMaterial({ density: 11000 });
+  weight.setMaterial({ ...felt, density: 11000 });
   body.add(mesh, collider, weight);
   return body;
 }
