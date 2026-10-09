@@ -96,11 +96,11 @@ one. That is within friction's uncertainty, so the masses stay.
 ## Failure modes the solver must be able to hit (RO §6)
 
 1. Weak grip, piece slides out: ◐. The squeeze load matches and the gripper is capped at 50 %.
-   The jaw pads now have torsional friction 0.02 m (condim 4). It changes no matched check (`reconcile.txt`), and
-   policy carries still drop the queen: lifted to 9.3 cm with a steady 11° tilt, it creeps down through the closed
-   jaws (true jaw angle −2.4° → −4.9° over 5 s) and lands upright. `grip.py` holds at load 188 or 297 for 25 s
-   (tilt 14°, from the first lift, with or without torsion). So the drop depends on the policy's grasp (pitch ≈77°,
-   its height on the neck), not on pad friction. The real carries clamped at load 250–290 and never dropped.
+   The jaw pads have torsional friction 0.02 m (condim 4). Neck grasps in the policy's geometry (`grip_pose.py`,
+   pitch 72–76, jaws closing tangentially) slip: the pad faces are vertical, friction alone carries the queen, and
+   MuJoCo's soft friction (frictionImpedanceRatio 10) lets it creep down the pads within 2–16 s, faster at a harder
+   squeeze. The real arm held such grasps (sessions 4–5). A radial close at pitch 72 holds. At ratio 100 every case
+   holds for 20 s and the solver's policy carries the queen to d8 (`reconcile.txt`); the ratio is the package's.
 2. Tool-down poses unreachable far out (wrist ±86°): ✅.
 3. The open jaw lands on the piece: ✅.
 4. Near-table kinematic error: ◐. The sim now follows the careful calibration, so the remaining
