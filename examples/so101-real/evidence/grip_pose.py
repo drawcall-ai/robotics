@@ -13,13 +13,12 @@ from scipy.optimize import least_squares
 
 sys.path.insert(0, "evidence")
 from drive import Driver  # noqa: E402
-from truth import gripper  # noqa: E402
+from truth import TIP, gripper  # noqa: E402
 
 J = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
 # calibration.ts: model = reading + FITTED (roll: ROLL_ERROR), the shoulder 2.2° back when folded.
 OFF = np.array([0, -0.09, 1.55, -0.71, 100.0])
 LIM = np.array([101.6, 95.4, 90.3, 85.9, 180])
-TIP = np.array([-0.004, 0, -0.1044 + 0.004, 1])  # jaw tips, between the pads (JAW_SHIFT)
 BOARD_TOP = 0.02  # base_link z of the measured board's top
 
 env = os.environ.get

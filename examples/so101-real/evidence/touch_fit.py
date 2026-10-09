@@ -12,7 +12,7 @@ import numpy as np
 
 sys.path.insert(0, "evidence")
 from neck_diag import GRIPPER_CLOSED, TRAVEL, moving_tip  # noqa: E402
-from truth import gripper  # noqa: E402
+from truth import JAW, gripper  # noqa: E402
 
 J = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
 OFF = [0, -0.09, 1.55, -0.71]
@@ -26,7 +26,7 @@ def lowest(readings, fold, lo, hi):
     q["wrist_roll"] = math.radians(readings["wrist_roll"] + 100)
     g = gripper(q)
     jaw = GRIPPER_CLOSED + readings["gripper"] / 100 * TRAVEL
-    pts = [(g @ np.array([-0.0119 + a * 0.004, b * 0.006, -0.08 + 0.004 + c * 0.0244, 1]))[2]
+    pts = [(g @ (np.array([-0.01515 + a * 0.00725, b * 0.006, -0.08 + c * 0.0244, 1]) + JAW))[2]
            for a in (-1, 1) for b in (-1, 1) for c in (-1, 1)]
     pts.append(moving_tip(g, jaw)[2])
     return min(pts) - BOARD

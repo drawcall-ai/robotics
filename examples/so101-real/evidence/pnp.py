@@ -12,9 +12,8 @@ import numpy as np
 
 sys.path.insert(0, "evidence")
 from drive import Driver  # noqa: E402
-from truth import gripper  # noqa: E402
+from truth import TIP, gripper  # noqa: E402
 
-TIP = np.array([-0.004, 0, -0.1044 + 0.004, 1])  # between the jaw tips (JAW_SHIFT)
 J = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"]
 log, end = sys.argv[1], float(sys.argv[2]) if len(sys.argv) > 2 and not sys.argv[2].startswith("-") else 1e9
 rows = list(csv.reader(open(log)))

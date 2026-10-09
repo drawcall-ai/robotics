@@ -39,9 +39,11 @@ Evidence is in `evidence/`, made by builder-only scripts that read the true join
 - **Jaws:** stock SO-101. The printed v47 gripper is the stock fixed-jaw body (tip at z
   −104.4 mm, gripping face at x −7.9 mm) fused with a Pi 4 frame near the wrist and the camera
   plate; the moving jaw is stock. The Pi frame is not modelled. Relative to the calibrated camera,
-  the gripper body and moving jaw (visuals and colliders) sit 4 mm further up gripper_link's z
-  (`JAW_SHIFT`). The real board touches say 4.6 mm; the closed tips' pixels in the touch photos
-  say about 3 mm (`cmp-touch-tips.jpg`); 4 mm fits both within their precision.
+  the gripper body and moving jaw sit `JAW_OFFSET` = (6.7, −3.5, 3.1) mm from the CAD (`gripper.ts`):
+  the closed tips' meeting point lies on the ray of the real photos' pixel (655, 645) (13 real
+  closed-jaw touches), at the depth (119.5 mm; photos 122 ± 5) where the ten board touches land
+  within −1.7…+0.1 mm. The fixed distal finger is 14.5 mm wide, so its apex renders at the real
+  (718, 660). This replaces the earlier 4 mm shift along z.
 - **Scene:** white table at the base plane, base_link 3 mm above it.
   - Board as re-calibrated: 31.0 mm squares, a8 corner at (18.8, −9.8) cm, top 2.0 cm in
     base_link (2.28 cm above the table), yaw 3.5°, so d8 sits at (19.7, 1.1) cm.
@@ -131,6 +133,18 @@ during a slow retreat with open jaws still around the queen, 2.7 cm from it. Reg
 wide around it for 5 s, give no success; it comes 0.4 s after the arm has lifted away.
 
 ## Open
+
+- Paused 2026-10-09 (user). Jaws relative to the camera (`JAW_OFFSET`, above): committed; touch fit
+  unchanged, sim view shows the meeting point and apex at the real pixels; lying L1–L4 clamp 6.3 /
+  load 199 (real 7.1 / 252; before 5.1 / 130), real Q neck 7.5 / 215, `grip.py` squeeze 181. The
+  push replay and the solver's policy were not re-run with it. In the sim view the closed (3.3)
+  moving jaw still stops ≈1 cm short of the white jaw where the real ones meet: the real jaws meet
+  near reading 2–3, the sim's at 0 (`GRIPPER_CLOSED`); shifting it moves every contact reading by
+  ≈2.5, not yet decided.
+- Not started: the board fold seam at the rank 4/5 boundary catching a sliding base (pending the
+  solver's confirmation).
+- Set-down slide/release topple: the sim queen does not slide in the grip when pressed onto the
+  board and rights itself at release (`reconcile.txt`); open.
 
 - Board touches D1/D2 (`touch_fit.py`, `touch_fit.txt`, readings in `real5/`). At the real
   contact readings the sim's lowest jaw point is now −1.7 to +0.2 mm from the board (mean

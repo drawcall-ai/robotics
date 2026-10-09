@@ -11,7 +11,7 @@ from scipy.optimize import least_squares
 
 sys.path.insert(0, "evidence")
 from drive import Driver  # noqa: E402
-from truth import gripper  # noqa: E402
+from truth import JAW, gripper  # noqa: E402
 
 J = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
 # calibration.ts: model = reading + FITTED (roll: ROLL_ERROR), the shoulder 2.2° back when folded.
@@ -24,7 +24,7 @@ def true_from_readings(r):
     return np.radians(np.array(r) + OFF - np.array([0, folded, 0, 0, 0]))
 
 
-GRASP = np.array([-0.004, 0, -0.098 + 0.004, 1])  # between the jaw pads, by the fixed jaw (JAW_SHIFT)
+GRASP = np.array([-0.004, 0, -0.098, 1]) + JAW  # between the jaw pads, by the fixed jaw
 
 
 def solve(p, close_dir, r0):
