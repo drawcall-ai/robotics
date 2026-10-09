@@ -45,10 +45,10 @@ const RANGES: Record<string, readonly [number, number]> = {
 export const ORDER = Object.keys(RANGES);
 /**
  * The camera ribbon stops the real roll, in readings: its load stayed ≤ 68 up to 55°, rose from
- * 72° and reached −620 at 74.3° (2026-10-09 17:42), and 18k real samples never went past
- * −36.7…+74.3°. The servo would turn a full turn; the cable is a hard stop here.
+ * 72° and reached −620 at 74.3° (2026-10-09 17:42). The other way the real roll held −121.4° at
+ * load 40 (2026-10-08 lying grasp). The servo would turn a full turn; the cable is a hard stop.
  */
-const ROLL_STOPS = [-37, 74.5] as const;
+const ROLL_STOPS = [-121.5, 74.5] as const;
 
 function transform(
   xyz: readonly [number, number, number],
