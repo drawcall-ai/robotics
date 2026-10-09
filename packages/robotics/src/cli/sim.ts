@@ -140,9 +140,11 @@ async function run(scene: string, options: SimOptions): Promise<void> {
     fixedDelta: 1 / 500,
     maxSubsteps: 32,
     solverIterations: 50,
-    // Friction constraints stiffer than penetration ones, as MuJoCo Menagerie grippers
-    // set them; at the default 1 a grasped object creeps down the pads.
-    frictionImpedanceRatio: 10,
+    // Friction constraints much stiffer than penetration ones. MuJoCo's soft friction lets a
+    // held object creep at a speed inversely proportional to this ratio: at the default 1 a
+    // grasped object creeps down the pads, and at 10 a light piece pinched between vertical
+    // pads still slid out of a position-controlled gripper within seconds.
+    frictionImpedanceRatio: 100,
     frictionCone: "elliptic",
   });
   ros.attachWorld(world);
