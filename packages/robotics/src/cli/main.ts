@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { Command, CommanderError } from "commander";
 import { kill } from "./episode.js";
