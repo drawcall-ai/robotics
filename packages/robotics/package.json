@@ -2,6 +2,7 @@
   "name": "@drawcall/robotics",
   "version": "0.1.0",
   "type": "module",
+  "description": "ROS 2 simulation for Three.js and Drawcall physics: sensors, ros2_control bindings, URDF export and a headless simulator node.",
   "sideEffects": false,
   "exports": {
     ".": {
@@ -9,17 +10,20 @@
       "import": "./dist/index.js"
     }
   },
+  "bin": {
+    "drawcall-robotics": "./dist/cli/main.js"
+  },
   "files": [
     "dist",
     "launch",
+    "skills",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.test.json",
-    "test": "vitest run",
-    "prepack": "pnpm build"
+    "test": "vitest run"
   },
   "dependencies": {
     "@drawcall/physics-mujoco": "0.16.0",
@@ -34,6 +38,10 @@
     "send": "^1.2.1",
     "tar": "^7.5.22"
   },
+  "optionalDependencies": {
+    "rclnodejs": "2.2.0",
+    "webgpu": "^0.6.1"
+  },
   "peerDependencies": {
     "@drawcall/physics": "^0.16.0",
     "three": ">=0.185.0"
@@ -43,19 +51,20 @@
     "@types/node": "^26.6.0",
     "@types/send": "^1.2.1"
   },
-  "description": "ROS 2 simulation for Three.js and Drawcall physics: sensors, ros2_control bindings, URDF export and a headless simulator node.",
-  "license": "MIT",
-  "publishConfig": {
-    "access": "public"
-  },
-  "bin": {
-    "drawcall-robotics": "./dist/cli/main.js"
-  },
-  "optionalDependencies": {
-    "rclnodejs": "2.2.0",
-    "webgpu": "^0.6.1"
-  },
   "engines": {
     "node": ">=24.2"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/drawcall-ai/robotics.git",
+    "directory": "packages/robotics"
+  },
+  "homepage": "https://github.com/drawcall-ai/robotics#readme",
+  "bugs": {
+    "url": "https://github.com/drawcall-ai/robotics/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

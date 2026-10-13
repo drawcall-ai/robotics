@@ -6,3 +6,7 @@ __pycache__/
 .pixi/
 rosbag2_*/
 runs/
+
+# Copied from the root by the publish workflow.
+packages/robotics/README.md
+packages/robotics/LICENSE

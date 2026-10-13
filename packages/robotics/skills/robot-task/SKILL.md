@@ -1,17 +1,17 @@
 ---
 name: robot-task
-description: Solve a simulated robot task in this repo (e.g. examples/so101) with the drawcall-robotics CLI, from exploring turn by turn to an autonomous policy.launch.xml evaluated on many seeds. Use when building, debugging or evaluating a policy or controller for a scene; not for changing the simulator or the robotics package itself.
+description: Solve a simulated robot task in a @drawcall/robotics scene folder with the drawcall-robotics CLI, from exploring turn by turn to an autonomous policy.launch.xml evaluated on many seeds. Use when building, debugging or evaluating a policy or controller for a scene; not for authoring the scene itself (use the robotics skill).
 ---
 
 # Solving a robot task
 
 A previous attempt ran 9 days, 51 active hours and about 300 full episodes without finishing, mostly waiting on episodes. Everything below exists to keep each iteration short and each decision honest.
 
-Run commands from the example folder inside its ROS env (`pixi run drawcall-robotics …`). `run` prints its run folder on stdout. `continue`, `stop` and `cat` default to `runs/latest`, which is whoever's run started last in that folder; when other runs may start alongside yours, pass yours: `continue --run <folder>`, `stop --run <folder>`, `cat <folder>`. When the user wants to watch, add `--viewer` to the single `run`: it opens Lichtblick, which stays live across every `continue` of that run.
+Run commands from the scene folder inside its ROS env (`pixi run drawcall-robotics …`). `run` prints its run folder on stdout. `continue`, `stop` and `cat` default to `runs/latest`, which is whoever's run started last in that folder; when other runs may start alongside yours, pass yours: `continue --run <folder>`, `stop --run <folder>`, `cat <folder>`. When the user wants to watch, add `--viewer` to the single `run`: it opens Lichtblick, which stays live across every `continue` of that run.
 
 ## Workflow
 
-**1. Explore turn by turn.** Start one run and drive the robot with small Python turns through the example's `robot.py` harness (`Robot`: `move`, `image`, `param`, and `joints`, the measured positions; read it for exact signatures):
+**1. Explore turn by turn.** Start one run and drive the robot with small Python turns through a small Python harness kept in the scene folder. The example below assumes one, `robot.py`, whose `Robot` node wraps rclpy with `move`, `image`, `param` and `joints` (the measured positions); write it once per robot and read it for exact signatures:
 
 ```sh
 pixi run drawcall-robotics run --seed 3 --timeout 30 -- python3 - <<'EOF'
@@ -63,4 +63,4 @@ Each batch episode gets `runs/<stamp>/<seed>/` with `policy.log` (the policy's s
 - **Report iteration latency in status updates** (wall time per turn or batch), so slow loops get noticed.
 - **Keep `--real-time-factor` at 1 for evaluations.** Other factors change how much sim time the policy's computation takes, so scores stop meaning what they measure.
 - **Commands expire after 0.5 s; never block the publishing thread.** Run slow work (vision, planning) in another thread, or the arm goes limp mid-motion.
-- Harness scripts that speed up iteration may stay in the example.
+- Harness scripts that speed up iteration may stay in the scene folder.
