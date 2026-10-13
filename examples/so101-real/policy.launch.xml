@@ -1,5 +1,0 @@
-<!-- The solver's autonomous policy. -->
-<launch>
-  <arg name="use_sim_time" default="false"/>
-  <executable cmd="python3 $(dirname)/policy/policy.py --ros-args -p use_sim_time:=$(var use_sim_time)" cwd="$(dirname)"/>
-</launch>

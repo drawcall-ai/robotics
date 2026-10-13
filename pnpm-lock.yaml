@@ -54,31 +54,6 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
-  examples/so101-real:
-    dependencies:
-      '@drawcall/physics':
-        specifier: 0.16.0
-        version: 0.16.0(three@0.185.1)
-      '@drawcall/robotics':
-        specifier: workspace:*
-        version: link:../../packages/robotics
-      sharp:
-        specifier: ^0.35.4
-        version: 0.35.4(@types/node@26.6.0)
-      three:
-        specifier: ^0.185.1
-        version: 0.185.1
-    devDependencies:
-      '@types/node':
-        specifier: ^26.6.0
-        version: 26.6.0
-      '@types/three':
-        specifier: ^0.185.0
-        version: 0.185.4
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-
   examples/warehouse:
     dependencies:
       '@drawcall/physics':

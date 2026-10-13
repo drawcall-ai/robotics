@@ -1,9 +1,0 @@
-RESULT {"name": "neck-rr_S1", "readings": {"shoulder_pan": 2.0, "shoulder_lift": 42.4, "elbow_flex": -54.8, "wrist_flex": 82.4, "wrist_roll": 0.0, "gripper": 45.0}
-RESULT {"name": "neck-grip", "gripper": 25.0, "load": 0}
-RESULT {"name": "neck-rr_f25", "readings": {"shoulder_pan": 2.0, "shoulder_lift": 42.4, "elbow_flex": -54.8, "wrist_flex": 82.4, "wrist_roll": 0.0, "gripper": 25.0}
-RESULT {"name": "neck-grip", "gripper": 15.0, "load": 0}
-RESULT {"name": "neck-rr_f15", "readings": {"shoulder_pan": 2.0, "shoulder_lift": 42.4, "elbow_flex": -54.8, "wrist_flex": 82.4, "wrist_roll": 0.0, "gripper": 15.0}
-RESULT {"name": "neck-grip", "gripper": 10.0, "load": 1}
-RESULT {"name": "neck-rr_f10", "readings": {"shoulder_pan": 2.0, "shoulder_lift": 42.4, "elbow_flex": -54.9, "wrist_flex": 82.4, "wrist_roll": 0.0, "gripper": 10.0}
-RESULT {"name": "neck-grip", "gripper": 7.7, "load": 167}
-RESULT {"name": "neck-rr_f05", "readings": {"shoulder_pan": 2.0, "shoulder_lift": 42.2, "elbow_flex": -54.9, "wrist_flex": 82.4, "wrist_roll": 0.0, "gripper": 7.7}

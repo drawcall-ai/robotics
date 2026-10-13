@@ -1,2 +1,0 @@
-Chess Set by Riley Queen, Poly Haven (https://polyhaven.com/a/chess_set), CC0 1.0.
-Only the black pieces' textures are kept; the model loads without its embedded texture references.

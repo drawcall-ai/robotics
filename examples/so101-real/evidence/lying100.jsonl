@@ -1,7 +1,0 @@
-RESULT {"name": "lying100-rr_L1", "readings": {"shoulder_pan": -41.4, "shoulder_lift": 53.9, "elbow_flex": -61.0, "wrist_flex": 81.7, "wrist_roll": -119.2, "gripper": 45.0}
-RESULT {"name": "lying100-grip", "gripper": 3.0, "load": 0}
-RESULT {"name": "lying100-rr_L2", "readings": {"shoulder_pan": -41.6, "shoulder_lift": 41.2, "elbow_flex": -47.3, "wrist_flex": 81.6, "wrist_roll": -119.4, "gripper": 3.0}
-RESULT {"name": "lying100-rr_L3", "readings": {"shoulder_pan": -4.6, "shoulder_lift": 9.7, "elbow_flex": 53.9, "wrist_flex": -61.2, "wrist_roll": -2.4, "gripper": 3.0}
-RESULT {"name": "lying100-rr_L4a", "readings": {"shoulder_pan": -4.6, "shoulder_lift": 36.2, "elbow_flex": 50.6, "wrist_flex": -79.1, "wrist_roll": -2.2, "gripper": 3.0}
-RESULT {"name": "lying100-grip", "gripper": 3.0, "load": 0}
-RESULT {"name": "lying100-rr_L4b", "readings": {"shoulder_pan": -4.6, "shoulder_lift": 36.2, "elbow_flex": 50.5, "wrist_flex": -79.2, "wrist_roll": -2.1, "gripper": 3.0}

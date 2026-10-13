@@ -1,9 +1,0 @@
-RESULT {"name": "lyingB-rr_L1", "readings": {"shoulder_pan": -43.9, "shoulder_lift": 58.0, "elbow_flex": -61.7, "wrist_flex": 83.2, "wrist_roll": -121.2, "gripper": 45.0}
-RESULT {"name": "lyingB-grip", "gripper": 3.0, "load": 0}
-RESULT {"name": "lyingB-rr_L2", "readings": {"shoulder_pan": -43.9, "shoulder_lift": 33.8, "elbow_flex": -46.8, "wrist_flex": 82.3, "wrist_roll": -121.2, "gripper": 3.0}
-RESULT {"name": "lyingB-rr_L3", "readings": {"shoulder_pan": -2.1, "shoulder_lift": 9.7, "elbow_flex": 54.4, "wrist_flex": -64.4, "wrist_roll": -0.6, "gripper": 3.0}
-RESULT {"name": "lyingB-rr_L4a", "readings": {"shoulder_pan": -2.1, "shoulder_lift": 36.3, "elbow_flex": 47.5, "wrist_flex": -81.7, "wrist_roll": -0.6, "gripper": 3.0}
-RESULT {"name": "lyingB-grip", "gripper": 3.0, "load": 0}
-RESULT {"name": "lyingB-rr_L4b", "readings": {"shoulder_pan": -2.1, "shoulder_lift": 36.3, "elbow_flex": 47.5, "wrist_flex": -81.8, "wrist_roll": -0.6, "gripper": 3.0}
-queen max z 0.012
-final (t, x, y, z, tilt) [256.174, 0.161, 0.246, 0.012, 93.614]
