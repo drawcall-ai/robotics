@@ -2,18 +2,17 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { alive, claim, hold } from "../src/cli/domain.js";
 import { finalize, type Row } from "../src/cli/episode.js";
 import { BEHIND } from "../src/cli/protocol.js";
 import { header, number, row, schedule, seeds, total } from "../src/cli/run.js";
 
-const temporary = process.env.TMPDIR;
 beforeEach(() => {
-  process.env.TMPDIR = mkdtempSync(join(tmpdir(), "domains-"));
+  vi.stubEnv("TMPDIR", mkdtempSync(join(tmpdir(), "domains-")));
 });
 afterEach(() => {
-  process.env.TMPDIR = temporary;
+  vi.unstubAllEnvs();
 });
 
 it("tabulates episodes and counts the ones that succeeded", () => {
