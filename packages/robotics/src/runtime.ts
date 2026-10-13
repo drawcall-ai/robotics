@@ -82,6 +82,10 @@ export class ROS2 {
   private recording?: Recording;
   readonly renderer?: CaptureRenderer;
   readonly namespace: string;
+  /** Topics a viewer shows beside the robots; a scene adds the ones worth watching. */
+  readonly show: string[] = [];
+  /** A regular expression of topics the recording leaves out, as rosbag2's `--exclude-regex` takes it. */
+  recordExclude?: string;
   private readonly devices = new Set<Device>();
   private readonly hooks: (() => void)[] = [];
   private fault?: Error;

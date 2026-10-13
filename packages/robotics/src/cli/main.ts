@@ -45,7 +45,7 @@ const commands = [
   view,
   snapshot,
 ];
-const program = new Command("drawcall-robotics")
+const program = new Command("robotics")
   .showHelpAfterError()
   .exitOverride()
   .addCommand(sim.exitOverride(), { hidden: true });

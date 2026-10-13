@@ -1,36 +1,27 @@
-// Textures, lighting and the chess set, read from files for the headless simulator: images
-// decode through sharp, since Node has no browser image decoder.
-import { readFileSync } from "node:fs";
-import sharp from "sharp";
+// Textures, lighting and the chess set, loaded as on a page; the simulator supplies the
+// file access and image decoding a browser would.
 import {
   BufferGeometry,
-  DataTexture,
   EquirectangularReflectionMapping,
   Float32BufferAttribute,
+  ImageBitmapLoader,
   LinearMipmapLinearFilter,
   Mesh,
   NoColorSpace,
   RepeatWrapping,
   SRGBColorSpace,
-  type Texture,
+  Texture,
   Vector3,
 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
 import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 
-const here = new URL("./", import.meta.url);
+const url = (path: string) => new URL(path, import.meta.url).href;
 
 /** An image file as a repeating, mipmapped texture; colour maps are sRGB, data maps linear. */
-export async function texture(
-  path: string,
-  color: boolean,
-): Promise<DataTexture> {
-  const { data, info } = await sharp(readFileSync(new URL(path, here)))
-    .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-  const map = new DataTexture(new Uint8Array(data), info.width, info.height);
+export async function texture(path: string, color: boolean): Promise<Texture> {
+  const map = new Texture(await new ImageBitmapLoader().loadAsync(url(path)));
   map.colorSpace = color ? SRGBColorSpace : NoColorSpace;
   map.wrapS = map.wrapT = RepeatWrapping;
   map.minFilter = LinearMipmapLinearFilter;
@@ -52,68 +43,19 @@ export async function material(name: string) {
 }
 
 /** An equirectangular HDR image for image-based lighting. */
-export function environment(path: string): Texture {
-  const bytes = readFileSync(new URL(path, here));
-  const parsed = new HDRLoader().parse(
-    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
-  );
-  const map = new DataTexture(
-    parsed.data,
-    parsed.width,
-    parsed.height,
-    parsed.format,
-    parsed.type,
-  );
+export async function environmentMap(path: string): Promise<Texture> {
+  const map = await new HDRLoader().loadAsync(url(path));
   map.mapping = EquirectangularReflectionMapping;
-  map.needsUpdate = true;
   return map;
 }
 
 /**
  * The black pieces of Poly Haven's CC0 chess set, one geometry per kind, in the set's own
- * metres (58 mm squares) with each piece's base centred on its origin. The glTF's image
- * references are dropped; its textures load through `texture` instead.
+ * metres (58 mm squares) with each piece's base centred on its origin.
  */
 export async function chessSet(): Promise<Record<string, BufferGeometry>> {
-  const gltf = JSON.parse(
-    readFileSync(new URL("assets/chess/chess_set_1k.gltf", here), "utf8"),
-  );
-  delete gltf.images;
-  delete gltf.textures;
-  delete gltf.samplers;
-  for (const m of gltf.materials) {
-    const pbr = m.pbrMetallicRoughness ?? {};
-    delete pbr.baseColorTexture;
-    delete pbr.metallicRoughnessTexture;
-    delete m.normalTexture;
-    delete m.occlusionTexture;
-  }
-  // One in-memory GLB, JSON and binary chunk together, parses without loading anything.
-  const bin = readFileSync(new URL("assets/chess/chess_set.bin", here));
-  gltf.buffers = [{ byteLength: bin.byteLength }];
-  const json = Buffer.from(
-    JSON.stringify(gltf).padEnd(
-      Math.ceil(JSON.stringify(gltf).length / 4) * 4,
-      " ",
-    ),
-  );
-  const chunk = Buffer.concat([
-    bin,
-    Buffer.alloc((4 - (bin.byteLength % 4)) % 4),
-  ]);
-  const glb = Buffer.alloc(12 + 8 + json.length + 8 + chunk.length);
-  glb.writeUInt32LE(0x46546c67, 0);
-  glb.writeUInt32LE(2, 4);
-  glb.writeUInt32LE(glb.length, 8);
-  glb.writeUInt32LE(json.length, 12);
-  glb.writeUInt32LE(0x4e4f534a, 16);
-  json.copy(glb, 20);
-  glb.writeUInt32LE(chunk.length, 20 + json.length);
-  glb.writeUInt32LE(0x004e4942, 24 + json.length);
-  chunk.copy(glb, 28 + json.length);
-  const result = await new GLTFLoader().parseAsync(
-    glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength),
-    "",
+  const result = await new GLTFLoader().loadAsync(
+    url("assets/chess/chess_set_1k.gltf"),
   );
   const pieces: Record<string, BufferGeometry> = {};
   result.scene.updateMatrixWorld(true);

@@ -11,7 +11,7 @@
     }
   },
   "bin": {
-    "drawcall-robotics": "./dist/cli/main.js"
+    "robotics": "./dist/cli/main.js"
   },
   "files": [
     "dist",
@@ -26,6 +26,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@drawcall/glts": "^0.17.0",
     "@drawcall/physics-mujoco": "0.16.0",
     "@foxglove/rosmsg": "^5.0.5",
     "@foxglove/rosmsg2-serialization": "^3.1.2",
@@ -36,6 +37,7 @@
     "open": "^11.0.4",
     "roslib": "^2.1.0",
     "send": "^1.2.1",
+    "sharp": "^0.35.4",
     "tar": "^7.5.22"
   },
   "optionalDependencies": {

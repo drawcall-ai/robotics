@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import {
   BoxCollider,
   MeshCollider,
@@ -32,7 +31,7 @@ function transform(
   );
 }
 
-export function arm(height: number) {
+export async function arm(height: number) {
   const robot = new Robot();
   robot.name = "so101";
   const yellow = new MeshStandardMaterial({
@@ -131,14 +130,8 @@ export function arm(height: number) {
   for (const link of links) {
     const { body, frame } = place(link.name);
     for (const visual of link.visuals) {
-      const bytes = readFileSync(
-        new URL(`./assets/${visual.file}`, import.meta.url),
-      );
-      const geometry = loader.parse(
-        bytes.buffer.slice(
-          bytes.byteOffset,
-          bytes.byteOffset + bytes.byteLength,
-        ),
+      const geometry = await loader.loadAsync(
+        new URL(`./assets/${visual.file}`, import.meta.url).href,
       );
       geometry.scale(visual.scale[0], visual.scale[1], visual.scale[2]);
       const pose = frame.clone().multiply(transform(visual.xyz, visual.rpy));

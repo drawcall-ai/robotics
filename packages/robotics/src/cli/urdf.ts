@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { OfflineConnection } from "../connections/offline.js";
 import { ROS2 } from "../runtime.js";
 import { exportURDF } from "../urdf/export.js";
+import { sceneLoader } from "./scene.js";
 
 const EMBEDDED = /data:model\/stl;base64,([A-Za-z0-9+/=]+)/g;
 
@@ -15,7 +16,7 @@ const EMBEDDED = /data:model\/stl;base64,([A-Za-z0-9+/=]+)/g;
  */
 export const urdf = new Command("urdf")
   .description("print or write the URDF of the scene's robot")
-  .argument("<scene>", "the scene script")
+  .argument("<scene>", "the .glts scene")
   .option("--namespace <ns>", "topic namespace", "/robot")
   .option("--robot <name>", "the robot, if the scene has several")
   .option("-o, --output <file>", "write the URDF to a file instead of stdout")
@@ -42,7 +43,10 @@ export const urdf = new Command("urdf")
         namespace: options.namespace,
       });
       resources.defer(() => ros.dispose());
-      await import(pathToFileURL(resolve(scene)).href);
+      const url = pathToFileURL(resolve(scene));
+      const loader = sceneLoader(url);
+      resources.defer(() => loader.dispose());
+      await loader.loadAsync(url);
       xml = exportURDF({ ros, name: options.robot });
     }
     if (!options.output) {

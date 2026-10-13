@@ -1,8 +1,4 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { Scene } from "three";
-
-/** The sim tests run this file as their scene module. */
-export const scene = new Scene();
 
 const { Evaluator, evaluator, JointActuator, actuator, split } = vi.hoisted(
   () => {
@@ -39,12 +35,20 @@ const mocks = vi.hoisted(() => ({
   },
   createConnection: vi.fn(),
   createRuntime: vi.fn(),
-  world: { time: 0, dispose: vi.fn(), fixedDelta: 1 / 120, update: vi.fn() },
+  world: {
+    time: 0,
+    dispose: vi.fn(),
+    fixedDelta: 1 / 120,
+    update: vi.fn(),
+    onBeforeStep: vi.fn(),
+  },
+  loader: { loadAsync: vi.fn(), dispose: vi.fn() },
   renderer: { dispose: vi.fn() },
   runtime: {
     disposeAsync: vi.fn<() => Promise<void>>(),
     attachWorld: vi.fn(),
     attachRecording: vi.fn(),
+    show: [],
     resume: vi.fn(),
     connected: true,
     publish: vi.fn(),
@@ -64,6 +68,7 @@ vi.mock("../src/connections/rcl.js", () => ({
 vi.mock("@drawcall/physics-mujoco", () => ({
   buildWorld: async () => mocks.world,
 }));
+vi.mock("../src/cli/scene.js", () => ({ sceneLoader: () => mocks.loader }));
 vi.mock("../src/cli/webgpu.js", () => ({
   createRenderer: async () => mocks.renderer,
 }));
@@ -107,6 +112,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   mocks.createConnection.mockResolvedValue(mocks.connection);
   mocks.createRuntime.mockReturnValue(mocks.runtime);
+  mocks.loader.loadAsync.mockResolvedValue({ update: vi.fn() });
   mocks.runtime.disposeAsync.mockResolvedValue(undefined);
   mocks.connection.subscribe.mockReturnValue(vi.fn());
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -142,7 +148,7 @@ it("disposes the snapshot connection on timeout", async () => {
 it("releases rendering before physics is built when native connection setup fails", async () => {
   mocks.createConnection.mockRejectedValueOnce(new Error("native failed"));
   await expect(
-    sim.parseAsync(["missing-scene.ts", "--record", "bag"], { from: "user" }),
+    sim.parseAsync(["scene.glts", "--record", "bag"], { from: "user" }),
   ).rejects.toThrow("native failed");
   expect(mocks.renderer.dispose).toHaveBeenCalledOnce();
   expect(mocks.world.dispose).not.toHaveBeenCalled();
@@ -153,7 +159,7 @@ it("releases the connection when runtime construction fails before taking owners
     throw new Error("runtime setup failed");
   });
   await expect(
-    sim.parseAsync(["missing-scene.ts", "--record", "bag"], { from: "user" }),
+    sim.parseAsync(["scene.glts", "--record", "bag"], { from: "user" }),
   ).rejects.toThrow("runtime setup failed");
   expect(mocks.connection.dispose).toHaveBeenCalledOnce();
   expect(mocks.runtime.disposeAsync).not.toHaveBeenCalled();
@@ -161,10 +167,12 @@ it("releases the connection when runtime construction fails before taking owners
   expect(mocks.world.dispose).not.toHaveBeenCalled();
 });
 
-it("releases acquired resources when the scene cannot be imported", async () => {
+it("releases acquired resources when the scene cannot be loaded", async () => {
+  mocks.loader.loadAsync.mockRejectedValueOnce(new Error("bad scene"));
   await expect(
-    sim.parseAsync(["missing-scene.ts", "--record", "bag"], { from: "user" }),
-  ).rejects.toThrow();
+    sim.parseAsync(["scene.glts", "--record", "bag"], { from: "user" }),
+  ).rejects.toThrow("bad scene");
+  expect(mocks.loader.dispose).toHaveBeenCalledOnce();
   expect(mocks.runtime.disposeAsync).toHaveBeenCalledOnce();
   expect(mocks.connection.dispose).not.toHaveBeenCalled();
   expect(mocks.renderer.dispose).toHaveBeenCalledOnce();
@@ -184,15 +192,9 @@ it("stops during viewer startup and removes timers and signal listeners", async 
       });
     },
   );
-  const result = sim.parseAsync(
-    [
-      new URL("./cli.test.ts", import.meta.url).pathname,
-      "--viewer",
-      "--record",
-      "bag",
-    ],
-    { from: "user" },
-  );
+  const result = sim.parseAsync(["scene.glts", "--viewer", "--record", "bag"], {
+    from: "user",
+  });
   await vi.waitFor(() => expect(mocks.serve).toHaveBeenCalled());
   process.emit("SIGTERM");
   const exited = new Error("exited");
@@ -222,7 +224,7 @@ it("preserves setup and cleanup failures while releasing all resources", async (
     throw cleanup;
   });
   await expect(
-    sim.parseAsync(["missing-scene.ts", "--record", "bag"], { from: "user" }),
+    sim.parseAsync(["scene.glts", "--record", "bag"], { from: "user" }),
   ).rejects.toMatchObject({ error: cleanup, suppressed: setup });
   expect(mocks.world.dispose).not.toHaveBeenCalled();
 });
@@ -250,8 +252,9 @@ it("waits for runtime cleanup before releasing the renderer, including on failur
     reject = fail;
   });
   mocks.runtime.disposeAsync.mockReturnValueOnce(cleanup);
+  mocks.loader.loadAsync.mockRejectedValueOnce(new Error("bad scene"));
   const disposal = new Error("runtime disposal failed");
-  const result = sim.parseAsync(["missing-scene.ts", "--record", "bag"], {
+  const result = sim.parseAsync(["scene.glts", "--record", "bag"], {
     from: "user",
   });
   const failure = expect(result).rejects.toMatchObject({ error: disposal });
@@ -270,15 +273,9 @@ it("reports viewer startup failure once while disposing the simulation", async (
   const startup = new Error("viewer failed");
   mocks.serve.mockRejectedValueOnce(startup);
   await expect(
-    sim.parseAsync(
-      [
-        new URL("./cli.test.ts", import.meta.url).pathname,
-        "--viewer",
-        "--record",
-        "bag",
-      ],
-      { from: "user" },
-    ),
+    sim.parseAsync(["scene.glts", "--viewer", "--record", "bag"], {
+      from: "user",
+    }),
   ).rejects.toBe(startup);
   expect(mocks.renderer.dispose).toHaveBeenCalledOnce();
 });
@@ -292,15 +289,9 @@ it("surfaces viewer cleanup failure after cancellation", async () => {
       });
     },
   );
-  const result = sim.parseAsync(
-    [
-      new URL("./cli.test.ts", import.meta.url).pathname,
-      "--viewer",
-      "--record",
-      "bag",
-    ],
-    { from: "user" },
-  );
+  const result = sim.parseAsync(["scene.glts", "--viewer", "--record", "bag"], {
+    from: "user",
+  });
   const failure = expect(result).rejects.toBe(cleanup);
   await vi.waitFor(() => expect(mocks.serve).toHaveBeenCalled());
   process.emit("SIGTERM");
@@ -313,10 +304,9 @@ it("releases the actuators at a pause and at the next play, splits the recording
   const exit = vi.spyOn(process, "exit").mockImplementation(() => {
     throw exited;
   });
-  const result = sim.parseAsync(
-    [new URL("./cli.test.ts", import.meta.url).pathname, "--record", "bag"],
-    { from: "user" },
-  );
+  const result = sim.parseAsync(["scene.glts", "--record", "bag"], {
+    from: "user",
+  });
   const failure = expect(result).rejects.toBe(exited);
   const handler = async (name: string) => {
     await vi.waitFor(() =>

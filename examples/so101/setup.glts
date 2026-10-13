@@ -1,9 +1,13 @@
 // The whole black set lies scattered within reach, some pieces on their sides; the robot must
 // set up the board: every piece on a square of its kind, knights facing the far side.
+import { scene } from "@drawcall/glts";
 import type { RigidBody } from "@drawcall/physics";
 import { Evaluator, getROS2 } from "@drawcall/robotics";
 import { Quaternion, Vector3 } from "three";
-import {
+import { environment, type Piece } from "./environment.ts";
+import { deskHeight, pieces, ros, tilt } from "./task.ts";
+
+const {
   boardBody,
   boardMoved,
   boardPeak,
@@ -13,11 +17,7 @@ import {
   scatter,
   still,
   touching,
-  type Piece,
-} from "./environment.ts";
-import { deskHeight, pieces, ros, tilt } from "./task.ts";
-
-export { scene, show } from "./environment.ts";
+} = await environment(scene);
 
 const log = (message: string) => getROS2().log(message);
 const heading = (body: RigidBody) => {

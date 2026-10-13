@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 import { expect, it, vi } from "vitest";
+import { GLTSLoader } from "@drawcall/glts";
+import * as physics from "@drawcall/physics";
 import { buildWorld } from "@drawcall/physics-mujoco";
+import { LoadingManager } from "three";
+import * as robotics from "../src/index.js";
 import { Evaluator } from "../src/evaluation.js";
 import { Robot } from "../src/devices/robot.js";
 import { CameraSensor } from "../src/devices/camera.js";
@@ -8,13 +12,17 @@ import { LaserSensor } from "../src/devices/laser.js";
 import { exportURDF } from "../src/urdf/export.js";
 import { defer, offline } from "./fixture.js";
 
-// The example imports the published package; test it against the sources instead of dist.
-vi.mock("@drawcall/robotics", () => import("../src/index.js"));
-
 // Golden omits binary mesh payloads; mesh geometry is decoded and checked in model.test.ts.
 it("exports the warehouse example as its golden URDF and scans on /robot/scan", async () => {
   const ros = offline();
-  const { scene } = await import("../../../examples/warehouse/scene.js");
+  // The example imports the published package; test it against the sources instead of dist.
+  const loader = new GLTSLoader(new LoadingManager(), {
+    modules: { "@drawcall/physics": physics, "@drawcall/robotics": robotics },
+  });
+  defer(() => loader.dispose());
+  const scene = await loader.loadAsync(
+    new URL("../../../examples/warehouse/scene.glts", import.meta.url),
+  );
   expect(
     ros.find(CameraSensor).map((camera) => camera.compressedTopic),
   ).toEqual(["/robot/camera/image_raw/compressed"]);

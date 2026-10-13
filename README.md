@@ -4,10 +4,10 @@ Simulate robots in Three.js physics scenes as ordinary ROS 2 nodes, so the same 
 
 ```sh
 npm install three @drawcall/physics @drawcall/robotics
-drawcall-robotics run
+npx @drawcall/robotics run
 ```
 
-`drawcall-robotics` runs, steps, records and evaluates episodes inside a ROS 2 environment. The package ships skills for authoring a scene and for solving a task in one.
+A scene is a [GLTS](https://github.com/drawcall-ai/glts) asset, `scene.glts`; the CLI runs, steps, records and evaluates its episodes inside a ROS 2 environment. The package ships a skill for authoring a scene.
 
 | Example                                                                                      | What it shows                                           |
 | -------------------------------------------------------------------------------------------- | ------------------------------------------------------- |

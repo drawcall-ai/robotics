@@ -1,19 +1,14 @@
 // One piece lies on its side somewhere within reach; the robot must stand it on its square,
 // a knight facing the far side of the board.
+import { scene } from "@drawcall/glts";
 import { Evaluator } from "@drawcall/robotics";
 import { Quaternion, Vector3 } from "three";
 import { kinds, type Kind } from "./pieces.ts";
-import {
-  boardMoved,
-  boardPeak,
-  placed,
-  random,
-  scatter,
-  touching,
-} from "./environment.ts";
+import { environment } from "./environment.ts";
 import { deskHeight } from "./task.ts";
 
-export { scene, show } from "./environment.ts";
+const { boardMoved, boardPeak, placed, random, scatter, touching } =
+  await environment(scene);
 
 const kind = (process.env.PIECE ??
   kinds[Math.floor(random() * kinds.length)]) as Kind;

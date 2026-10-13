@@ -1,7 +1,39 @@
 import { create, globals } from "webgpu";
 import { WebGPURenderer } from "three/webgpu";
+import { DecodedImage } from "./browser.js";
 
 Object.assign(globalThis, globals);
+
+// Three uploads every image texture with copyExternalImageToTexture, and Dawn's Node binding takes no
+// image source, so decoded images upload from their pixels instead.
+const copyExternalImage = GPUQueue.prototype.copyExternalImageToTexture;
+GPUQueue.prototype.copyExternalImageToTexture = function (
+  source,
+  destination,
+  size,
+) {
+  const image = source.source;
+  if (!(image instanceof DecodedImage))
+    return copyExternalImage.call(this, source, destination, size);
+  if (destination.premultipliedAlpha)
+    throw new Error("Decoded images upload without premultiplied alpha");
+  const row = image.width * 4;
+  let data = image.data;
+  if (source.flipY) {
+    data = new Uint8Array(data.length);
+    for (let y = 0; y < image.height; y++)
+      data.set(
+        image.data.subarray(y * row, (y + 1) * row),
+        (image.height - 1 - y) * row,
+      );
+  }
+  this.writeTexture(
+    destination,
+    data,
+    { bytesPerRow: row, rowsPerImage: image.height },
+    size,
+  );
+};
 // The renderer schedules its internal loop through browser globals that Node lacks.
 Object.assign(globalThis, {
   self: globalThis,

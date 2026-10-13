@@ -26,13 +26,13 @@ import {
   UNSUPPORTED,
 } from "./protocol.js";
 import type { PhysicsWorld } from "@drawcall/physics";
-import { Object3D } from "three";
 import { stamp } from "../messages.js";
 import { ROS2 } from "../runtime.js";
 import { modelView } from "../urdf/view.js";
 import { defaultLayout } from "./layout.js";
 import { serveLichtblick } from "./lichtblick.js";
 import { number } from "./run.js";
+import { sceneLoader } from "./scene.js";
 
 interface SimOptions {
   namespace: string;
@@ -46,14 +46,12 @@ interface SimOptions {
 }
 
 /**
- * The simulator node that simulation.launch.xml starts: it runs and records a scene's evaluation
- * episode, which waits for /sim/start_evaluation. The scene module exports `scene`, the three.js
- * object the simulation runs, and may export `show`, extra viewer topics, and `recordExclude`, a
- * regular expression of topics not to record.
+ * The simulator node that simulation.launch.xml starts: it runs and records the evaluation episode
+ * of a .glts scene, which waits for /sim/start_evaluation.
  */
 export const sim = new Command("sim")
   .description("run the scene as a ROS 2 node until stopped")
-  .argument("<scene>", "the scene script")
+  .argument("<scene>", "the .glts scene")
   .option("--namespace <ns>", "topic namespace", "/robot")
   .option(
     "--viewer",
@@ -131,9 +129,10 @@ async function run(scene: string, options: SimOptions): Promise<void> {
     setup.move();
   }
   // The scene builds against the current runtime and registers its devices there.
-  const { root, show, recordExclude } = declared(
-    await import(pathToFileURL(resolve(scene)).href),
-  );
+  const url = pathToFileURL(resolve(scene));
+  const loader = sceneLoader(url);
+  resources.defer(() => loader.dispose());
+  const root = await loader.loadAsync(url);
   const world = await buildWorld({
     scene: root,
     gravity: [0, -9.81, 0],
@@ -149,6 +148,7 @@ async function run(scene: string, options: SimOptions): Promise<void> {
     frictionCone: "elliptic",
   });
   resources.defer(() => world.dispose());
+  world.onBeforeStep((delta) => root.update(delta));
   ros.attachWorld(world);
   if (stop.signal.aborted) return;
   const robots = ros.find(Robot);
@@ -156,7 +156,7 @@ async function run(scene: string, options: SimOptions): Promise<void> {
   if (!evaluation) throw new Error("The scene needs an Evaluator");
   const recorder = new Recorder(
     options.record,
-    recordExclude,
+    ros.recordExclude,
     options.recordAll,
   );
   resources.defer(() => recorder.stop());
@@ -188,7 +188,8 @@ async function run(scene: string, options: SimOptions): Promise<void> {
     recorder,
   );
   console.error(`Simulating ${scene} under ${ros.namespace}`);
-  if (options.viewer) serveViewer(ros, robots, show, options, stop, resources);
+  if (options.viewer)
+    serveViewer(ros, robots, ros.show, options, stop, resources);
 
   const finish = async () => {
     if (evaluation.finished) await recorder.finish(connection, evaluation);
@@ -234,22 +235,6 @@ async function run(scene: string, options: SimOptions): Promise<void> {
     throw error;
   }
   await finish();
-}
-
-/** What the scene module declares for the viewer and the recording. */
-function declared(module: Record<string, unknown>): {
-  root: Object3D;
-  show: string[];
-  recordExclude?: string;
-} {
-  const { scene: root, show = [], recordExclude } = module;
-  if (!(root instanceof Object3D))
-    throw new Error("A scene module must export the three.js scene as `scene`");
-  if (!Array.isArray(show) || !show.every((topic) => typeof topic === "string"))
-    throw new Error("A scene's show export must be a list of topics");
-  if (recordExclude !== undefined && typeof recordExclude !== "string")
-    throw new Error("A scene's recordExclude export must be a regex string");
-  return { root, show, recordExclude };
 }
 
 interface Controls {

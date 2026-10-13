@@ -4,19 +4,18 @@
   "type": "module",
   "scripts": {
     "lib": "pnpm --filter @drawcall/robotics build",
-    "dev": "pnpm lib && pixi run drawcall-robotics run --viewer",
-    "start": "pnpm lib && pixi run drawcall-robotics run",
-    "cat": "pnpm lib && drawcall-robotics cat",
-    "view": "pnpm lib && drawcall-robotics view runs/latest/bag --show /map --show /local_costmap/costmap --show /plan --show /local_plan",
-    "typecheck": "tsc --noEmit"
+    "dev": "pnpm lib && pixi run npx @drawcall/robotics run --viewer",
+    "start": "pnpm lib && pixi run npx @drawcall/robotics run",
+    "cat": "pnpm lib && npx @drawcall/robotics cat",
+    "view": "pnpm lib && npx @drawcall/robotics view runs/latest/bag --show /map --show /local_costmap/costmap --show /plan --show /local_plan"
   },
   "dependencies": {
+    "@drawcall/glts": "^0.17.0",
     "@drawcall/physics": "0.16.0",
     "@drawcall/robotics": "workspace:*",
     "three": "^0.185.1"
   },
   "devDependencies": {
-    "@types/three": "^0.185.0",
-    "typescript": "^5.9.3"
+    "@types/three": "^0.185.0"
   }
 }

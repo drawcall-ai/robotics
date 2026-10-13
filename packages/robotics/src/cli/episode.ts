@@ -209,7 +209,7 @@ export async function turn(
       );
     if (paused) {
       console.error(
-        "Paused: drawcall-robotics continue runs another turn, drawcall-robotics stop ends it",
+        "Paused: npx @drawcall/robotics continue runs another turn, npx @drawcall/robotics stop ends it",
       );
       console.log(folder);
       return undefined;

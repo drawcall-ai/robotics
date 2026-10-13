@@ -63,7 +63,7 @@ export function run(command: string[] | undefined): Command {
     .description(
       "run evaluation episodes of a scene; a single episode pauses when its turn ends",
     )
-    .argument("[scene]", "the scene script", "scene.ts")
+    .argument("[scene]", "the .glts scene", "scene.glts")
     .option(
       "--bringup <file>",
       "the robot's persistent stack (default: bringup.launch.xml beside the scene)",
