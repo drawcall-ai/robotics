@@ -18,7 +18,8 @@ const COMMANDS = "/robot/joint_commands";
 
 it("drives the joint with the latest command", async () => {
   const { world, ros, connection } = await simulation();
-  const { joint, actuator } = cart(ros);
+  const { robot, joint, actuator } = cart(ros);
+  world.scene.add(robot);
   connection.receive(COMMANDS, jointCommand("velocity", -2));
   connection.receive(COMMANDS, jointCommand("velocity", 3));
   world.update(0.01);
@@ -28,7 +29,8 @@ it("drives the joint with the latest command", async () => {
 
 it("commands a position through a stiff actuator", async () => {
   const { world, ros, connection } = await simulation();
-  const { actuator } = cart(ros, { stiffness: 50 });
+  const { robot, actuator } = cart(ros, { stiffness: 50 });
+  world.scene.add(robot);
   connection.receive(COMMANDS, jointCommand("position", 1.2));
   world.update(0.01);
   expect(actuator.target).toEqual({ position: 1.2, velocity: 0, effort: 0 });
@@ -38,7 +40,8 @@ it("commands a position through a stiff actuator", async () => {
 
 it("commands a torque through an effort actuator", async () => {
   const { world, ros, connection } = await simulation();
-  const { joint, actuator } = cart(ros, { interface: "effort" });
+  const { robot, joint, actuator } = cart(ros, { interface: "effort" });
+  world.scene.add(robot);
   connection.receive(COMMANDS, jointCommand("effort", 2));
   world.update(0.01);
   expect(actuator.target).toEqual({ position: 0, velocity: 0, effort: 2 });
@@ -65,7 +68,8 @@ it("holds its joint up until commanded, then releases once a command expires", a
   const { world, ros, connection } = await simulation({
     gravity: [0, -9.81, 0],
   });
-  const { joint, actuator } = cart(ros, { stiffness: 100 });
+  const { robot, joint, actuator } = cart(ros, { stiffness: 100 });
+  world.scene.add(robot);
   // An arm whose controller has not connected yet is still powered, so it holds.
   for (let step = 0; step < 100; step++) world.update(0.01);
   expect(actuator.target).toBeDefined();
@@ -85,7 +89,8 @@ it("holds where a released joint is, as if never commanded", async () => {
   const { world, ros, connection } = await simulation({
     gravity: [0, -9.81, 0],
   });
-  const { joint, actuator } = cart(ros, { stiffness: 100 });
+  const { robot, joint, actuator } = cart(ros, { stiffness: 100 });
+  world.scene.add(robot);
   for (let step = 0; step < 30; step++) {
     connection.receive(COMMANDS, jointCommand("position", 0.5));
     world.update(0.01);
@@ -99,7 +104,8 @@ it("holds where a released joint is, as if never commanded", async () => {
 
 it("lets a command expire by simulation time and accepts a repeated one", async () => {
   const { world, ros, connection } = await simulation();
-  const { actuator } = cart(ros);
+  const { robot, actuator } = cart(ros);
+  world.scene.add(robot);
   connection.receive(COMMANDS, jointCommand("velocity", 3));
   for (let step = 0; step < 60; step++) world.update(0.01);
   expect(actuator.target).toBeUndefined();
@@ -111,7 +117,8 @@ it("lets a command expire by simulation time and accepts a repeated one", async 
 it("keeps a command across a pause, as a sim-time controller stops publishing while paused", async () => {
   const clock = vi.spyOn(performance, "now").mockReturnValue(0);
   const { world, ros, connection } = await simulation();
-  const { actuator } = cart(ros);
+  const { robot, actuator } = cart(ros);
+  world.scene.add(robot);
   connection.receive(COMMANDS, jointCommand("velocity", 2));
   world.update(0.01);
   clock.mockReturnValue(1000);
@@ -121,7 +128,8 @@ it("keeps a command across a pause, as a sim-time controller stops publishing wh
 
 it("goes passive before the next step once disconnected", async () => {
   const { world, ros, connection } = await simulation();
-  const { joint, actuator } = cart(ros);
+  const { robot, joint, actuator } = cart(ros);
+  world.scene.add(robot);
   connection.receive(COMMANDS, jointCommand("velocity", 3));
   world.update(0.01);
   const velocity = joint.getState().velocity;
@@ -134,7 +142,8 @@ it("goes passive before the next step once disconnected", async () => {
 
 it("faults on a malformed command and goes passive", async () => {
   const { world, ros, connection } = await simulation();
-  const { actuator } = cart(ros);
+  const { robot, actuator } = cart(ros);
+  world.scene.add(robot);
   connection.receive(COMMANDS, jointCommand("velocity", 3));
   world.update(0.01);
   connection.receive(COMMANDS, { name: ["wheel"], velocity: ["3"] });
@@ -145,7 +154,8 @@ it("faults on a malformed command and goes passive", async () => {
 
 it("ignores commands for other joints and rejects targets from the scene", async () => {
   const { world, ros, connection } = await simulation();
-  const { joint, actuator } = cart(ros);
+  const { robot, joint, actuator } = cart(ros);
+  world.scene.add(robot);
   const spare = new JointActuator({ ros, interface: "velocity", damping: 1 });
   connection.receive(COMMANDS, jointCommand("velocity", 3));
   connection.receive(COMMANDS, jointCommand("velocity", 5, "arm"));
@@ -153,15 +163,16 @@ it("ignores commands for other joints and rejects targets from the scene", async
   expect(spare.target).toBeUndefined();
   expect(actuator.target?.velocity).toBe(3);
   expect(() => actuator.setTarget()).toThrow("joint_commands");
-  const version = actuator.settingsVersion;
+  const version = joint.version;
   world.update(0.01);
-  expect(actuator.settingsVersion).toBe(version);
+  expect(joint.version).toBe(version);
   expect(joint.drive).toBe(actuator);
 });
 
 it("publishes the joint state", async () => {
   const { world, ros, connection } = await simulation();
-  const { joint } = cart(ros);
+  const { robot, joint } = cart(ros);
+  world.scene.add(robot);
   world.update(0.01);
   const state = joint.getState();
   expect(connection.messages).toContainEqual({
@@ -180,6 +191,7 @@ it("publishes the joint state", async () => {
 it("detaches and stops listening on dispose", async () => {
   const { world, ros, connection } = await simulation();
   const { robot, joint, actuator } = cart(ros);
+  world.scene.add(robot);
   connection.receive(COMMANDS, jointCommand("velocity", 2));
   world.update(0.01);
   actuator.dispose();
@@ -200,6 +212,7 @@ it("detaches and stops listening on dispose", async () => {
 it("drives the joint again from a new runtime with a new actuator", async () => {
   const { world, ros, connection } = await simulation();
   const { robot, joint, actuator } = cart(ros);
+  world.scene.add(robot);
   connection.receive(COMMANDS, jointCommand("velocity", 2));
   world.update(0.01);
   expect(actuator.target?.velocity).toBe(2);
@@ -215,6 +228,7 @@ it("drives the joint again from a new runtime with a new actuator", async () => 
   const moved = new Robot({ ros: next });
   moved.name = "cart";
   moved.add(...robot.children);
+  world.scene.add(moved);
   const replacement = new JointActuator({
     ros: next,
     interface: "velocity",
@@ -251,6 +265,7 @@ it("releases a robot even when releasing its command subscription fails", async 
     };
   });
   const { robot, actuator } = cart(ros);
+  world.scene.add(robot);
   connection.receive(COMMANDS, jointCommand("velocity", 2));
   world.update(0.01);
   expect(actuator.target?.velocity).toBe(2);
@@ -266,11 +281,12 @@ it("releases a robot even when releasing its command subscription fails", async 
 it("puts a namespaced robot's topics under its namespace and prefixes its frames", async () => {
   const { world, ros, connection } = await simulation();
   const { robot, actuator } = cart(ros);
+  world.scene.add(robot);
   robot.removeFromParent();
   robot.dispose();
   const arm = new Robot({ ros, namespace: "/arm1" });
   arm.name = "arm";
-  const base = new RigidBody({ type: "static" });
+  const base = new RigidBody({ bodyType: "static" });
   base.name = "base_link";
   const camera = new CameraSensor({ ros, frameId: "camera_optical" });
   base.add(camera);

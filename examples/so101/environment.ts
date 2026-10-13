@@ -107,7 +107,7 @@ const deskMaterial =
         color: vary(pick(["#d8d8d4", "#8a8f94", "#e9e4da", "#5b5f63"])),
         roughness: between(0.4, 0.9),
       });
-const desk = new RigidBody({ type: "static" });
+const desk = new RigidBody({ bodyType: "static" });
 desk.name = "desk";
 desk.position.set(0, deskHeight - 0.025, -0.18);
 desk.setMaterial({ staticFriction: 0.6, dynamicFriction: 0.6, restitution: 0 });

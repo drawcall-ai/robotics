@@ -5,12 +5,6 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  '@drawcall/physics-mujoco@0.13.0':
-    hash: 984cb13e6d03ab350ca98faacbd31aa598aefa9aaa5d76aa0261c6cd4339e508
-    path: patches/@drawcall__physics-mujoco@0.13.0.patch
-  '@drawcall/physics@0.13.0':
-    hash: 49ef8c0d6b94deb1690e697dfebd3f4ebc4bba285314256aa0ee73537e7f25b8
-    path: patches/@drawcall__physics@0.13.0.patch
   rclnodejs@2.2.0:
     hash: be98ba268729fcbd7842f34a8badf26aa9853cb64c26f133927d07377a92eae0
     path: patches/rclnodejs@2.2.0.patch
@@ -38,8 +32,8 @@ importers:
   examples/so101:
     dependencies:
       '@drawcall/physics':
-        specifier: 0.13.0
-        version: 0.13.0(patch_hash=49ef8c0d6b94deb1690e697dfebd3f4ebc4bba285314256aa0ee73537e7f25b8)(three@0.185.1)
+        specifier: 0.16.0
+        version: 0.16.0(three@0.185.1)
       '@drawcall/robotics':
         specifier: workspace:*
         version: link:../../packages/robotics
@@ -63,8 +57,8 @@ importers:
   examples/so101-real:
     dependencies:
       '@drawcall/physics':
-        specifier: 0.13.0
-        version: 0.13.0(patch_hash=49ef8c0d6b94deb1690e697dfebd3f4ebc4bba285314256aa0ee73537e7f25b8)(three@0.185.1)
+        specifier: 0.16.0
+        version: 0.16.0(three@0.185.1)
       '@drawcall/robotics':
         specifier: workspace:*
         version: link:../../packages/robotics
@@ -88,8 +82,8 @@ importers:
   examples/warehouse:
     dependencies:
       '@drawcall/physics':
-        specifier: 0.13.0
-        version: 0.13.0(patch_hash=49ef8c0d6b94deb1690e697dfebd3f4ebc4bba285314256aa0ee73537e7f25b8)(three@0.185.1)
+        specifier: 0.16.0
+        version: 0.16.0(three@0.185.1)
       '@drawcall/robotics':
         specifier: workspace:*
         version: link:../../packages/robotics
@@ -107,8 +101,8 @@ importers:
   packages/robotics:
     dependencies:
       '@drawcall/physics-mujoco':
-        specifier: 0.13.0
-        version: 0.13.0(patch_hash=984cb13e6d03ab350ca98faacbd31aa598aefa9aaa5d76aa0261c6cd4339e508)(@drawcall/physics@0.13.0(patch_hash=49ef8c0d6b94deb1690e697dfebd3f4ebc4bba285314256aa0ee73537e7f25b8)(three@0.185.1))(three@0.185.1)
+        specifier: 0.16.0
+        version: 0.16.0(@drawcall/physics@0.16.0(three@0.185.1))(three@0.185.1)
       '@foxglove/rosmsg':
         specifier: ^5.0.5
         version: 5.0.5
@@ -144,8 +138,8 @@ importers:
         version: 0.185.1
     devDependencies:
       '@drawcall/physics':
-        specifier: 0.13.0
-        version: 0.13.0(patch_hash=49ef8c0d6b94deb1690e697dfebd3f4ebc4bba285314256aa0ee73537e7f25b8)(three@0.185.1)
+        specifier: 0.16.0
+        version: 0.16.0(three@0.185.1)
       '@types/node':
         specifier: ^26.6.0
         version: 26.6.0
@@ -169,16 +163,16 @@ packages:
   '@dimforge/rapier3d-compat@0.12.0':
     resolution: {integrity: sha512-uekIGetywIgopfD97oDL5PfeezkFpNhwlzlaEYNOA0N6ghdsOvh/HYjSMek5Q2O1PYvRSDFcqFVJl4r4ZBwOow==}
 
-  '@drawcall/physics-mujoco@0.13.0':
-    resolution: {integrity: sha512-q3HFrAcKkwfT1oADm0qWzxFa6cENZBRLX3rXYhcHWTlUAjEfLDYRmY8OWtzgzsWT+acYe9xBauIBFOgKStzU7A==}
+  '@drawcall/physics-mujoco@0.16.0':
+    resolution: {integrity: sha512-1XVyCwkdYn4Wl4VrvWGS6h+lcdsRWoLWMFnBqS2HjFcqozBoTwkfDuCImW8DwhP0qwzgxjeJGFKhYvbz25Uv2g==}
     peerDependencies:
-      '@drawcall/physics': ^0.13.0
-      three: '>=0.180.0'
+      '@drawcall/physics': ^0.16.0
+      three: '>=0.177.0'
 
-  '@drawcall/physics@0.13.0':
-    resolution: {integrity: sha512-EkCKQ/roR5/NmOOKt754WBh0IS+fH1JPgfDm6dNUR6K6UzVBNjHuCfRMYlOAludW+QRtVoKd14Fr/d0XnMWENw==}
+  '@drawcall/physics@0.16.0':
+    resolution: {integrity: sha512-EjPKHjlHQ1/fqtPs9vHKe3FBFW4uC2CCWilF/Kec4BzcNJuvgJQqwk3XNBRqLW7cQ+eyV+PdfbLgggY5MqKnQA==}
     peerDependencies:
-      three: '>=0.185.0'
+      three: '>=0.177.0'
 
   '@emnapi/runtime@1.11.3':
     resolution: {integrity: sha512-Xz4Tpyki7XyrpbUK1jR1AhdAdaXyhhY4lZ3neLodmhpuWfy2PAQN5B46sAiU4liOXGLkHypn/qU+jvfWSCYYLA==}
@@ -1357,13 +1351,13 @@ snapshots:
 
   '@dimforge/rapier3d-compat@0.12.0': {}
 
-  '@drawcall/physics-mujoco@0.13.0(patch_hash=984cb13e6d03ab350ca98faacbd31aa598aefa9aaa5d76aa0261c6cd4339e508)(@drawcall/physics@0.13.0(patch_hash=49ef8c0d6b94deb1690e697dfebd3f4ebc4bba285314256aa0ee73537e7f25b8)(three@0.185.1))(three@0.185.1)':
+  '@drawcall/physics-mujoco@0.16.0(@drawcall/physics@0.16.0(three@0.185.1))(three@0.185.1)':
     dependencies:
-      '@drawcall/physics': 0.13.0(patch_hash=49ef8c0d6b94deb1690e697dfebd3f4ebc4bba285314256aa0ee73537e7f25b8)(three@0.185.1)
+      '@drawcall/physics': 0.16.0(three@0.185.1)
       '@mujoco/mujoco': 3.13.0
       three: 0.185.1
 
-  '@drawcall/physics@0.13.0(patch_hash=49ef8c0d6b94deb1690e697dfebd3f4ebc4bba285314256aa0ee73537e7f25b8)(three@0.185.1)':
+  '@drawcall/physics@0.16.0(three@0.185.1)':
     dependencies:
       three: 0.185.1
 

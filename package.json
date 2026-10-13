@@ -22,9 +22,7 @@
   },
   "pnpm": {
     "patchedDependencies": {
-      "rclnodejs@2.2.0": "patches/rclnodejs@2.2.0.patch",
-      "@drawcall/physics@0.13.0": "patches/@drawcall__physics@0.13.0.patch",
-      "@drawcall/physics-mujoco@0.13.0": "patches/@drawcall__physics-mujoco@0.13.0.patch"
+      "rclnodejs@2.2.0": "patches/rclnodejs@2.2.0.patch"
     },
     "onlyBuiltDependencies": [
       "rclnodejs",

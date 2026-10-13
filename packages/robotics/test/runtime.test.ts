@@ -90,7 +90,8 @@ it("does not register a sensor with invalid options", async () => {
 
 it("puts topics under its namespace and passes absolute topics through", async () => {
   const { world, ros, connection } = await simulation({ namespace: "/bot" });
-  const { actuator } = cart(ros);
+  const { robot, actuator } = cart(ros);
+  world.scene.add(robot);
   connection.receive("/bot/joint_commands", jointCommand("velocity", 1));
   world.update(0.01);
   expect(actuator.target?.velocity).toBe(1);
@@ -103,7 +104,7 @@ it("puts topics under its namespace and passes absolute topics through", async (
 
 it("publishes at the root with the root namespace", async () => {
   const { world, ros, connection } = await simulation({ namespace: "/" });
-  cart(ros);
+  world.scene.add(cart(ros).robot);
   world.update(0.01);
   expect(connection.messages.map(({ name }) => name)).toContain(
     "/joint_states",

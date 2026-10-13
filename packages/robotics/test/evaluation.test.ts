@@ -99,6 +99,7 @@ it("uses real trigger samples and stops catch-up immediately at a terminal step"
   body.add(new BoxCollider({ size: [1, 1, 1] }));
   const goal = new Trigger();
   goal.add(new BoxCollider({ size: [2, 2, 2] }));
+  world.scene.add(body, goal);
   const evaluation = new Evaluator({
     timeout: 1,
     success: { reached: () => goal.overlaps(body) },

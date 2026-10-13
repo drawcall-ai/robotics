@@ -1,4 +1,4 @@
-import { registry, type PhysicsWorld } from "@drawcall/physics";
+import type { PhysicsWorld } from "@drawcall/physics";
 import { runAll } from "./cleanup.js";
 import { SEGMENT, stamp } from "./messages.js";
 import type { Camera, Object3D, RenderTarget, Texture } from "three";
@@ -65,7 +65,7 @@ export interface CaptureRenderer {
   ): Promise<ArrayBufferView>;
 }
 export interface ROS2Options {
-  /** The simulation to attach; defaults to the registry’s built world, if any. */
+  /** The simulation to attach; `attachWorld` attaches one later. */
   world?: PhysicsWorld;
   /** Needed by cameras; a runtime that only builds a scene, as for URDF export, has none. */
   renderer?: CaptureRenderer;
@@ -102,8 +102,7 @@ export class ROS2 {
       throw new Error(`Invalid ROS namespace: ${namespace}`);
     this.renderer = options.renderer;
     this.namespace = namespace;
-    const world = options.world ?? registry.world;
-    if (world) this.attachWorld(world);
+    if (options.world) this.attachWorld(options.world);
     current = this;
   }
   /** Attaches simulation callbacks after the initial scene has been authored and built. */

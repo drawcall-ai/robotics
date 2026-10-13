@@ -13,7 +13,7 @@ import {
 } from "./environment.ts";
 import { deskHeight } from "./task.ts";
 
-export { show } from "./environment.ts";
+export { scene, show } from "./environment.ts";
 
 const kind = (process.env.PIECE ??
   kinds[Math.floor(random() * kinds.length)]) as Kind;

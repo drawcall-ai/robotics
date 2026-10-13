@@ -1,6 +1,6 @@
 import { afterEach, vi } from "vitest";
-import type { RenderTarget, Texture } from "three";
-import { RevoluteJoint, RigidBody, registry } from "@drawcall/physics";
+import { Scene, type RenderTarget, type Texture } from "three";
+import { RevoluteJoint, RigidBody } from "@drawcall/physics";
 import { buildWorld } from "@drawcall/physics-mujoco";
 import type { Connection } from "../src/runtime.js";
 import { OfflineConnection } from "../src/connections/offline.js";
@@ -13,7 +13,6 @@ import { ROS2 } from "../src/runtime.js";
 const cleanup: (() => void)[] = [];
 afterEach(() => {
   for (const release of cleanup.splice(0).reverse()) release();
-  registry.clear();
   vi.restoreAllMocks();
 });
 export function defer(release: () => void): void {
@@ -94,12 +93,16 @@ export class RendererStub implements CaptureRenderer {
   }
 }
 
-/** A runtime over a stepping MuJoCo world without gravity. */
+/** A runtime over a stepping MuJoCo world without gravity; tests add what it simulates to `world.scene`. */
 export async function simulation({
   namespace,
   gravity = [0, 0, 0],
 }: { namespace?: string; gravity?: [number, number, number] } = {}) {
-  const world = await buildWorld({ gravity, fixedDelta: 0.01 });
+  const world = await buildWorld({
+    scene: new Scene(),
+    gravity,
+    fixedDelta: 0.01,
+  });
   defer(() => world.dispose());
   const connection = new ConnectionStub();
   const renderer = new RendererStub();
@@ -126,7 +129,7 @@ export function cart(
     interface?: "position" | "velocity" | "effort";
   } = {},
 ) {
-  const base = new RigidBody({ type: "static" });
+  const base = new RigidBody({ bodyType: "static" });
   base.name = "base_link";
   const wheel = new RigidBody({
     mass: 1,

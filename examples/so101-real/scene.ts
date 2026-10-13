@@ -13,7 +13,7 @@ import { board, boardBody, bus, queenBody, robot, scale, table, task } from "./e
 import { ORDER } from "./robot.ts";
 import { deskHeight, ros, squareAt, squareCenter, tilt, type Board } from "./task.ts";
 
-export { show } from "./environment.ts";
+export { scene, show } from "./environment.ts";
 
 const ros2 = getROS2();
 const audit = (event: Record<string, unknown>) =>
@@ -49,7 +49,7 @@ const maxForce = { table: 0, chessboard: 0, queen: 0 };
 /** The net normal force the robot exerts on `body` now, N. */
 function force(body: RigidBody): number {
   const total = new Vector3();
-  for (const contact of ros2.world.contacts(body))
+  for (const contact of body.getContacts())
     if (contact.otherBody.parent === robot)
       total.addScaledVector(contact.normal, contact.force);
   return total.length();

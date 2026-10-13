@@ -16,7 +16,8 @@ import { cart, offline, simulation } from "./fixture.js";
 
 it("publishes a retained model and static frames once before motion, then live link transforms", async () => {
   const { ros, world, connection } = await simulation();
-  const { base, wheel } = cart(ros);
+  const { robot, base, wheel } = cart(ros);
+  world.scene.add(robot);
   base.add(new BoxCollider());
   const publish = vi.spyOn(connection, "publish");
   expect(connection.messages).toHaveLength(0);
@@ -103,7 +104,7 @@ it("includes fixed bodies and publishes a model even without actuated joints", a
   const { ros, world, connection } = await simulation();
   const robot = new Robot({ ros });
   robot.name = "fixed";
-  const base = new RigidBody({ type: "static" });
+  const base = new RigidBody({ bodyType: "static" });
   base.name = "base_link";
   base.add(new BoxCollider());
   const tool = new RigidBody({ mass: 1 });
@@ -118,6 +119,7 @@ it("includes fixed bodies and publishes a model even without actuated joints", a
   });
   joint.name = "mount";
   robot.add(base, tool, joint);
+  world.scene.add(robot);
   world.update(0.01);
   expect(connection.messages).toContainEqual({
     name: "/tf_static",

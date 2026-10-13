@@ -78,7 +78,7 @@ lamp.shadow.normalBias = 0.002;
 scene.add(lamp, lamp.target);
 
 // A plain white table; the robot's base plate is screwed to it.
-export const table = new RigidBody({ type: "static" });
+export const table = new RigidBody({ bodyType: "static" });
 table.name = "table";
 table.position.set(0, deskHeight - 0.025, -0.2);
 table.setMaterial({ staticFriction: 0.5, dynamicFriction: 0.5, restitution: 0 });

@@ -1,4 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { Scene } from "three";
+
+/** The sim tests run this file as their scene module. */
+export const scene = new Scene();
 
 const { Evaluator, evaluator, JointActuator, actuator, split } = vi.hoisted(
   () => {
@@ -35,7 +39,6 @@ const mocks = vi.hoisted(() => ({
   },
   createConnection: vi.fn(),
   createRuntime: vi.fn(),
-  built: false,
   world: { time: 0, dispose: vi.fn(), fixedDelta: 1 / 120, update: vi.fn() },
   renderer: { dispose: vi.fn() },
   runtime: {
@@ -59,18 +62,7 @@ vi.mock("../src/connections/rcl.js", () => ({
   RclConnection: { create: mocks.createConnection },
 }));
 vi.mock("@drawcall/physics-mujoco", () => ({
-  buildWorld: async () => {
-    mocks.built = true;
-    return mocks.world;
-  },
-}));
-vi.mock("@drawcall/physics", () => ({
-  registry: {
-    get world() {
-      return mocks.built ? mocks.world : undefined;
-    },
-    clear: vi.fn(),
-  },
+  buildWorld: async () => mocks.world,
 }));
 vi.mock("../src/cli/webgpu.js", () => ({
   createRenderer: async () => mocks.renderer,
@@ -112,7 +104,6 @@ import { snapshot } from "../src/cli/snapshot.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.built = false;
   vi.useFakeTimers();
   mocks.createConnection.mockResolvedValue(mocks.connection);
   mocks.createRuntime.mockReturnValue(mocks.runtime);

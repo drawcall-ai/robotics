@@ -3,3 +3,16 @@ public/
 runs/
 evidence/*.bag
 __pycache__/
+# What a solver captures while it works: camera frames, step and run logs
+policy/**/*.jpg
+policy/**/*.png
+policy/**/*.out
+policy/**/*.log
+policy/**/frames/
+policy/**/shots/
+policy/**/steps/
+policy/**/logs/
+policy/**/autologs/
+policy/scatter/real/
+audit/**/*.jpg
+audit/**/frames/

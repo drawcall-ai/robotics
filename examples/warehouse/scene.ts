@@ -37,7 +37,7 @@ export const show = ["/map", "/local_costmap/costmap", "/plan", "/local_plan"];
 export const recordExclude =
   "^/(bond|evaluation|marker)$|_costmap/.+_(layer|raw|updates)";
 
-const scene = new Scene();
+export const scene = new Scene();
 const obstacles = new Set<RigidBody>();
 const robot = new Robot();
 robot.name = "warehouse";
@@ -70,7 +70,7 @@ function block(
   position: [number, number, number],
   material: MeshStandardMaterial,
 ) {
-  const body = new RigidBody({ type: "static" });
+  const body = new RigidBody({ bodyType: "static" });
   body.position.set(...position);
   if (position[1] >= 0) obstacles.add(body);
   const mesh = new Mesh(new BoxGeometry(...size), material);

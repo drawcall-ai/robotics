@@ -17,7 +17,7 @@ import {
 } from "./environment.ts";
 import { deskHeight, pieces, ros, tilt } from "./task.ts";
 
-export { show } from "./environment.ts";
+export { scene, show } from "./environment.ts";
 
 const log = (message: string) => getROS2().log(message);
 const heading = (body: RigidBody) => {

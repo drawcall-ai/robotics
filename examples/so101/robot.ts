@@ -56,7 +56,7 @@ export function arm(height: number) {
   for (const link of links) {
     if (bolted.has(link.name)) continue;
     const body = new RigidBody({
-      type: link.name === "base_link" ? "static" : "dynamic",
+      bodyType: link.name === "base_link" ? "static" : "dynamic",
       mass: mass(link.name),
       canSleep: false,
     });

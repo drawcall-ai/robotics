@@ -14,7 +14,7 @@ vi.mock("@drawcall/robotics", () => import("../src/index.js"));
 // Golden omits binary mesh payloads; mesh geometry is decoded and checked in model.test.ts.
 it("exports the warehouse example as its golden URDF and scans on /robot/scan", async () => {
   const ros = offline();
-  await import("../../../examples/warehouse/scene.js");
+  const { scene } = await import("../../../examples/warehouse/scene.js");
   expect(
     ros.find(CameraSensor).map((camera) => camera.compressedTopic),
   ).toEqual(["/robot/camera/image_raw/compressed"]);
@@ -32,7 +32,7 @@ it("exports the warehouse example as its golden URDF and scans on /robot/scan", 
   if (!evaluation || !robot)
     throw new Error("Example must register its robot and evaluator");
   vi.spyOn(ros.connection, "publish").mockImplementation(() => {});
-  const world = await buildWorld();
+  const world = await buildWorld({ scene });
   defer(() => world.dispose());
   ros.attachWorld(world);
   evaluation.start();

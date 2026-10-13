@@ -22,7 +22,7 @@
     "prepack": "pnpm build"
   },
   "dependencies": {
-    "@drawcall/physics-mujoco": "0.13.0",
+    "@drawcall/physics-mujoco": "0.16.0",
     "@foxglove/rosmsg": "^5.0.5",
     "@foxglove/rosmsg2-serialization": "^3.1.2",
     "@mcap/core": "2.2.2",
@@ -35,11 +35,11 @@
     "tar": "^7.5.22"
   },
   "peerDependencies": {
-    "@drawcall/physics": "^0.13.0",
+    "@drawcall/physics": "^0.16.0",
     "three": ">=0.185.0"
   },
   "devDependencies": {
-    "@drawcall/physics": "0.13.0",
+    "@drawcall/physics": "0.16.0",
     "@types/node": "^26.6.0",
     "@types/send": "^1.2.1"
   },

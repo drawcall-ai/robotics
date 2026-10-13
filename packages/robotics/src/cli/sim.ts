@@ -25,7 +25,8 @@ import {
   START_TYPE,
   UNSUPPORTED,
 } from "./protocol.js";
-import { registry, type PhysicsWorld } from "@drawcall/physics";
+import type { PhysicsWorld } from "@drawcall/physics";
+import { Object3D } from "three";
 import { stamp } from "../messages.js";
 import { ROS2 } from "../runtime.js";
 import { modelView } from "../urdf/view.js";
@@ -46,8 +47,9 @@ interface SimOptions {
 
 /**
  * The simulator node that simulation.launch.xml starts: it runs and records a scene's evaluation
- * episode, which waits for /sim/start_evaluation. The scene module may export `show`, extra
- * viewer topics, and `recordExclude`, a regular expression of topics not to record.
+ * episode, which waits for /sim/start_evaluation. The scene module exports `scene`, the three.js
+ * object the simulation runs, and may export `show`, extra viewer topics, and `recordExclude`, a
+ * regular expression of topics not to record.
  */
 export const sim = new Command("sim")
   .description("run the scene as a ROS 2 node until stopped")
@@ -114,8 +116,6 @@ async function run(scene: string, options: SimOptions): Promise<void> {
     process.off("SIGINT", interrupt);
     process.off("SIGTERM", interrupt);
   });
-  resources.defer(() => registry.clear());
-  resources.defer(() => registry.world?.dispose());
   const renderer = await createRenderer();
   resources.defer(() => renderer.dispose());
   const connection = await RclConnection.create("sim");
@@ -131,10 +131,11 @@ async function run(scene: string, options: SimOptions): Promise<void> {
     setup.move();
   }
   // The scene builds against the current runtime and registers its devices there.
-  const { show, recordExclude } = declared(
+  const { root, show, recordExclude } = declared(
     await import(pathToFileURL(resolve(scene)).href),
   );
   const world = await buildWorld({
+    scene: root,
     gravity: [0, -9.81, 0],
     // MuJoCo's default timestep.
     fixedDelta: 1 / 500,
@@ -147,6 +148,7 @@ async function run(scene: string, options: SimOptions): Promise<void> {
     frictionImpedanceRatio: 100,
     frictionCone: "elliptic",
   });
+  resources.defer(() => world.dispose());
   ros.attachWorld(world);
   if (stop.signal.aborted) return;
   const robots = ros.find(Robot);
@@ -235,16 +237,19 @@ async function run(scene: string, options: SimOptions): Promise<void> {
 }
 
 /** What the scene module declares for the viewer and the recording. */
-function declared(scene: Record<string, unknown>): {
+function declared(module: Record<string, unknown>): {
+  root: Object3D;
   show: string[];
   recordExclude?: string;
 } {
-  const { show = [], recordExclude } = scene;
+  const { scene: root, show = [], recordExclude } = module;
+  if (!(root instanceof Object3D))
+    throw new Error("A scene module must export the three.js scene as `scene`");
   if (!Array.isArray(show) || !show.every((topic) => typeof topic === "string"))
     throw new Error("A scene's show export must be a list of topics");
   if (recordExclude !== undefined && typeof recordExclude !== "string")
     throw new Error("A scene's recordExclude export must be a regex string");
-  return { show, recordExclude };
+  return { root, show, recordExclude };
 }
 
 interface Controls {

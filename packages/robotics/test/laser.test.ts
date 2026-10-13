@@ -14,15 +14,15 @@ const NEAR = -Infinity;
 function wall(
   position: [number, number, number],
   size: [number, number, number],
-): void {
-  const body = new RigidBody({ type: "static" });
+): RigidBody {
+  const body = new RigidBody({ bodyType: "static" });
   body.position.set(...position);
   body.add(new BoxCollider({ size }));
+  return body;
 }
 /** A wall 2.9 m ahead (Three -Z) and one 1.9 m to the left (Three -X). */
-function room(): void {
-  wall([0, 0, -3], [4, 4, 0.2]);
-  wall([-2, 0, 0], [0.2, 4, 4]);
+function room(scene: Object3D): void {
+  scene.add(wall([0, 0, -3], [4, 4, 0.2]), wall([-2, 0, 0], [0.2, 4, 4]));
 }
 function scan(ranges: unknown[]) {
   return {
@@ -34,7 +34,7 @@ function scan(ranges: unknown[]) {
 
 it("measures each wall at its bearing and reports clear directions beyond range", async () => {
   const { world, ros, connection } = await simulation();
-  room();
+  room(world.scene);
   new LaserSensor({ ros, samples: SAMPLES });
   world.update(0.01);
   expect(connection.messages).toContainEqual(
@@ -44,7 +44,7 @@ it("measures each wall at its bearing and reports clear directions beyond range"
 
 it("scans in the frame of the body it sits on", async () => {
   const { world, ros, connection } = await simulation();
-  room();
+  room(world.scene);
   const mount = new Object3D();
   mount.rotation.y = Math.PI / 2;
   mount.add(new LaserSensor({ ros, samples: SAMPLES }));
@@ -56,7 +56,7 @@ it("scans in the frame of the body it sits on", async () => {
 
 it("reports returns closer than the minimum range as -Inf", async () => {
   const { world, ros, connection } = await simulation();
-  room();
+  room(world.scene);
   new LaserSensor({ ros, samples: SAMPLES, minRange: 2 });
   world.update(0.01);
   expect(connection.messages).toContainEqual(

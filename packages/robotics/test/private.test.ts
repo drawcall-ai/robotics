@@ -19,7 +19,7 @@ import { simulation } from "./fixture.js";
 function arm(ros: ROS2, actuated = false) {
   const robot = new Robot({ ros, private: true });
   robot.name = "arm";
-  const base = new RigidBody({ type: "static" });
+  const base = new RigidBody({ bodyType: "static" });
   base.name = "base_link";
   const link = new RigidBody({
     mass: 1,
@@ -54,7 +54,7 @@ it("records private messages without sending them to ROS", async () => {
   ros.attachRecording({
     write: (topic, _type, _message, time) => written.push({ topic, time }),
   });
-  arm(ros);
+  world.scene.add(arm(ros));
   const evaluation = new Evaluator({
     ros,
     private: true,
@@ -86,7 +86,7 @@ it("records private messages without sending them to ROS", async () => {
 
 it("rejects JointActuators on a private robot, which takes no commands", async () => {
   const { world, ros } = await simulation();
-  arm(ros, true);
+  world.scene.add(arm(ros, true));
   expect(() => world.update(0.01)).toThrow("takes no joint commands");
 });
 

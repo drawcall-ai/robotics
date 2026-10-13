@@ -1,4 +1,3 @@
-import { registry } from "@drawcall/physics";
 import { Command } from "commander";
 import { createHash } from "node:crypto";
 import { writeFile } from "node:fs/promises";
@@ -39,7 +38,6 @@ export const urdf = new Command("urdf")
     let xml: string;
     {
       using resources = new DisposableStack();
-      resources.defer(() => registry.clear());
       const ros = new ROS2(new OfflineConnection(), {
         namespace: options.namespace,
       });

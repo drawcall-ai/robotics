@@ -126,7 +126,7 @@ export class JointActuator
         this.unregister,
         () => {
           const joint = this.joint;
-          if (!joint || joint.disposed) return;
+          if (!joint) return;
           if (joint instanceof ScalarJoint) joint.setDrive(undefined);
           if (joint instanceof GenericJoint)
             for (const [dof, drive] of joint.drives)
