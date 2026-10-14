@@ -1,6 +1,6 @@
 // The SO101 arm with its wrist camera, its base on the floor at the origin, facing -Z: an asset of
 // its own that task scenes load and place.
-import { scene } from "@drawcall/glts";
+import { isPreview, scene } from "@drawcall/glts";
 import {
   BoxCollider,
   MeshCollider,
@@ -10,11 +10,16 @@ import {
 import { CameraSensor, JointActuator, Robot } from "@drawcall/robotics";
 import {
   BufferGeometry,
-  Float32BufferAttribute,
+  Color,
+  DirectionalLight,
   Euler,
+  Float32BufferAttribute,
+  HemisphereLight,
   Matrix4,
   Mesh,
   MeshStandardMaterial,
+  PerspectiveCamera,
+  PlaneGeometry,
   Quaternion,
   Vector3,
 } from "three";
@@ -197,3 +202,33 @@ camera.updateMatrix();
 camera.applyMatrix4(housing.frame);
 housing.body.add(camera);
 scene.add(robot);
+
+// A three-quarter view from the front, where the gripper and the wrist camera face.
+scene.defaultCamera = new PerspectiveCamera(35, 1, 0.01, 20);
+scene.defaultCamera.position.set(0.5, 0.45, -0.8);
+scene.defaultCamera.lookAt(-0.1, 0.16, -0.1);
+
+// Staging for viewing the arm on its own: light, a floor and a backdrop.
+if (isPreview) {
+  scene.background = new Color("#dfe3e8");
+  scene.add(new HemisphereLight("#ffffff", "#9aa1ab", 1.5));
+  const sun = new DirectionalLight("#ffffff", 2.5);
+  sun.position.set(0.8, 1.5, -1);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, {
+    left: -0.5,
+    right: 0.5,
+    top: 0.5,
+    bottom: -0.5,
+  });
+  scene.add(sun, sun.target);
+  const floor = new Mesh(
+    new PlaneGeometry(40, 40),
+    new MeshStandardMaterial({ color: "#cfd4da", roughness: 0.9 }),
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  scene.add(floor);
+  scene.rendering.shadows = true;
+}

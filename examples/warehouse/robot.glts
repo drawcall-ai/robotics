@@ -1,6 +1,6 @@
 // A differential-drive robot: a chassis on two driven wheels and two free-rolling support
 // balls, with a lidar and a front camera.
-import { scene } from "@drawcall/glts";
+import { isPreview, scene } from "@drawcall/glts";
 import {
   BoxCollider,
   CylinderCollider,
@@ -17,10 +17,15 @@ import {
 } from "@drawcall/robotics";
 import {
   BoxGeometry,
+  Color,
   CylinderGeometry,
+  DirectionalLight,
+  HemisphereLight,
   Matrix4,
   Mesh,
   MeshStandardMaterial,
+  PerspectiveCamera,
+  PlaneGeometry,
   SphereGeometry,
 } from "three";
 
@@ -120,3 +125,33 @@ const camera = new CameraSensor({
 });
 camera.position.set(0, 0.28, -0.38);
 chassis.add(laser, camera);
+
+// A three-quarter view from the front, where the lidar and the camera face.
+scene.defaultCamera = new PerspectiveCamera(35, 1, 0.05, 50);
+scene.defaultCamera.position.set(1.6, 1.3, -2.1);
+scene.defaultCamera.lookAt(0, 0.3, 0);
+
+// Staging for viewing the robot on its own: light, a floor and a backdrop.
+if (isPreview) {
+  scene.background = new Color("#dfe3e8");
+  scene.add(new HemisphereLight("#ffffff", "#9aa1ab", 1.5));
+  const sun = new DirectionalLight("#ffffff", 2.5);
+  sun.position.set(2, 4, -2.5);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, {
+    left: -1.5,
+    right: 1.5,
+    top: 1.5,
+    bottom: -1.5,
+  });
+  scene.add(sun, sun.target);
+  const floor = new Mesh(
+    new PlaneGeometry(40, 40),
+    new MeshStandardMaterial({ color: "#cfd4da", roughness: 0.9 }),
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  scene.add(floor);
+  scene.rendering.shadows = true;
+}
