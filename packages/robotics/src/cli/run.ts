@@ -57,8 +57,14 @@ export function number(min: number, integer = false) {
   };
 }
 
-/** `run`; `command` is the policy command after `--`, which replaces the policy file. */
-export function run(command: string[] | undefined): Command {
+/**
+ * `run`; `command` is the policy command after `--`, which replaces the policy file, and
+ * `invocation` is how the user runs this CLI.
+ */
+export function run(
+  command: string[] | undefined,
+  invocation: string,
+): Command {
   return new Command("run")
     .description(
       "run evaluation episodes of a scene; a single episode pauses when its turn ends",
@@ -131,6 +137,7 @@ export function run(command: string[] | undefined): Command {
           list.length,
           Math.max(1, Math.floor(availableParallelism() / 2)),
         ),
+        invocation,
       };
       const folder = create();
       const place = (seed: number) =>
@@ -153,8 +160,14 @@ export function run(command: string[] | undefined): Command {
     });
 }
 
-/** `continue`; `command` is the policy command after `--`, which replaces the policy file. */
-export function resume(command: string[] | undefined): Command {
+/**
+ * `continue`; `command` is the policy command after `--`, which replaces the policy file, and
+ * `invocation` is how the user runs this CLI.
+ */
+export function resume(
+  command: string[] | undefined,
+  invocation: string,
+): Command {
   return new Command("continue")
     .description("run another turn of a paused single run")
     .option("--run <folder>", "the paused run", "runs/latest")
@@ -177,6 +190,7 @@ export function resume(command: string[] | undefined): Command {
         batch: false,
         timeout: options.timeout ?? Infinity,
         slots: 1,
+        invocation,
       });
       if (r) print(r, folder, true);
       process.exit(0);

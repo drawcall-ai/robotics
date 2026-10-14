@@ -1,6 +1,6 @@
 ---
 name: robotics
-description: Author a robot simulation with @drawcall/robotics — a .glts scene whose robots, sensors and actuators are ROS 2 devices, plus the launch files and evaluator that make it an episode the CLI (npx @drawcall/robotics) runs and scores. Use when creating or changing a scene folder, a robot model, its sensors or its evaluator, or exporting its URDF.
+description: Author a robot simulation with @drawcall/robotics — a .glts scene whose robots, sensors and actuators are ROS 2 devices, plus the launch files and evaluator that make it an episode the CLI (npx drawcall robotics) runs and scores. Use when creating or changing a scene folder, a robot model, its sensors or its evaluator, or exporting its URDF.
 ---
 
 # @drawcall/robotics
@@ -17,7 +17,7 @@ policy.launch.xml    the robot's decision-making; its exit ends the turn
 pixi.toml            the ROS 2 environment the CLI runs in
 ```
 
-Run the CLI from that folder inside the ROS environment, for example `pixi run npx @drawcall/robotics run`. Both launch files take a `use_sim_time` argument and pass it to their nodes; a bringup with nothing to start is an empty `<launch>`. Every node the robot's software needs belongs in one of the two files, never in the scene.
+Run the CLI from that folder inside the ROS environment, for example `pixi run npx drawcall robotics run`. Both launch files take a `use_sim_time` argument and pass it to their nodes; a bringup with nothing to start is an empty `<launch>`. Every node the robot's software needs belongs in one of the two files, never in the scene.
 
 ## Writing robot.glts and scene.glts
 
@@ -88,4 +88,4 @@ scene.add(
 
 ## Other commands
 
-`npx @drawcall/robotics urdf scene.glts` (or `robot.glts`) prints the robot's URDF for tools that need it outside a run. `cat` prints a run's recording as JSON lines and `view` opens it in Lichtblick.
+`npx drawcall robotics urdf scene.glts` (or `robot.glts`) prints the robot's URDF for tools that need it outside a run. `cat` prints a run's recording as JSON lines and `view` opens it in Lichtblick.

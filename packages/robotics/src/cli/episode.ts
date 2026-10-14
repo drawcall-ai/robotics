@@ -93,6 +93,8 @@ export interface Mode {
   timeout: number;
   /** Episodes side by side, which share the cores. */
   slots: number;
+  /** How the user runs this CLI, for the commands a paused turn suggests. */
+  invocation: string;
 }
 
 /** Why a turn ended. */
@@ -209,7 +211,7 @@ export async function turn(
       );
     if (paused) {
       console.error(
-        "Paused: npx @drawcall/robotics continue runs another turn, npx @drawcall/robotics stop ends it",
+        `Paused: ${mode.invocation} continue runs another turn, ${mode.invocation} stop ends it`,
       );
       console.log(folder);
       return undefined;

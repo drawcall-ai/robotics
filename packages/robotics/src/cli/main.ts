@@ -36,17 +36,20 @@ const split = process.argv.indexOf("--");
 const argv = split < 0 ? process.argv : process.argv.slice(0, split);
 const command = split < 0 ? undefined : process.argv.slice(split + 1);
 
+// drawcall runs this CLI through npx as one of its own subcommands, and names it so.
+const invocation = process.env.DRAWCALL_INVOCATION || "npx @drawcall/robotics";
+
 // Exit codes: 0 ran, 1 below --min-score, 2 a crash or a usage error.
 const commands = [
-  run(command),
-  resume(command),
+  run(command, invocation),
+  resume(command, invocation),
   stop,
   cat,
   urdf,
   view,
   snapshot,
 ];
-const program = new Command("robotics")
+const program = new Command(invocation)
   .showHelpAfterError()
   .exitOverride()
   .addCommand(sim.exitOverride(), { hidden: true });
