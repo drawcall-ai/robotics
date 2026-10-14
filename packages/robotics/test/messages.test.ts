@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { header, identifier, stamp } from "../src/messages.js";
+import { header, identifier, stamp, topic } from "../src/messages.js";
 
 it("stamps simulation time in whole seconds and nanoseconds", () => {
   expect(stamp(1.9999999998)).toEqual({ sec: 2, nanosec: 0 });
@@ -21,4 +21,13 @@ it("accepts only ROS name segments as identifiers", () => {
     );
     expect(() => identifier("link", bad)).toThrow(`Invalid link name: ${bad}`);
   }
+});
+
+it("names topics under a namespace, /robot by default, and passes absolute ones through", () => {
+  expect(topic("joint_states")).toBe("/robot/joint_states");
+  expect(topic("joint_states", "/bot")).toBe("/bot/joint_states");
+  expect(topic("joint_states", "/")).toBe("/joint_states");
+  expect(topic("/abs", "/bot")).toBe("/abs");
+  expect(() => topic("bad name")).toThrow("Invalid ROS topic");
+  expect(() => topic("joint_states", "bot")).toThrow("Invalid ROS namespace");
 });

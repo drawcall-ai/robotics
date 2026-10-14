@@ -3,7 +3,6 @@ import { Scene, type RenderTarget, type Texture } from "three";
 import { RevoluteJoint, RigidBody } from "@drawcall/physics";
 import { buildWorld } from "@drawcall/physics-mujoco";
 import type { Connection } from "../src/runtime.js";
-import { OfflineConnection } from "../src/connections/offline.js";
 import { JointActuator } from "../src/devices/actuator.js";
 import { Robot } from "../src/devices/robot.js";
 import type { CaptureRenderer } from "../src/runtime.js";
@@ -95,9 +94,8 @@ export class RendererStub implements CaptureRenderer {
 
 /** A runtime over a stepping MuJoCo world without gravity; tests add what it simulates to `world.scene`. */
 export async function simulation({
-  namespace,
   gravity = [0, 0, 0],
-}: { namespace?: string; gravity?: [number, number, number] } = {}) {
+}: { gravity?: [number, number, number] } = {}) {
   const world = await buildWorld({
     scene: new Scene(),
     gravity,
@@ -106,29 +104,21 @@ export async function simulation({
   defer(() => world.dispose());
   const connection = new ConnectionStub();
   const renderer = new RendererStub();
-  const ros = new ROS2(connection, { world, renderer, namespace });
+  const ros = new ROS2(connection, { scene: world.scene, world, renderer });
   defer(() => ros.dispose());
   return { world, ros, connection, renderer };
 }
 
-/** A runtime that only builds a scene, as URDF export does. */
-export function offline(namespace?: string): ROS2 {
-  const ros = new ROS2(new OfflineConnection(), { namespace });
-  defer(() => ros.dispose());
-  return ros;
-}
-
 /** A robot with one actuated wheel on a static base; stiffness makes the actuator position-commanded. */
-export function cart(
-  ros: ROS2,
-  {
-    stiffness,
-    interface: command = stiffness ? "position" : "velocity",
-  }: {
-    stiffness?: number;
-    interface?: "position" | "velocity" | "effort";
-  } = {},
-) {
+export function cart({
+  stiffness,
+  interface: command = stiffness ? "position" : "velocity",
+  namespace,
+}: {
+  stiffness?: number;
+  interface?: "position" | "velocity" | "effort";
+  namespace?: string;
+} = {}) {
   const base = new RigidBody({ bodyType: "static" });
   base.name = "base_link";
   const wheel = new RigidBody({
@@ -140,14 +130,13 @@ export function cart(
   const joint = new RevoluteJoint({ body0: base, body1: wheel, axis: "Z" });
   joint.name = "wheel";
   const actuator = new JointActuator({
-    ros,
     interface: command,
     stiffness,
     damping: command === "effort" ? undefined : 10,
     maxForce: 20,
   });
   joint.setDrive(actuator);
-  const robot = new Robot({ ros });
+  const robot = new Robot({ namespace });
   robot.name = "cart";
   robot.add(base, wheel, joint);
   return { robot, base, wheel, joint, actuator };

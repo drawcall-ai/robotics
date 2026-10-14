@@ -12,11 +12,11 @@ import { Robot } from "../src/devices/robot.js";
 import { exportURDF } from "../src/urdf/export.js";
 import { descriptionView } from "../src/urdf/view.js";
 import { rosPosition } from "../src/coordinates.js";
-import { cart, offline, simulation } from "./fixture.js";
+import { cart, simulation } from "./fixture.js";
 
 it("publishes a retained model and static frames once before motion, then live link transforms", async () => {
-  const { ros, world, connection } = await simulation();
-  const { robot, base, wheel } = cart(ros);
+  const { world, connection } = await simulation();
+  const { robot, base, wheel } = cart();
   world.scene.add(robot);
   base.add(new BoxCollider());
   const publish = vi.spyOn(connection, "publish");
@@ -68,8 +68,7 @@ it("publishes a retained model and static frames once before motion, then live l
 });
 
 it("embeds actual colored visual geometry in ROS link coordinates, separately from collision proxies", () => {
-  const ros = offline();
-  const { base } = cart(ros);
+  const { robot, base } = cart();
   base.add(new BoxCollider({ size: [0.2, 0.2, 0.2] }));
   const visual = new Mesh(
     new BoxGeometry(2, 4, 6),
@@ -77,7 +76,7 @@ it("embeds actual colored visual geometry in ROS link coordinates, separately fr
   );
   visual.position.set(1, 2, 3);
   base.add(visual);
-  const xml = exportURDF({ ros });
+  const xml = exportURDF(robot);
   const encoded = /data:model\/stl;base64,([^"]+)/.exec(xml)?.[1];
   if (!encoded) throw new Error("No embedded visual");
   const data = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
@@ -101,8 +100,8 @@ it("embeds actual colored visual geometry in ROS link coordinates, separately fr
 });
 
 it("includes fixed bodies and publishes a model even without actuated joints", async () => {
-  const { ros, world, connection } = await simulation();
-  const robot = new Robot({ ros });
+  const { world, connection } = await simulation();
+  const robot = new Robot();
   robot.name = "fixed";
   const base = new RigidBody({ bodyType: "static" });
   base.name = "base_link";
@@ -135,5 +134,7 @@ it("includes fixed bodies and publishes a model even without actuated joints", a
       ]),
     },
   });
-  expect(exportURDF({ ros })).toContain('<joint name="mount" type="fixed">');
+  expect(exportURDF(world.scene)).toContain(
+    '<joint name="mount" type="fixed">',
+  );
 });

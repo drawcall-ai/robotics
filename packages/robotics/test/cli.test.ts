@@ -1,21 +1,27 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-const { Evaluator, evaluator, JointActuator, actuator, split } = vi.hoisted(
+const { Evaluator, evaluator, Robot, robot, actuator, split } = vi.hoisted(
   () => {
     class Evaluator {
       finished = false;
       active = false;
       result = undefined;
+      options = {};
       end = vi.fn();
     }
-    class JointActuator {
-      release = vi.fn();
+    const actuator = { release: vi.fn() };
+    class Robot {
+      private = false;
+      descriptionTopic = "/robot/robot_description";
+      actuators = new Map([["wheel", actuator]]);
+      beforeStep = vi.fn();
     }
     return {
       Evaluator,
       evaluator: new Evaluator(),
-      JointActuator,
-      actuator: new JointActuator(),
+      Robot,
+      robot: new Robot(),
+      actuator,
       split: vi.fn(async () => {}),
     };
   },
@@ -52,12 +58,9 @@ const mocks = vi.hoisted(() => ({
     resume: vi.fn(),
     connected: true,
     publish: vi.fn(),
+    sync: vi.fn(),
     find: vi.fn((type: unknown) =>
-      type === Evaluator
-        ? [evaluator]
-        : type === JointActuator
-          ? [actuator]
-          : [],
+      type === Evaluator ? [evaluator] : type === Robot ? [robot] : [],
     ),
   },
   serve: vi.fn(),
@@ -79,8 +82,7 @@ vi.mock("../src/runtime.js", () => ({
     }
   },
 }));
-vi.mock("../src/devices/robot.js", () => ({ Robot: class {} }));
-vi.mock("../src/devices/actuator.js", () => ({ JointActuator }));
+vi.mock("../src/devices/robot.js", () => ({ Robot }));
 vi.mock("../src/evaluation.js", async (original) => ({
   ...(await original<object>()),
   Evaluator,
@@ -173,8 +175,8 @@ it("releases acquired resources when the scene cannot be loaded", async () => {
     sim.parseAsync(["scene.glts", "--record", "bag"], { from: "user" }),
   ).rejects.toThrow("bad scene");
   expect(mocks.loader.dispose).toHaveBeenCalledOnce();
-  expect(mocks.runtime.disposeAsync).toHaveBeenCalledOnce();
-  expect(mocks.connection.dispose).not.toHaveBeenCalled();
+  expect(mocks.createConnection).not.toHaveBeenCalled();
+  expect(mocks.createRuntime).not.toHaveBeenCalled();
   expect(mocks.renderer.dispose).toHaveBeenCalledOnce();
   expect(mocks.world.dispose).not.toHaveBeenCalled();
 });
@@ -252,7 +254,9 @@ it("waits for runtime cleanup before releasing the renderer, including on failur
     reject = fail;
   });
   mocks.runtime.disposeAsync.mockReturnValueOnce(cleanup);
-  mocks.loader.loadAsync.mockRejectedValueOnce(new Error("bad scene"));
+  mocks.runtime.attachWorld.mockImplementationOnce(() => {
+    throw new Error("attach failed");
+  });
   const disposal = new Error("runtime disposal failed");
   const result = sim.parseAsync(["scene.glts", "--record", "bag"], {
     from: "user",
@@ -266,7 +270,6 @@ it("waits for runtime cleanup before releasing the renderer, including on failur
   reject(disposal);
   await failure;
   expect(mocks.renderer.dispose).toHaveBeenCalledOnce();
-  expect(mocks.world.dispose).not.toHaveBeenCalled();
 });
 
 it("reports viewer startup failure once while disposing the simulation", async () => {

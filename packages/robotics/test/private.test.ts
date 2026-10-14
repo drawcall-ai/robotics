@@ -12,12 +12,11 @@ import {
 } from "../src/cli/recording.js";
 import { RevoluteJoint, RigidBody } from "@drawcall/physics";
 import { JointActuator } from "../src/devices/actuator.js";
-import type { ROS2 } from "../src/runtime.js";
 import { simulation } from "./fixture.js";
 
 /** A private one-joint arm; with `actuated`, its joint has a JointActuator. */
-function arm(ros: ROS2, actuated = false) {
-  const robot = new Robot({ ros, private: true });
+function arm(actuated = false) {
+  const robot = new Robot({ private: true });
   robot.name = "arm";
   const base = new RigidBody({ bodyType: "static" });
   base.name = "base_link";
@@ -30,9 +29,7 @@ function arm(ros: ROS2, actuated = false) {
   const joint = new RevoluteJoint({ body0: base, body1: link, axis: "Z" });
   joint.name = "joint";
   if (actuated)
-    joint.setDrive(
-      new JointActuator({ ros, interface: "velocity", damping: 1 }),
-    );
+    joint.setDrive(new JointActuator({ interface: "velocity", damping: 1 }));
   robot.add(base, link, joint);
   return robot;
 }
@@ -54,14 +51,14 @@ it("records private messages without sending them to ROS", async () => {
   ros.attachRecording({
     write: (topic, _type, _message, time) => written.push({ topic, time }),
   });
-  world.scene.add(arm(ros));
   const evaluation = new Evaluator({
-    ros,
     private: true,
     timeout: 1,
     success: {},
     score: () => 0,
   });
+  world.scene.add(arm(), evaluation);
+  ros.sync();
   evaluation.start();
   world.update(0.01);
   expect(connection.messages.map(({ name }) => name)).not.toEqual(
@@ -85,8 +82,8 @@ it("records private messages without sending them to ROS", async () => {
 });
 
 it("rejects JointActuators on a private robot, which takes no commands", async () => {
-  const { world, ros } = await simulation();
-  world.scene.add(arm(ros, true));
+  const { world } = await simulation();
+  world.scene.add(arm(true));
   expect(() => world.update(0.01)).toThrow("takes no joint commands");
 });
 

@@ -1,0 +1,122 @@
+// A differential-drive robot: a chassis on two driven wheels and two free-rolling support
+// balls, with a lidar and a front camera.
+import { scene } from "@drawcall/glts";
+import {
+  BoxCollider,
+  CylinderCollider,
+  RevoluteJoint,
+  RigidBody,
+  SphereCollider,
+  SphericalJoint,
+} from "@drawcall/physics";
+import {
+  CameraSensor,
+  JointActuator,
+  LaserSensor,
+  Robot,
+} from "@drawcall/robotics";
+import {
+  BoxGeometry,
+  CylinderGeometry,
+  Matrix4,
+  Mesh,
+  MeshStandardMaterial,
+  SphereGeometry,
+} from "three";
+
+const orange = new MeshStandardMaterial({
+  color: "#f7ab39",
+  roughness: 0.45,
+  metalness: 0.25,
+});
+const dark = new MeshStandardMaterial({ color: "#26343b", roughness: 0.65 });
+const metal = new MeshStandardMaterial({
+  color: "#b9c8ca",
+  metalness: 0.65,
+  roughness: 0.3,
+});
+
+const robot = new Robot();
+robot.name = "warehouse";
+scene.add(robot);
+
+const chassis = new RigidBody({ mass: 12, canSleep: false });
+chassis.name = "base_link";
+chassis.position.set(0, 0.36, 0);
+const shell = new Mesh(new BoxGeometry(0.66, 0.22, 0.82), orange);
+shell.castShadow = true;
+chassis.add(new BoxCollider({ size: [0.66, 0.22, 0.82] }), shell);
+const lidar = new Mesh(new CylinderGeometry(0.09, 0.09, 0.06, 24), dark);
+lidar.position.set(0, 0.21, -0.32);
+chassis.add(lidar);
+robot.add(chassis);
+
+for (const z of [-0.31, 0.31]) {
+  const ball = new RigidBody({ mass: 0.2, canSleep: false });
+  ball.position.set(0, 0.09, z);
+  ball.add(
+    new SphereCollider({ radius: 0.09 }),
+    new Mesh(new SphereGeometry(0.09, 16, 12), metal),
+  );
+  // URDF has no ball joint, so the support balls ride along outside the robot group.
+  scene.add(
+    ball,
+    new SphericalJoint({
+      body0: chassis,
+      body1: ball,
+      frame0: new Matrix4().makeTranslation(0, -0.27, z),
+      frame1: new Matrix4(),
+    }),
+  );
+}
+
+for (const [name, x] of [
+  ["left_wheel", -0.45],
+  ["right_wheel", 0.45],
+] as const) {
+  const body = new RigidBody({ mass: 1, canSleep: false });
+  body.name = name;
+  body.position.set(x, 0.22, 0);
+  body.setMaterial({
+    staticFriction: 1.5,
+    dynamicFriction: 1.5,
+    restitution: 0,
+  });
+  const collider = new CylinderCollider({ radius: 0.22, height: 0.13 });
+  const tire = new Mesh(new CylinderGeometry(0.22, 0.22, 0.13, 32), dark);
+  collider.rotation.z = tire.rotation.z = Math.PI / 2;
+  tire.castShadow = true;
+  body.add(collider, tire);
+  // Positive joint velocity drives the chassis toward -Z, its forward direction.
+  const joint = new RevoluteJoint({
+    body0: chassis,
+    body1: body,
+    axis: "X",
+    frame0: new Matrix4().makeRotationY(Math.PI).setPosition(x, -0.14, 0),
+    frame1: new Matrix4().makeRotationY(Math.PI),
+  });
+  joint.name = name;
+  joint.setDrive(
+    new JointActuator({ interface: "velocity", damping: 30, maxForce: 10 }),
+  );
+  robot.add(body, joint);
+}
+
+const laser = new LaserSensor({
+  name: "scan",
+  frameId: "laser",
+  samples: 361,
+  range: 12,
+  rate: 10,
+});
+laser.position.set(0, 0.24, -0.32);
+const camera = new CameraSensor({
+  name: "camera",
+  frameId: "camera_optical",
+  width: 320,
+  height: 180,
+  fov: 70,
+  rate: 5,
+});
+camera.position.set(0, 0.28, -0.38);
+chassis.add(laser, camera);

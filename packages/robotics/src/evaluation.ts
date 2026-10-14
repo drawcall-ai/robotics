@@ -1,4 +1,5 @@
-import { getROS2, type ROS2 } from "./runtime.js";
+import { Object3D } from "three";
+import type { Device, ROS2 } from "./runtime.js";
 import { identifier, stamp } from "./messages.js";
 
 export const EVALUATION_TOPIC = "/sim/evaluation";
@@ -32,7 +33,13 @@ export interface EvaluatorOptions {
   success: Record<string, (context: EvaluationContext) => boolean>;
   failure?: Record<string, (context: EvaluationContext) => boolean>;
   score: (context: EvaluationContext) => number;
-  ros?: ROS2;
+  /** Topics a viewer shows beside the robots, such as a map or an annotated image. */
+  show?: readonly string[];
+  /**
+   * A regular expression of topics the recording leaves out, as rosbag2's `--exclude-regex` takes
+   * it, for subscribers that disturb the robot's stack.
+   */
+  recordExclude?: string;
   /**
    * Publishes /sim/evaluation and /sim/score privately: recorded, never seen by the robot's
    * software. The run's result.json gets the final result either way.
@@ -40,17 +47,20 @@ export interface EvaluatorOptions {
   private?: boolean;
 }
 
-/** One episode. The runner starts it after ROS and the recorder are ready. */
-export class Evaluator {
-  readonly ros: ROS2;
+/**
+ * One episode, judged while a runtime's scene holds it; a scene has one. The runner starts it
+ * after ROS and the recorder are ready.
+ */
+export class Evaluator extends Object3D implements Device {
+  readonly isDevice = true;
   /** Whether the evaluation is published privately. */
   readonly private: boolean;
-  private readonly unregister: () => void;
+  private ros?: ROS2;
   private started?: number;
   private state?: EvaluationState;
   private published?: EvaluationState;
-  private disposed = false;
-  constructor(private readonly options: EvaluatorOptions) {
+  constructor(readonly options: EvaluatorOptions) {
+    super();
     if (!Number.isFinite(options.timeout) || options.timeout <= 0)
       throw new Error("Evaluation timeout must be positive and finite");
     for (const name of Object.keys(options.metrics ?? {})) {
@@ -63,14 +73,18 @@ export class Evaluator {
       ...Object.keys(options.failure ?? {}),
     ])
       identifier("condition", name);
-    this.ros = options.ros ?? getROS2();
     this.private = options.private ?? false;
-    if (this.ros.find(Evaluator).length)
+  }
+  join(ros: ROS2): void {
+    if (ros.find(Evaluator).length)
       throw new Error("Only one evaluator is allowed per runtime");
-    this.unregister = this.ros.register(this);
+    this.ros = ros;
+  }
+  leave(): void {
+    this.ros = undefined;
   }
   get active(): boolean {
-    return !this.disposed && this.state !== undefined && !this.finished;
+    return this.ros !== undefined && this.state !== undefined && !this.finished;
   }
   get finished(): boolean {
     return this.state !== undefined && this.state.status !== "running";
@@ -79,11 +93,11 @@ export class Evaluator {
     return this.state;
   }
   start(): void {
-    if (this.disposed || this.started !== undefined)
+    if (this.started !== undefined)
       throw new Error(
         "An evaluator can only start once; create a new episode to restart",
       );
-    this.started = this.ros.world.time;
+    this.started = this.joined().world.time;
     this.sample(false);
   }
   /** Called after all synchronous devices have sampled the completed physics step. */
@@ -92,11 +106,11 @@ export class Evaluator {
   }
   end(status: "aborted" | "error", reason: string): void {
     const state = this.state;
-    if (this.disposed || state?.status !== "running") return;
+    if (!this.ros || state?.status !== "running") return;
     // Preserve the last valid measurements, even if a metric callback caused the error.
     this.state = Object.freeze({
       ...state,
-      stamp: Object.freeze(stamp(this.ros.world.time)),
+      stamp: Object.freeze(stamp(this.joined().world.time)),
       elapsed: this.elapsed,
       status,
       reason,
@@ -106,7 +120,7 @@ export class Evaluator {
   private get elapsed(): number {
     if (this.started === undefined)
       throw new Error("Evaluation has not started");
-    return this.ros.world.time - this.started;
+    return this.joined().world.time - this.started;
   }
   private sample(check: boolean): void {
     let status: EvaluationStatus = "running";
@@ -145,7 +159,7 @@ export class Evaluator {
     }
     const score = finite("score", this.options.score({ ...context, status }));
     const state = Object.freeze({
-      stamp: Object.freeze(stamp(this.ros.world.time)),
+      stamp: Object.freeze(stamp(this.joined().world.time)),
       elapsed,
       status,
       reason,
@@ -168,10 +182,11 @@ export class Evaluator {
   private publish(state: EvaluationState): void {
     // Runtime faults stop devices, but the final diagnostic must still reach ROS. Private
     // messages go to the recording, which a fault does not disconnect.
+    const ros = this.joined();
     const publisher =
-      state.status === "error" && this.ros.error && !this.private
-        ? this.ros.connection
-        : this.ros;
+      state.status === "error" && ros.error && !this.private
+        ? ros.connection
+        : ros;
     const options = { retain: true, private: this.private };
     publisher.publish(
       SCORE_TOPIC,
@@ -188,9 +203,14 @@ export class Evaluator {
     this.published = state;
   }
 
-  dispose(): void {
-    this.disposed = true;
-    this.unregister();
+  /** Logs `message` to /rosout, so the run's recording keeps what the scene reports. */
+  log(message: string): void {
+    this.joined().log(message);
+  }
+  private joined(): ROS2 {
+    if (!this.ros)
+      throw new Error("The evaluator is not under a ROS runtime's scene");
+    return this.ros;
   }
 }
 function finite(name: string, value: number): number {

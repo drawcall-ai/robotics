@@ -17,7 +17,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { separateMeshes } from "../src/cli/urdf.js";
-import { defer, offline } from "./fixture.js";
+import { defer } from "./fixture.js";
 
 /** A rover standing somewhere: box chassis, one actuated wheel on a cylinder, a camera and a lidar. */
 function rover(
@@ -26,16 +26,14 @@ function rover(
     at = [5, 1, -2],
     stiffness,
     limits,
-    namespace,
   }: {
     at?: number[];
     stiffness?: number;
     limits?: [number, number];
-    namespace?: string;
   } = {},
 ) {
   const [x = 0, y = 0, z = 0] = at;
-  const robot = new Robot({ namespace });
+  const robot = new Robot();
   robot.name = name;
   const base = new RigidBody({ mass: 2 });
   base.name = "base_link";
@@ -83,9 +81,8 @@ function withCaster({ robot, base }: { robot: Robot; base: RigidBody }) {
 }
 
 it("reads links, joints, colliders, frames and control from its children in ROS coordinates", () => {
-  const ros = offline();
   const { robot, base } = rover();
-  const urdf = exportURDF({ ros });
+  const urdf = exportURDF(robot);
   expect(urdf).toContain('<robot name="rover">');
   expect(urdf).toContain('<box size="0.6 0.4 0.2"/>');
   expect(urdf).toContain('<cylinder radius="0.1" length="0.05"/>');
@@ -107,30 +104,23 @@ it("reads links, joints, colliders, frames and control from its children in ROS 
 });
 
 it("is deterministic and independent of where the robot stands", () => {
-  const ros = offline();
-  const { robot } = rover();
-  const urdf = exportURDF({ ros });
-  robot.dispose();
-  rover("rover", { at: [-3, 2, 8] });
-  expect(exportURDF({ ros })).toBe(urdf);
+  const urdf = exportURDF(rover().robot);
+  expect(exportURDF(rover("rover", { at: [-3, 2, 8] }).robot)).toBe(urdf);
 });
 
 it("commands a stiff actuator through the position interface", () => {
-  const ros = offline();
-  rover("stiff", { stiffness: 50 });
-  expect(exportURDF({ ros })).toContain('<command_interface name="position"/>');
+  const { robot } = rover("stiff", { stiffness: 50 });
+  expect(exportURDF(robot)).toContain('<command_interface name="position"/>');
 });
 
 it("writes the actuator's force and velocity limits on a limited joint", () => {
-  const ros = offline();
-  rover("limited", { stiffness: 50, limits: [-1, 1] });
-  expect(exportURDF({ ros })).toContain(
+  const { robot } = rover("limited", { stiffness: 50, limits: [-1, 1] });
+  expect(exportURDF(robot)).toContain(
     '<limit lower="-1" upper="1" effort="1" velocity="3"/>',
   );
 });
 
 it("has no control block without actuators", () => {
-  const ros = offline();
   const free = new Robot();
   free.name = "free";
   const base = new RigidBody({ mass: 1 });
@@ -141,26 +131,21 @@ it("has no control block without actuators", () => {
   const axle = new RevoluteJoint({ body0: base, body1: wheel });
   axle.name = "axle";
   free.add(base, wheel, axle);
-  expect(exportURDF({ ros })).not.toContain("ros2_control");
+  expect(exportURDF(free)).not.toContain("ros2_control");
 });
 
 it("rejects a robot without a name, an ambiguous base and an unnamed joint", () => {
-  const ros = offline();
-  new Robot();
-  expect(() => exportURDF({ ros })).toThrow("Invalid robot name");
-  const two = rover("two", { namespace: "/two" });
+  expect(() => exportURDF(new Robot())).toThrow("Invalid robot name");
+  const two = rover("two");
   two.robot.add(new RigidBody({ mass: 1 }));
-  expect(() => exportURDF({ ros, name: "two" })).toThrow("found 2");
-  const unnamed = rover("unnamed", { namespace: "/unnamed" });
+  expect(() => exportURDF(two.robot)).toThrow("found 2");
+  const unnamed = rover("unnamed");
   unnamed.axle.name = "";
-  expect(() => exportURDF({ ros, name: "unnamed" })).toThrow(
-    "Invalid joint name",
-  );
+  expect(() => exportURDF(unnamed.robot)).toThrow("Invalid joint name");
 });
 
 it("rejects disconnected joints and duplicate frames, and exports mesh colliders", () => {
-  const ros = offline();
-  const orphaned = rover("orphaned", { namespace: "/orphaned" });
+  const orphaned = rover("orphaned");
   const loose = new RigidBody({ mass: 1 });
   loose.name = "loose";
   const other = new RigidBody({ mass: 1 });
@@ -168,47 +153,41 @@ it("rejects disconnected joints and duplicate frames, and exports mesh colliders
   const orphan = new RevoluteJoint({ body0: loose, body1: other });
   orphan.name = "orphan";
   orphaned.robot.add(loose, other, orphan);
-  expect(() => exportURDF({ ros, name: "orphaned" })).toThrow("found 2");
-  const duplicate = rover("duplicate", { namespace: "/duplicate" });
+  expect(() => exportURDF(orphaned.robot)).toThrow("found 2");
+  const duplicate = rover("duplicate");
   duplicate.base.add(new LaserSensor({ name: "rear", frameId: "wheel" }));
-  expect(() => exportURDF({ ros, name: "duplicate" })).toThrow(
+  expect(() => exportURDF(duplicate.robot)).toThrow(
     "Duplicate URDF link name: wheel",
   );
-  const meshed = rover("meshed", { namespace: "/meshed" });
+  const meshed = rover("meshed");
   const mesh = new MeshCollider();
   mesh.setGeometry(new BoxGeometry(1, 1, 1));
   meshed.base.add(mesh);
-  expect(exportURDF({ ros, name: "meshed" })).toContain(
-    "data:model/stl;base64,",
-  );
+  expect(exportURDF(meshed.robot)).toContain("data:model/stl;base64,");
 });
 
 it("rejects two joints or two frames with one name, and a frame off a link", () => {
-  const ros = offline();
-  const twin = rover("twin", { namespace: "/twin" });
+  const twin = rover("twin");
   const extra = new RigidBody({ mass: 1 });
   extra.name = "extra";
   const axle = new RevoluteJoint({ body0: twin.base, body1: extra });
   axle.name = "axle";
   twin.robot.add(extra, axle);
-  expect(() => exportURDF({ ros, name: "twin" })).toThrow(
-    "two joints named axle",
-  );
-  const eyes = rover("eyes", { namespace: "/eyes" });
+  expect(() => exportURDF(twin.robot)).toThrow("two joints named axle");
+  const eyes = rover("eyes");
   eyes.base.add(new CameraSensor({ name: "rear", frameId: "camera_optical" }));
-  expect(() => exportURDF({ ros, name: "eyes" })).toThrow(
+  expect(() => exportURDF(eyes.robot)).toThrow(
     "two frames named camera_optical",
   );
-  const rolling = rover("rolling", { namespace: "/rolling" });
+  const rolling = rover("rolling");
   withCaster(rolling);
-  expect(() => exportURDF({ ros, name: "rolling" })).toThrow(
+  expect(() => exportURDF(rolling.robot)).toThrow(
     "Body caster of rolling hangs from no named fixed or axis joint",
   );
 });
 
 it("separates embedded meshes into shared STL files beside the output", async () => {
-  const ros = offline();
-  const { base } = rover();
+  const { robot, base } = rover();
   for (const x of [0, 1]) {
     const mesh = new MeshCollider();
     mesh.setGeometry(new BoxGeometry(1, 1, 1));
@@ -218,7 +197,7 @@ it("separates embedded meshes into shared STL files beside the output", async ()
   const dir = await mkdtemp(join(tmpdir(), "urdf-"));
   defer(() => void rm(dir, { recursive: true }));
   const output = join(dir, "rover.urdf");
-  const urdf = await separateMeshes(exportURDF({ ros }), output);
+  const urdf = await separateMeshes(exportURDF(robot), output);
   expect(urdf).not.toContain("data:");
   const files = [...urdf.matchAll(/filename="(file:[^"]+)"/g)].map(
     ([, url]) => url ?? "",

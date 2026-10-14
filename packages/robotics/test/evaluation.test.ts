@@ -1,17 +1,29 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
+import { Object3D } from "three";
 import { BoxCollider, RigidBody, Trigger } from "@drawcall/physics";
 import { Evaluator, EVALUATION_TOPIC } from "../src/evaluation.js";
 import { Stepping } from "../src/cli/sim.js";
+import type { ROS2 } from "../src/runtime.js";
 import { simulation } from "./fixture.js";
 
+/** Puts an evaluator in the runtime's scene and joins it, as the runner does before starting it. */
+function join(ros: ROS2, evaluation: Evaluator): Evaluator {
+  ros.scene.add(evaluation);
+  ros.sync();
+  return evaluation;
+}
+
 it("publishes initial, coalesced absolute metrics, and an immediate frozen terminal snapshot", async () => {
-  const { world, connection } = await simulation();
+  const { world, ros, connection } = await simulation();
   let score = 0;
-  const evaluation = new Evaluator({
-    timeout: 10,
-    success: { complete: () => score === 3 },
-    score: () => score,
-  });
+  const evaluation = join(
+    ros,
+    new Evaluator({
+      timeout: 10,
+      success: { complete: () => score === 3 },
+      score: () => score,
+    }),
+  );
   evaluation.start();
   const messages = () =>
     connection.messages.filter(({ name }) => name === EVALUATION_TOPIC);
@@ -47,25 +59,31 @@ it("publishes initial, coalesced absolute metrics, and an immediate frozen termi
 });
 
 it("checks failure before success and records timeout even when no metric changes", async () => {
-  const { world } = await simulation();
-  const evaluation = new Evaluator({
-    timeout: 0.01,
-    success: { done: () => true },
-    failure: { unsafe: () => true },
-    score: ({ status }) => (status === "success" ? 100 : 0),
-  });
+  const { world, ros } = await simulation();
+  const evaluation = join(
+    ros,
+    new Evaluator({
+      timeout: 0.01,
+      success: { done: () => true },
+      failure: { unsafe: () => true },
+      score: ({ status }) => (status === "success" ? 100 : 0),
+    }),
+  );
   evaluation.start();
   world.update(0.01);
   expect(evaluation.result).toMatchObject({
     status: "failure",
     reason: "unsafe",
   });
-  evaluation.dispose();
-  const timeout = new Evaluator({
-    timeout: 0.01,
-    success: {},
-    score: () => 0,
-  });
+  evaluation.removeFromParent();
+  const timeout = join(
+    ros,
+    new Evaluator({
+      timeout: 0.01,
+      success: {},
+      score: () => 0,
+    }),
+  );
   timeout.start();
   world.update(0.01);
   expect(timeout.result).toMatchObject({
@@ -77,34 +95,43 @@ it("checks failure before success and records timeout even when no metric change
 it("samples after synchronous devices regardless of registration order", async () => {
   const { world, ros } = await simulation();
   let value = 0;
-  const evaluation = new Evaluator({
-    timeout: 1,
-    success: { updated: () => value === 1 },
-    score: () => value,
-  });
-  ros.register({
-    afterStep: () => {
+  const evaluation = join(
+    ros,
+    new Evaluator({
+      timeout: 1,
+      success: { updated: () => value === 1 },
+      score: () => value,
+    }),
+  );
+  const device = Object.assign(new Object3D(), {
+    isDevice: true as const,
+    join() {},
+    leave() {},
+    afterStep() {
       value = 1;
     },
-    dispose() {},
   });
+  world.scene.add(device);
   evaluation.start();
   world.update(0.01);
   expect(evaluation.result?.status).toBe("success");
 });
 
 it("uses real trigger samples and stops catch-up immediately at a terminal step", async () => {
-  const { world } = await simulation();
+  const { world, ros } = await simulation();
   const body = new RigidBody();
   body.add(new BoxCollider({ size: [1, 1, 1] }));
   const goal = new Trigger();
   goal.add(new BoxCollider({ size: [2, 2, 2] }));
   world.scene.add(body, goal);
-  const evaluation = new Evaluator({
-    timeout: 1,
-    success: { reached: () => goal.overlaps(body) },
-    score: ({ status }) => (status === "success" ? 100 : 0),
-  });
+  const evaluation = join(
+    ros,
+    new Evaluator({
+      timeout: 1,
+      success: { reached: () => goal.overlaps(body) },
+      score: ({ status }) => (status === "success" ? 100 : 0),
+    }),
+  );
   evaluation.start();
   new Stepping(world, () => evaluation.finished).update(0.1);
   expect(world.time).toBeCloseTo(0.01);
@@ -112,12 +139,15 @@ it("uses real trigger samples and stops catch-up immediately at a terminal step"
 });
 
 it("does not evaluate before start or publish unchanged values", async () => {
-  const { world, connection } = await simulation();
-  const evaluation = new Evaluator({
-    timeout: 1,
-    success: {},
-    score: () => 0,
-  });
+  const { world, ros, connection } = await simulation();
+  const evaluation = join(
+    ros,
+    new Evaluator({
+      timeout: 1,
+      success: {},
+      score: () => 0,
+    }),
+  );
   world.update(0.01);
   expect(evaluation.result).toBeUndefined();
   evaluation.start();
@@ -134,31 +164,37 @@ it("does not evaluate before start or publish unchanged values", async () => {
 });
 
 it("rejects invalid values and multiple evaluators", async () => {
-  await simulation();
+  const { ros } = await simulation();
   expect(
     () => new Evaluator({ timeout: -1, success: {}, score: () => 0 }),
   ).toThrow("timeout");
-  const evaluation = new Evaluator({
-    timeout: 1,
-    success: {},
-    score: () => NaN,
-  });
+  const evaluation = join(
+    ros,
+    new Evaluator({
+      timeout: 1,
+      success: {},
+      score: () => NaN,
+    }),
+  );
   expect(() => evaluation.start()).toThrow("finite");
   expect(evaluation.active).toBe(false);
   expect(evaluation.result).toBeUndefined();
   expect(() => evaluation.end("error", "initial sample failed")).not.toThrow();
-  expect(
-    () => new Evaluator({ timeout: 1, success: {}, score: () => 0 }),
+  expect(() =>
+    join(ros, new Evaluator({ timeout: 1, success: {}, score: () => 0 })),
   ).toThrow("one evaluator");
 });
 
 it("preserves a final diagnostic snapshot after a runtime fault", async () => {
   const { ros, connection } = await simulation();
-  const evaluation = new Evaluator({
-    timeout: 1,
-    success: {},
-    score: () => 25,
-  });
+  const evaluation = join(
+    ros,
+    new Evaluator({
+      timeout: 1,
+      success: {},
+      score: () => 25,
+    }),
+  );
   evaluation.start();
   ros.fail(new Error("device failed"));
   evaluation.end("error", "device failed");
@@ -174,15 +210,18 @@ it("preserves a final diagnostic snapshot after a runtime fault", async () => {
 it("preserves the last valid metrics when a condition throws", async () => {
   const { world, ros } = await simulation();
   const error = new Error("condition failed");
-  const evaluation = new Evaluator({
-    timeout: 1,
-    success: {
-      complete: () => {
-        throw error;
+  const evaluation = join(
+    ros,
+    new Evaluator({
+      timeout: 1,
+      success: {
+        complete: () => {
+          throw error;
+        },
       },
-    },
-    score: () => 25,
-  });
+      score: () => 25,
+    }),
+  );
   evaluation.start();
   expect(() => world.update(0.01)).toThrow(error);
   expect(ros.error).toBe(error);
@@ -191,6 +230,17 @@ it("preserves the last valid metrics when a condition throws", async () => {
     status: "error",
     metrics: { score: 25 },
   });
+});
+
+it("logs what the scene reports through its runtime, and only while joined", async () => {
+  const { ros } = await simulation();
+  const evaluation = new Evaluator({ timeout: 1, success: {}, score: () => 0 });
+  expect(() => evaluation.log("early")).toThrow("not under a ROS runtime");
+  join(ros, evaluation);
+  const log = vi.fn();
+  Object.assign(ros.connection, { log });
+  evaluation.log("piece dropped");
+  expect(log).toHaveBeenCalledWith("piece dropped");
 });
 
 it("steps until a deadline, or until halted", async () => {

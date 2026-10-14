@@ -5,8 +5,8 @@ import {
   SRGBColorSpace,
   type Object3D,
 } from "three";
-import { header, identifier } from "../messages.js";
-import { getROS2, type ROS2 } from "../runtime.js";
+import { header, identifier, topic } from "../messages.js";
+import type { Device, ROS2 } from "../runtime.js";
 import { Schedule } from "./schedule.js";
 import { robotOf } from "./robot.js";
 
@@ -16,19 +16,18 @@ import { robotOf } from "./robot.js";
  */
 const IN_FLIGHT = 3;
 
-export class CameraSensor extends PerspectiveCamera {
-  readonly ros: ROS2;
+export class CameraSensor extends PerspectiveCamera implements Device {
+  readonly isDevice = true;
   readonly width: number;
   readonly height: number;
   readonly frameId: string;
   private readonly schedule: Schedule;
   private readonly quality: number;
-  /** Render targets no readback uses. */
-  private readonly free: RenderTarget[] = [];
-  private readonly unregister: () => void;
+  private ros?: ROS2;
+  /** Render targets no readback uses, while joined. */
+  private free: RenderTarget[] = [];
   /** The last capture's publication; each waits for the one before, so frames go out in order. */
   private published: Promise<void> = Promise.resolve();
-  private disposed = false;
   constructor(
     options: {
       name?: string;
@@ -38,7 +37,6 @@ export class CameraSensor extends PerspectiveCamera {
       rate?: number;
       quality?: number;
       frameId?: string;
-      ros?: ROS2;
     } = {},
   ) {
     const width = options.width ?? 320;
@@ -61,13 +59,20 @@ export class CameraSensor extends PerspectiveCamera {
     );
     this.schedule = new Schedule(options.rate ?? 5);
     this.quality = quality;
-    for (let i = 0; i < IN_FLIGHT; i++) {
-      const target = new RenderTarget(width, height);
+  }
+  join(ros: ROS2): void {
+    this.free = Array.from({ length: IN_FLIGHT }, () => {
+      const target = new RenderTarget(this.width, this.height);
       target.texture.colorSpace = SRGBColorSpace;
-      this.free.push(target);
-    }
-    this.ros = options.ros ?? getROS2();
-    this.unregister = this.ros.register(this);
+      return target;
+    });
+    this.ros = ros;
+  }
+  /** Stops capturing at once; its promise settles once pending readbacks have released their targets. */
+  leave(): Promise<void> {
+    this.ros = undefined;
+    for (const target of this.free.splice(0)) target.dispose();
+    return this.published;
   }
   /** `sensor_msgs/Image`, `rgb8`, as image_transport's raw transport names it. */
   get rawTopic(): string {
@@ -81,19 +86,20 @@ export class CameraSensor extends PerspectiveCamera {
     return this.topic("camera_info");
   }
   private topic(name: string): string {
-    return this.ros.topic(`${this.name}/${name}`, robotOf(this)?.namespace);
+    return topic(`${this.name}/${name}`, robotOf(this)?.namespace);
   }
   get busy(): boolean {
-    return this.free.length === 0;
+    return this.ros !== undefined && this.free.length === 0;
   }
   afterStep(time: number): void {
     // Every capture still being read back means the GPU is behind; this sample is skipped rather
     // than queued. The simulator waits while a device is busy, so only loops that step
     // regardless skip samples.
-    if (this.disposed || !this.schedule.due(time)) return;
+    const ros = this.ros;
+    if (!ros || !this.schedule.due(time)) return;
     const target = this.free.pop();
     if (!target) return;
-    const renderer = this.ros.renderer;
+    const renderer = ros.renderer;
     if (!renderer) throw new Error(`Camera ${this.name} needs a renderer`);
     // A camera captures the scene it is part of.
     let root: Object3D = this;
@@ -124,20 +130,20 @@ export class CameraSensor extends PerspectiveCamera {
         const [read, earlier] = await Promise.allSettled([pixels, before]);
         if (earlier.status === "rejected") throw earlier.reason;
         if (read.status === "rejected") throw read.reason;
-        this.publish(time, read.value);
+        if (this.ros === ros) this.publish(ros, time, read.value);
       } catch (error) {
-        // A disposed camera's failure goes to whoever disposed it.
-        if (this.disposed) throw error;
-        this.ros.fail(error);
+        // A camera that left reports its failure to whoever awaits its leaving.
+        if (this.ros !== ros) throw error;
+        ros.fail(error);
       } finally {
-        if (this.disposed) target.dispose();
-        else this.free.push(target);
+        if (this.ros === ros) this.free.push(target);
+        else target.dispose();
       }
     })();
   }
-  private publish(time: number, pixels: ArrayBufferView): void {
+  private publish(ros: ROS2, time: number, pixels: ArrayBufferView): void {
     // Disconnection during readback drops the frame; the runtime already stopped.
-    if (this.disposed || !this.ros.connected) return;
+    if (!ros.connected) return;
     if (!(pixels instanceof Uint8Array))
       throw new Error("Camera readback must produce 8-bit pixels");
     const { width, height } = this;
@@ -147,14 +153,14 @@ export class CameraSensor extends PerspectiveCamera {
     );
     // Images are converted and compressed only for topics someone reads, as image_transport
     // publishes lazily; the readback is RGBA and a camera has no alpha.
-    if (this.ros.subscribed(this.rawTopic, "sensor_msgs/msg/Image")) {
+    if (ros.subscribed(this.rawTopic, "sensor_msgs/msg/Image")) {
       const rgb = new Uint8Array(width * height * 3);
       for (let i = 0, j = 0; j < rgb.length; i += 4, j += 3) {
         rgb[j] = pixels[i] ?? 0;
         rgb[j + 1] = pixels[i + 1] ?? 0;
         rgb[j + 2] = pixels[i + 2] ?? 0;
       }
-      this.ros.publish(this.rawTopic, "sensor_msgs/msg/Image", {
+      ros.publish(this.rawTopic, "sensor_msgs/msg/Image", {
         header: stamped,
         height,
         width,
@@ -165,9 +171,9 @@ export class CameraSensor extends PerspectiveCamera {
       });
     }
     const compressed = "sensor_msgs/msg/CompressedImage";
-    if (this.ros.subscribed(this.compressedTopic, compressed)) {
+    if (ros.subscribed(this.compressedTopic, compressed)) {
       const jpeg = encode({ data: pixels, width, height }, this.quality);
-      this.ros.publish(this.compressedTopic, compressed, {
+      ros.publish(this.compressedTopic, compressed, {
         header: stamped,
         format: "rgb8; jpeg compressed bgr8",
         data: new Uint8Array(jpeg.data),
@@ -178,7 +184,7 @@ export class CameraSensor extends PerspectiveCamera {
     const fy = (projection[5] * height) / 2;
     const cx = ((1 - projection[8]) * width) / 2;
     const cy = ((1 + projection[9]) * height) / 2;
-    this.ros.publish(this.infoTopic, "sensor_msgs/msg/CameraInfo", {
+    ros.publish(this.infoTopic, "sensor_msgs/msg/CameraInfo", {
       header: stamped,
       width,
       height,
@@ -191,14 +197,5 @@ export class CameraSensor extends PerspectiveCamera {
       binning_y: 0,
       roi: { x_offset: 0, y_offset: 0, height: 0, width: 0, do_rectify: false },
     });
-  }
-  /** Detaches immediately; await pending readback cleanup before disposing the renderer. */
-  dispose(): Promise<void> {
-    if (this.disposed) return this.published;
-    this.disposed = true;
-    this.unregister();
-    for (const target of this.free.splice(0)) target.dispose();
-    this.removeFromParent();
-    return this.published;
   }
 }

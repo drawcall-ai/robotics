@@ -5,8 +5,6 @@ import {
   type JointDriveOptions,
   type JointDriveTarget,
 } from "@drawcall/physics";
-import { getROS2, type Device, type ROS2 } from "../runtime.js";
-import { runAll } from "../cleanup.js";
 
 /** Simulation seconds after which a joint command expires and the actuator goes passive; a pause never expires one. */
 const COMMAND_TIMEOUT = 0.5;
@@ -22,24 +20,18 @@ interface Command {
 }
 
 /**
- * A drive that ros2_control commands. Attach it with `joint.setDrive`: its robot hands it the
- * `joint_commands` for its joint's name, it applies the command before each step, and goes passive
- * when the command expires. Its target belongs to the controller, so scene code cannot set it.
+ * A drive that ros2_control commands. Attach it with `joint.setDrive` on a joint of a `Robot`: the
+ * robot hands it the `joint_commands` for its joint's name, it applies the command before each
+ * step, and goes passive when the command expires. Its target belongs to the controller, so scene
+ * code cannot set it.
  */
-export class JointActuator
-  extends JointDrive<JointActuatorOptions>
-  implements Device
-{
-  readonly ros: ROS2;
+export class JointActuator extends JointDrive<JointActuatorOptions> {
   private command?: Command;
   private commanded = false;
   private resting?: number;
-  private readonly unregister: () => void;
-  constructor({ ros, ...options }: JointActuatorOptions & { ros?: ROS2 }) {
+  constructor(options: JointActuatorOptions) {
     super(options);
     validateGains(options);
-    this.ros = ros ?? getROS2();
-    this.unregister = this.ros.register(this);
   }
   override setTarget(): never {
     throw new Error("Actuator targets come from joint_commands");
@@ -48,8 +40,8 @@ export class JointActuator
   override copy(): this {
     return this;
   }
-  /** Takes this joint's value from a `sensor_msgs/JointState` command, if it names the joint. */
-  receive(message: unknown): void {
+  /** Takes this joint's value from a `sensor_msgs/JointState` command received at `time`, if it names the joint. */
+  receive(message: unknown, time: number): void {
     const name = this.joint?.name;
     if (name === undefined) return;
     const index = list(message, "name").indexOf(name);
@@ -59,7 +51,7 @@ export class JointActuator
       throw new Error(
         `Joint command for ${name} needs a finite ${this.options.interface}`,
       );
-    this.command = { value, time: this.ros.world.time };
+    this.command = { value, time };
     this.commanded = true;
   }
   beforeStep(time: number): void {
@@ -118,23 +110,6 @@ export class JointActuator
   stop(): void {
     this.command = undefined;
     if (this.target) super.setTarget(undefined);
-  }
-  dispose(): void {
-    runAll(
-      [
-        () => this.stop(),
-        this.unregister,
-        () => {
-          const joint = this.joint;
-          if (!joint) return;
-          if (joint instanceof ScalarJoint) joint.setDrive(undefined);
-          if (joint instanceof GenericJoint)
-            for (const [dof, drive] of joint.drives)
-              if (drive === this) joint.setDrive(dof, undefined);
-        },
-      ],
-      "Failed to dispose joint actuator",
-    );
   }
 }
 

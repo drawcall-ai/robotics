@@ -3,12 +3,14 @@ import { FixedJoint } from "@drawcall/physics";
 import { rosPose } from "../coordinates.js";
 import { header } from "../messages.js";
 import { robotURDF } from "../urdf/serialize.js";
+import type { ROS2 } from "../runtime.js";
 import type { Robot } from "./robot.js";
 
 /** Frozen model metadata, with live transforms measured in exactly the same link frames as URDF. */
 export class Model {
   constructor(
     private readonly robot: Robot,
+    private readonly ros: ROS2,
     time: number,
   ) {
     const { base, joints, frames, footprint } = robot.tree;
@@ -24,13 +26,13 @@ export class Model {
         transform(frame(link.name), frame(name), origin, time, optical),
       ),
     ];
-    robot.ros.publish(
+    ros.publish(
       robot.descriptionTopic,
       "std_msgs/msg/String",
       { data: robotURDF(robot) },
       { retain: true, private: robot.private },
     );
-    robot.ros.publish(
+    ros.publish(
       "/tf_static",
       "tf2_msgs/msg/TFMessage",
       { transforms: fixed },
@@ -54,7 +56,7 @@ export class Model {
         );
       });
     if (transforms.length)
-      this.robot.ros.publish(
+      this.ros.publish(
         "/tf",
         "tf2_msgs/msg/TFMessage",
         { transforms },

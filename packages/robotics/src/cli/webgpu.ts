@@ -36,7 +36,6 @@ GPUQueue.prototype.copyExternalImageToTexture = function (
 };
 // The renderer schedules its internal loop through browser globals that Node lacks.
 Object.assign(globalThis, {
-  self: globalThis,
   requestAnimationFrame: (callback: FrameRequestCallback) =>
     setTimeout(() => callback(performance.now()), 16),
   cancelAnimationFrame: (handle: number) => clearTimeout(handle),

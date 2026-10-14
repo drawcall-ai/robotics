@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { decode } from "jpeg-js";
-import { RenderTarget, Scene, Vector3 } from "three";
+import { RenderTarget, Vector3 } from "three";
 import { Stepping } from "../src/cli/sim.js";
 import { CameraSensor } from "../src/devices/camera.js";
 import { defer, simulation } from "./fixture.js";
@@ -11,8 +11,9 @@ const INFO = "/robot/camera/camera_info";
 
 async function fixture() {
   const { world, ros, connection, renderer } = await simulation();
-  const camera = new CameraSensor({ width: 320, height: 180, ros });
-  new Scene().add(camera);
+  const camera = new CameraSensor({ width: 320, height: 180 });
+  world.scene.add(camera);
+  ros.sync();
   return {
     world,
     ros,
@@ -167,21 +168,23 @@ it("drops a frame whose readback completes after disposal", async () => {
   expect(messages).toHaveLength(0);
 });
 
-it("finishes an individual camera's readback before releasing its target and drops the frame", async () => {
+it("finishes a removed camera's readback before releasing its target and drops the frame", async () => {
   const { ros, camera, renderer, messages } = await fixture();
   const dispose = vi.spyOn(RenderTarget.prototype, "dispose");
   camera.afterStep(0.2);
-  const disposed = camera.dispose();
-  expect(camera.dispose()).toBe(disposed);
-  const finished = vi.fn();
-  disposed?.then(finished);
+  camera.removeFromParent();
+  ros.sync();
   expect(ros.find(CameraSensor)).toEqual([]);
   // The idle targets go at once; the one read back into only once it is done.
   expect(dispose).toHaveBeenCalledTimes(2);
+  // Leaving again waits on the same pending readback.
+  const left = camera.leave();
+  const finished = vi.fn();
+  void left.then(finished);
   await Promise.resolve();
   expect(finished).not.toHaveBeenCalled();
   await renderer.flush();
-  await disposed;
+  await left;
   expect(finished).toHaveBeenCalledOnce();
   expect(dispose).toHaveBeenCalledTimes(3);
   expect(messages).toHaveLength(0);
@@ -190,22 +193,22 @@ it("finishes an individual camera's readback before releasing its target and dro
   expect(renderer.readbacks).toHaveLength(0);
 });
 
-it("reports a disposed camera's failed readback to its owner without faulting the runtime", async () => {
+it("fails the runtime when a removed camera's readback fails, after releasing its target", async () => {
   const { ros, camera, renderer, messages } = await fixture();
   const dispose = vi.spyOn(RenderTarget.prototype, "dispose");
   vi.spyOn(renderer, "readRenderTargetPixelsAsync").mockRejectedValue(
     new Error("GPU readback failed"),
   );
   camera.afterStep(0.2);
-  const failure = expect(camera.dispose()).rejects.toThrow(
-    "GPU readback failed",
-  );
+  camera.removeFromParent();
+  ros.sync();
+  const failure = expect(camera.leave()).rejects.toThrow("GPU readback failed");
   await renderer.flush();
   await failure;
   expect(dispose).toHaveBeenCalledTimes(3);
   expect(messages).toHaveLength(0);
-  expect(ros.connected).toBe(true);
-  expect(ros.error).toBeUndefined();
+  expect(ros.connected).toBe(false);
+  expect(ros.error?.message).toBe("GPU readback failed");
 });
 
 it("joins pending camera work through runtime disposal before its target is released", async () => {
@@ -214,7 +217,7 @@ it("joins pending camera work through runtime disposal before its target is rele
   camera.afterStep(0.2);
   const completion = ros.disposeAsync();
   expect(ros.connected).toBe(false);
-  expect(camera.parent).toBe(null);
+  expect(ros.find(CameraSensor)).toEqual([]);
   expect(release).toHaveBeenCalledTimes(2);
   await renderer.flush();
   await completion;

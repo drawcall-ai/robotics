@@ -33,9 +33,9 @@ function scan(ranges: unknown[]) {
 }
 
 it("measures each wall at its bearing and reports clear directions beyond range", async () => {
-  const { world, ros, connection } = await simulation();
+  const { world, connection } = await simulation();
   room(world.scene);
-  new LaserSensor({ ros, samples: SAMPLES });
+  world.scene.add(new LaserSensor({ samples: SAMPLES }));
   world.update(0.01);
   expect(connection.messages).toContainEqual(
     scan([CLEAR, CLEAR, expect.closeTo(2.9, 5), expect.closeTo(1.9, 5), CLEAR]),
@@ -43,11 +43,12 @@ it("measures each wall at its bearing and reports clear directions beyond range"
 });
 
 it("scans in the frame of the body it sits on", async () => {
-  const { world, ros, connection } = await simulation();
+  const { world, connection } = await simulation();
   room(world.scene);
   const mount = new Object3D();
   mount.rotation.y = Math.PI / 2;
-  mount.add(new LaserSensor({ ros, samples: SAMPLES }));
+  mount.add(new LaserSensor({ samples: SAMPLES }));
+  world.scene.add(mount);
   world.update(0.01);
   expect(connection.messages).toContainEqual(
     scan([CLEAR, expect.closeTo(2.9, 5), expect.closeTo(1.9, 5), CLEAR, CLEAR]),
@@ -55,9 +56,9 @@ it("scans in the frame of the body it sits on", async () => {
 });
 
 it("reports returns closer than the minimum range as -Inf", async () => {
-  const { world, ros, connection } = await simulation();
+  const { world, connection } = await simulation();
   room(world.scene);
-  new LaserSensor({ ros, samples: SAMPLES, minRange: 2 });
+  world.scene.add(new LaserSensor({ samples: SAMPLES, minRange: 2 }));
   world.update(0.01);
   expect(connection.messages).toContainEqual(
     scan([CLEAR, CLEAR, expect.closeTo(2.9, 5), NEAR, CLEAR]),
@@ -65,9 +66,8 @@ it("reports returns closer than the minimum range as -Inf", async () => {
 });
 
 it("describes its sweep, ranges and frame in every scan", async () => {
-  const { world, ros, connection } = await simulation();
+  const { world, connection } = await simulation();
   const laser = new LaserSensor({
-    ros,
     name: "rear",
     frameId: "rear_laser",
     samples: SAMPLES,
@@ -76,6 +76,7 @@ it("describes its sweep, ranges and frame in every scan", async () => {
     rate: 5,
   });
   expect(laser.topic).toBe("/robot/rear");
+  world.scene.add(laser);
   world.update(0.01);
   expect(connection.messages).toContainEqual({
     name: "/robot/rear",

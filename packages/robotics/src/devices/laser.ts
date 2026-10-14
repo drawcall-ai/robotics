@@ -1,11 +1,11 @@
 import { Object3D, Quaternion, Vector3 } from "three";
-import { header, identifier } from "../messages.js";
-import { getROS2, type ROS2 } from "../runtime.js";
+import { header, identifier, topic } from "../messages.js";
+import type { Device, ROS2 } from "../runtime.js";
 import { Schedule } from "./schedule.js";
 import { robotOf } from "./robot.js";
 
-export class LaserSensor extends Object3D {
-  readonly ros: ROS2;
+export class LaserSensor extends Object3D implements Device {
+  readonly isDevice = true;
   readonly frameId: string;
   private readonly schedule: Schedule;
   private readonly samples: number;
@@ -13,7 +13,7 @@ export class LaserSensor extends Object3D {
   private readonly minRange: number;
   private readonly angleMin: number;
   private readonly angleMax: number;
-  private readonly unregister: () => void;
+  private ros?: ROS2;
   constructor(
     options: {
       name?: string;
@@ -25,7 +25,6 @@ export class LaserSensor extends Object3D {
       angleMin?: number;
       angleMax?: number;
       frameId?: string;
-      ros?: ROS2;
     } = {},
   ) {
     super();
@@ -57,14 +56,19 @@ export class LaserSensor extends Object3D {
     this.minRange = minRange;
     this.angleMin = angleMin;
     this.angleMax = angleMax;
-    this.ros = options.ros ?? getROS2();
-    this.unregister = this.ros.register(this);
+  }
+  join(ros: ROS2): void {
+    this.ros = ros;
+  }
+  leave(): void {
+    this.ros = undefined;
   }
   get topic(): string {
-    return this.ros.topic(this.name, robotOf(this)?.namespace);
+    return topic(this.name, robotOf(this)?.namespace);
   }
   afterStep(time: number): void {
-    if (!this.schedule.due(time)) return;
+    const ros = this.ros;
+    if (!ros || !this.schedule.due(time)) return;
     const origin = this.getWorldPosition(new Vector3());
     const rotation = this.getWorldQuaternion(new Quaternion());
     const increment = (this.angleMax - this.angleMin) / (this.samples - 1);
@@ -75,12 +79,12 @@ export class LaserSensor extends Object3D {
         0,
         -Math.cos(angle),
       ).applyQuaternion(rotation);
-      const hit = this.ros.world.raycast(origin, direction, this.range);
+      const hit = ros.world.raycast(origin, direction, this.range);
       // REP 117: +Inf for no return within range, -Inf for a return inside the dead zone.
       if (!hit) return Infinity;
       return hit.distance < this.minRange ? -Infinity : hit.distance;
     });
-    this.ros.publish(this.topic, "sensor_msgs/msg/LaserScan", {
+    ros.publish(this.topic, "sensor_msgs/msg/LaserScan", {
       header: header(time, robotOf(this)?.frame(this.frameId) ?? this.frameId),
       angle_min: this.angleMin,
       angle_max: this.angleMax,
@@ -92,9 +96,5 @@ export class LaserSensor extends Object3D {
       ranges,
       intensities: [],
     });
-  }
-  dispose(): void {
-    this.unregister();
-    this.removeFromParent();
   }
 }

@@ -1,6 +1,6 @@
 import type { PhysicsWorld } from "@drawcall/physics";
 import { runAll } from "./cleanup.js";
-import { SEGMENT, stamp } from "./messages.js";
+import { stamp, topic } from "./messages.js";
 import type { Camera, Object3D, RenderTarget, Texture } from "three";
 
 export interface PublishOptions {
@@ -39,7 +39,16 @@ export interface Connection {
   dispose(): void;
 }
 
+/**
+ * A scene object the runtime drives while its scene holds it: the runtime joins it when it enters
+ * the scene, and it leaves when it is removed or the runtime ends. Until then it is inert.
+ */
 export interface Device {
+  readonly isDevice: true;
+  /** Takes the device into `ros`: subscriptions, resources and checks against the other devices. */
+  join(ros: ROS2): void;
+  /** Releases what joining took; a camera finishes its readbacks before its promise settles. */
+  leave(): void | Promise<void>;
   beforeStep?(time: number, delta: number): void;
   afterStep?(time: number, delta: number): void;
   evaluate?(): void;
@@ -48,7 +57,10 @@ export interface Device {
   /** True while the device still works on a past step, such as a camera reading back its frame. */
   readonly busy?: boolean;
   stop?(): void;
-  dispose(): void | Promise<void>;
+}
+
+function isDevice(object: object): object is Device {
+  return "isDevice" in object && object.isDevice === true;
 }
 
 /** The renderer operations sensors use. Three.js `WebGPURenderer` satisfies it in browsers and in Node. */
@@ -65,49 +77,39 @@ export interface CaptureRenderer {
   ): Promise<ArrayBufferView>;
 }
 export interface ROS2Options {
+  /** The runtime drives the devices under this object, normally the three.js Scene. */
+  scene: Object3D;
   /** The simulation to attach; `attachWorld` attaches one later. */
   world?: PhysicsWorld;
   /** Needed by cameras; a runtime that only builds a scene, as for URDF export, has none. */
   renderer?: CaptureRenderer;
-  namespace?: string;
 }
 
-/** An absolute topic: name segments joined by `/`. */
-const TOPIC = new RegExp(`^(?:/${SEGMENT})+$`);
-let current: ROS2 | undefined;
-
-/** The runtime devices register with. Creating one makes it the default that `getROS2()` returns to a scene. */
+/**
+ * Drives the devices under its scene as ROS 2 nodes would: it syncs them with the scene before
+ * every step, so devices added or removed at any time join or leave there.
+ */
 export class ROS2 {
   private simulation?: PhysicsWorld;
   private recording?: Recording;
+  readonly scene: Object3D;
   readonly renderer?: CaptureRenderer;
-  readonly namespace: string;
-  /** Topics a viewer shows beside the robots; a scene adds the ones worth watching. */
-  readonly show: string[] = [];
-  /** A regular expression of topics the recording leaves out, as rosbag2's `--exclude-regex` takes it. */
-  recordExclude?: string;
   private readonly devices = new Set<Device>();
+  /** What devices that left still finish, such as camera readbacks; disposal joins it. */
+  private readonly departures: Promise<void>[] = [];
   private readonly hooks: (() => void)[] = [];
   private fault?: Error;
   private disposed = false;
   private disposal?: Promise<unknown[]>;
   constructor(
     readonly connection: Connection,
-    options: ROS2Options = {},
+    options: ROS2Options,
   ) {
     if (!connection.connected)
       throw new Error("Connect ROS before creating a runtime");
-    if (current)
-      throw new Error(
-        "Dispose the current ROS runtime before creating another",
-      );
-    const namespace = options.namespace ?? "/robot";
-    if (namespace !== "/" && !TOPIC.test(namespace))
-      throw new Error(`Invalid ROS namespace: ${namespace}`);
+    this.scene = options.scene;
     this.renderer = options.renderer;
-    this.namespace = namespace;
     if (options.world) this.attachWorld(options.world);
-    current = this;
   }
   /** Attaches simulation callbacks after the initial scene has been authored and built. */
   attachWorld(world: PhysicsWorld): void {
@@ -139,28 +141,32 @@ export class ROS2 {
   get error(): Error | undefined {
     return this.fault ?? this.connection.error;
   }
-  /** The absolute topic for `name`: under `namespace`, by default the runtime's, unless already absolute. */
-  topic(name: string, namespace = this.namespace): string {
-    if (namespace !== "/" && !TOPIC.test(namespace))
-      throw new Error(`Invalid ROS namespace: ${namespace}`);
-    const topic = name.startsWith("/")
-      ? name
-      : `${namespace === "/" ? "" : namespace}/${name}`;
-    if (!TOPIC.test(topic)) throw new Error(`Invalid ROS topic: ${topic}`);
-    return topic;
-  }
-  /** The registered devices of a class, in registration order. */
+  /** The joined devices of a class, in the order they joined. */
   find<T>(type: abstract new (...args: never[]) => T): T[] {
     return [...this.devices].filter(
       (device): device is T & Device => device instanceof type,
     );
   }
-  register(device: Device): () => void {
-    if (!this.connected) throw new Error("ROS runtime is disconnected");
-    if (this.devices.has(device))
-      throw new Error("Device is already registered");
-    this.devices.add(device);
-    return () => this.devices.delete(device);
+  /** Joins the devices that entered the scene and has those that left it leave. */
+  sync(): void {
+    if (this.disposed) throw new Error("ROS runtime is disposed");
+    const found = new Set<Device>();
+    this.scene.traverse((object) => {
+      if (isDevice(object)) found.add(object);
+    });
+    for (const device of this.devices) {
+      if (found.has(device)) continue;
+      this.devices.delete(device);
+      // A device that fails after leaving fails the runtime, as it would have while joined.
+      const departure = device.leave();
+      if (departure)
+        this.departures.push(departure.catch((error) => this.fail(error)));
+    }
+    for (const device of found) {
+      if (this.devices.has(device)) continue;
+      device.join(this);
+      this.devices.add(device);
+    }
   }
   publish(
     name: string,
@@ -172,15 +178,15 @@ export class ROS2 {
     if (options?.private) {
       if (this.disposed) throw new Error("ROS runtime is disposed");
       const time = this.simulation?.time ?? 0;
-      this.recording?.write(this.topic(name), type, message, time);
+      this.recording?.write(absolute(name), type, message, time);
       return;
     }
     if (!this.connected) throw new Error("ROS runtime is disconnected");
-    this.connection.publish(this.topic(name), type, message, options);
+    this.connection.publish(absolute(name), type, message, options);
   }
   /** Whether anyone receives a topic, so devices can skip work nobody reads, as image_transport does. */
   subscribed(name: string, type: string): boolean {
-    return this.connection.subscribed(this.topic(name), type);
+    return this.connection.subscribed(absolute(name), type);
   }
   /** The returned release is a no-op once the runtime is disposed: disposing the connection ends every subscription. */
   subscribe(
@@ -190,7 +196,7 @@ export class ROS2 {
   ): () => void {
     if (!this.connected) throw new Error("ROS runtime is disconnected");
     const unsubscribe = this.connection.subscribe(
-      this.topic(name),
+      absolute(name),
       type,
       (message) => {
         try {
@@ -240,6 +246,7 @@ export class ROS2 {
       return;
     }
     try {
+      if (phase === "beforeStep") this.sync();
       if (phase === "afterStep")
         this.publish("/clock", "rosgraph_msgs/msg/Clock", {
           clock: stamp(this.world.time),
@@ -267,15 +274,14 @@ export class ROS2 {
   private release(): AggregateError | undefined {
     if (this.disposed) return;
     this.disposed = true;
-    if (current === this) current = undefined;
     const releases: (() => void | Promise<void>)[] = [
-      ...[...this.devices].map((device) => () => device.dispose()),
+      ...[...this.devices].map((device) => () => device.leave()),
       ...this.hooks,
       () => this.connection.dispose(),
     ];
     this.devices.clear();
     const errors: unknown[] = [];
-    const pending: Promise<void>[] = [];
+    const pending: Promise<void>[] = this.departures.splice(0);
     for (const release of releases) {
       try {
         const completion = release();
@@ -296,8 +302,9 @@ export class ROS2 {
   }
 }
 
-export function getROS2(): ROS2 {
-  if (!current)
-    throw new Error("Create a ROS runtime before creating ROS devices");
-  return current;
+/** The runtime takes absolute topics only; devices name theirs with `topic`. */
+function absolute(name: string): string {
+  if (!name.startsWith("/"))
+    throw new Error(`ROS topic ${name} must be absolute`);
+  return topic(name);
 }

@@ -6,6 +6,28 @@ export function identifier(kind: string, name: string): string {
   if (!IDENTIFIER.test(name)) throw new Error(`Invalid ${kind} name: ${name}`);
   return name;
 }
+/** An absolute topic: name segments joined by `/`. */
+const TOPIC = new RegExp(`^(?:/${SEGMENT})+$`);
+/** Where a robot's topics go unless it names its own namespace, as a sensor outside a robot's do. */
+export const NAMESPACE = "/robot";
+
+/** `value` if it is a valid ROS namespace: `/`, or absolute name segments. */
+export function namespace(value: string): string {
+  if (value !== "/" && !TOPIC.test(value))
+    throw new Error(`Invalid ROS namespace: ${value}`);
+  return value;
+}
+
+/** The absolute topic for `name` under `within`, unless `name` is absolute already. */
+export function topic(name: string, within = NAMESPACE): string {
+  namespace(within);
+  const absolute = name.startsWith("/")
+    ? name
+    : `${within === "/" ? "" : within}/${name}`;
+  if (!TOPIC.test(absolute)) throw new Error(`Invalid ROS topic: ${absolute}`);
+  return absolute;
+}
+
 export function stamp(seconds: number): { sec: number; nanosec: number } {
   if (!Number.isFinite(seconds) || seconds < 0)
     throw new Error("Simulation time must be finite and nonnegative");

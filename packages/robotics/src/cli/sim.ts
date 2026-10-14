@@ -4,7 +4,6 @@ import { resolve } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { RclConnection } from "../connections/rcl.js";
-import { JointActuator } from "../devices/actuator.js";
 import { CameraSensor } from "../devices/camera.js";
 import { LaserSensor } from "../devices/laser.js";
 import { Robot } from "../devices/robot.js";
@@ -35,7 +34,6 @@ import { number } from "./run.js";
 import { sceneLoader } from "./scene.js";
 
 interface SimOptions {
-  namespace: string;
   viewer?: boolean;
   viewerPort: number;
   bridgePort: number;
@@ -52,7 +50,6 @@ interface SimOptions {
 export const sim = new Command("sim")
   .description("run the scene as a ROS 2 node until stopped")
   .argument("<scene>", "the .glts scene")
-  .option("--namespace <ns>", "topic namespace", "/robot")
   .option(
     "--viewer",
     "serve Lichtblick with a layout for the scene's topics and open it (BROWSER=none: serve only)",
@@ -116,23 +113,19 @@ async function run(scene: string, options: SimOptions): Promise<void> {
   });
   const renderer = await createRenderer();
   resources.defer(() => renderer.dispose());
+  const url = pathToFileURL(resolve(scene));
+  const loader = sceneLoader(url);
+  resources.defer(() => loader.dispose());
+  const root = await loader.loadAsync(url);
   const connection = await RclConnection.create("sim");
   let ros: ROS2;
   {
     using setup = new DisposableStack();
     setup.defer(() => connection.dispose());
-    ros = new ROS2(connection, {
-      renderer,
-      namespace: options.namespace,
-    });
+    ros = new ROS2(connection, { scene: root, renderer });
     resources.defer(() => ros.disposeAsync());
     setup.move();
   }
-  // The scene builds against the current runtime and registers its devices there.
-  const url = pathToFileURL(resolve(scene));
-  const loader = sceneLoader(url);
-  resources.defer(() => loader.dispose());
-  const root = await loader.loadAsync(url);
   const world = await buildWorld({
     scene: root,
     gravity: [0, -9.81, 0],
@@ -150,13 +143,14 @@ async function run(scene: string, options: SimOptions): Promise<void> {
   resources.defer(() => world.dispose());
   world.onBeforeStep((delta) => root.update(delta));
   ros.attachWorld(world);
+  ros.sync();
   if (stop.signal.aborted) return;
   const robots = ros.find(Robot);
   const [evaluation] = ros.find(Evaluator);
   if (!evaluation) throw new Error("The scene needs an Evaluator");
   const recorder = new Recorder(
     options.record,
-    ros.recordExclude,
+    evaluation.options.recordExclude,
     options.recordAll,
   );
   resources.defer(() => recorder.stop());
@@ -187,9 +181,16 @@ async function run(scene: string, options: SimOptions): Promise<void> {
     evaluation,
     recorder,
   );
-  console.error(`Simulating ${scene} under ${ros.namespace}`);
+  console.error(`Simulating ${scene}`);
   if (options.viewer)
-    serveViewer(ros, robots, ros.show, options, stop, resources);
+    serveViewer(
+      ros,
+      robots,
+      evaluation.options.show ?? [],
+      options,
+      stop,
+      resources,
+    );
 
   const finish = async () => {
     if (evaluation.finished) await recorder.finish(connection, evaluation);
@@ -309,7 +310,8 @@ function serveControls(
     controls.steps = 0;
     // A turn's commands end with it: the robot holds still at a pause, and again at the next
     // turn, in case the last policy's commands arrived after the pause.
-    for (const actuator of ros.find(JointActuator)) actuator.release();
+    for (const robot of ros.find(Robot))
+      for (const actuator of robot.actuators.values()) actuator.release();
     if (state === PLAYING) {
       ros.resume((performance.now() - controls.pausedAt) / 1000);
       return result(OK);
@@ -439,7 +441,7 @@ async function simulate(
 function serveViewer(
   ros: ROS2,
   robots: Robot[],
-  show: string[],
+  show: readonly string[],
   ports: { viewerPort: number; bridgePort: number },
   stop: AbortController,
   resources: AsyncDisposableStack,

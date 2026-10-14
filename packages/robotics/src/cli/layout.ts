@@ -17,7 +17,7 @@ export interface LayoutTopics {
   /** The `CameraInfo` topics published beside images, for calibrated image panels. */
   calibrations?: string[];
   /** Further topics to display: compressed images get an image panel, anything else the 3D panel. */
-  show?: string[];
+  show?: readonly string[];
   /** One robot model each; the view frames the first. */
   models?: ModelView[];
 }

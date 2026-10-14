@@ -1,6 +1,6 @@
 // What a browser gives Three.js that Node lacks, so scenes load files as they would on a page:
-// `fetch` of the `file:` URLs a scene resolves against `import.meta.url`, the progress events
-// loaders report, and image decoding.
+// `self`, `fetch` of the `file:` URLs a scene resolves against `import.meta.url`, the progress
+// events loaders report, and image decoding.
 import { readFile } from "node:fs/promises";
 
 /** A decoded image: RGBA pixels, top row first, not premultiplied. */
@@ -34,6 +34,7 @@ globalThis.fetch = async (input, init) => {
 };
 
 Object.assign(globalThis, {
+  self: globalThis,
   ProgressEvent,
   ImageBitmap: DecodedImage,
   createImageBitmap: async (

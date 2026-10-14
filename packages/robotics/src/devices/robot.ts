@@ -1,8 +1,14 @@
 import { AxisJoint, FixedJoint, Joint, RigidBody } from "@drawcall/physics";
 import { Group, type Object3D } from "three";
-import { header, identifier } from "../messages.js";
+import {
+  header,
+  identifier,
+  namespace as checked,
+  NAMESPACE,
+  topic,
+} from "../messages.js";
 import { buildLinkTree, type LinkTree } from "../urdf/links.js";
-import { getROS2, type ROS2 } from "../runtime.js";
+import type { Device, ROS2 } from "../runtime.js";
 import { JointActuator } from "./actuator.js";
 import { Model } from "./model.js";
 import { Schedule } from "./schedule.js";
@@ -23,11 +29,10 @@ function isFrame(object: Object3D): object is Object3D & { frameId: string } {
 }
 
 export interface RobotOptions {
-  ros?: ROS2;
   /**
    * The robot's own namespace, for several robots in one scene. Its topics go under it and its TF
    * frames carry it as a prefix, as `robot_state_publisher`'s `frame_prefix` does. Without one, the
-   * robot uses the runtime's namespace and plain frame names.
+   * robot's topics go under `/robot` and its frames keep plain names.
    */
   namespace?: string;
   /** Joint state and TF publication rate in Hz. */
@@ -44,56 +49,71 @@ export interface RobotOptions {
  * A robot is a group: the bodies, joints and sensors under it are the robot. Its URDF and joint
  * states follow from that structure: the base is the body no joint hangs from, every named axis
  * joint is a URDF joint, a joint driven by a `JointActuator` is commanded by that actuator, and
- * each sensor is a frame.
+ * each sensor is a frame. It drives ROS while a runtime's scene holds it.
  */
-export class Robot extends Group {
-  readonly ros: ROS2;
+export class Robot extends Group implements Device {
+  readonly isDevice = true;
   readonly namespace: string;
   /** Prepended to every TF frame the robot publishes: empty, or its namespace and a slash. */
   readonly framePrefix: string;
   /** Whether the robot publishes privately. */
   readonly private: boolean;
   private readonly schedule: Schedule;
-  private readonly unsubscribe: () => void;
-  private readonly unregister: () => void;
+  private ros?: ROS2;
+  private unsubscribe?: () => void;
   private resolved?: Structure;
   private linkTree?: LinkTree;
-  private disposed = false;
   private model?: Model;
   constructor({
-    ros,
     namespace,
     rate = 100,
     private: hidden = false,
   }: RobotOptions = {}) {
     super();
-    this.ros = ros ?? getROS2();
     this.private = hidden;
-    this.namespace = namespace ?? this.ros.namespace;
-    this.framePrefix = namespace ? `${namespace.replace(/^\//, "")}/` : "";
-    if (
-      this.ros.find(Robot).some((robot) => robot.namespace === this.namespace)
-    )
+    this.namespace = checked(namespace ?? NAMESPACE);
+    this.framePrefix =
+      namespace && namespace !== "/" ? `${namespace.slice(1)}/` : "";
+    this.schedule = new Schedule(rate);
+  }
+  join(ros: ROS2): void {
+    if (ros.find(Robot).some((robot) => robot.namespace === this.namespace))
       throw new Error(
         `Two robots share the namespace ${this.namespace}; give each its own`,
       );
-    this.schedule = new Schedule(rate);
     // One command topic per robot, as the topic-based ros2_control hardware publishes it.
-    this.unsubscribe = hidden
-      ? () => {}
-      : this.ros.subscribe(
+    this.unsubscribe = this.private
+      ? undefined
+      : ros.subscribe(
           this.topic("joint_commands"),
           "sensor_msgs/msg/JointState",
           (message) => {
             for (const actuator of this.actuators.values())
-              actuator.receive(message);
+              actuator.receive(message, ros.world.time);
           },
         );
-    this.unregister = this.ros.register(this);
+    this.ros = ros;
+  }
+  /**
+   * Stops listening and releases its actuators, as if never commanded, so it holds its pose again
+   * when a runtime's scene takes it back.
+   */
+  leave(): void {
+    const unsubscribe = this.unsubscribe;
+    this.ros = this.unsubscribe = this.model = undefined;
+    runAll(
+      [
+        () => unsubscribe?.(),
+        () => {
+          for (const actuator of this.actuators.values()) actuator.release();
+        },
+      ],
+      "Failed to release robot",
+    );
   }
   /** The absolute topic for `name` in the robot's namespace. */
   topic(name: string): string {
-    return this.ros.topic(name, this.namespace);
+    return topic(name, this.namespace);
   }
   /** The TF frame the robot publishes for `id`. */
   frame(id: string): string {
@@ -171,12 +191,18 @@ export class Robot extends Group {
   }
   /** Called after authoring, before the first physics step; also usable while paused at startup. */
   beforeStep(time: number): void {
-    if (this.model) return;
-    if (this.private && this.actuators.size)
-      throw new Error(
-        `${this.name} is private and takes no joint commands; drive its joints from the scene instead of with JointActuators`,
-      );
-    this.model = new Model(this, time);
+    if (!this.model) {
+      if (this.private && this.actuators.size)
+        throw new Error(
+          `${this.name} is private and takes no joint commands; drive its joints from the scene instead of with JointActuators`,
+        );
+      this.model = new Model(this, this.joined(), time);
+    }
+    for (const actuator of this.actuators.values()) actuator.beforeStep(time);
+  }
+  /** Lets every actuator go, as when the runtime faults. */
+  stop(): void {
+    for (const actuator of this.actuators.values()) actuator.stop();
   }
   afterStep(time: number): void {
     const { joints } = this.structure();
@@ -184,7 +210,7 @@ export class Robot extends Group {
     this.model?.publish(time);
     if (!joints.size) return;
     const states = [...joints.values()].map((joint) => joint.getState());
-    this.ros.publish(
+    this.joined().publish(
       this.topic("joint_states"),
       "sensor_msgs/msg/JointState",
       {
@@ -197,10 +223,10 @@ export class Robot extends Group {
       { private: this.private },
     );
   }
-  dispose(): void {
-    if (this.disposed) return;
-    this.disposed = true;
-    runAll([this.unsubscribe, this.unregister], "Failed to dispose robot");
+  private joined(): ROS2 {
+    if (!this.ros)
+      throw new Error(`Robot ${this.name} is not under a ROS runtime's scene`);
+    return this.ros;
   }
 }
 
@@ -211,11 +237,13 @@ export function robotOf(object: Object3D): Robot | undefined {
   return undefined;
 }
 
-/** The runtime's robot named `name`, or its only robot. */
-export function findRobot(ros: ROS2, name?: string): Robot {
-  const robots = ros
-    .find(Robot)
-    .filter((robot) => name === undefined || robot.name === name);
+/** The robot named `name` under `root`, or its only robot. */
+export function findRobot(root: Object3D, name?: string): Robot {
+  const robots: Robot[] = [];
+  root.traverse((object) => {
+    if (object instanceof Robot && (name === undefined || object.name === name))
+      robots.push(object);
+  });
   const [robot] = robots;
   if (!robot || robots.length !== 1)
     throw new Error(

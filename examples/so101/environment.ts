@@ -5,7 +5,7 @@
 // Surfaces use Drawcall Market wood textures and the lighting a market HDR environment, with
 // a shadow-casting sun, so the wrist camera sees something close to a real desk.
 import { BoxCollider, RigidBody } from "@drawcall/physics";
-import { getROS2 } from "@drawcall/robotics";
+import { findRobot } from "@drawcall/robotics";
 import {
   BoxGeometry,
   Color,
@@ -15,6 +15,7 @@ import {
   LinearMipmapLinearFilter,
   Mesh,
   MeshStandardMaterial,
+  type Object3D,
   PlaneGeometry,
   Quaternion,
   Scene,
@@ -23,7 +24,6 @@ import {
 } from "three";
 import { environmentMap, material } from "./assets.ts";
 import { piece, pieceHeight, pieceMaterial, type Kind } from "./pieces.ts";
-import { arm } from "./robot.ts";
 import {
   boardCoordinates,
   deskHeight,
@@ -37,19 +37,19 @@ import {
   type Board,
 } from "./task.ts";
 
+/** What the viewer shows beside the robot: the controller's annotated wrist image. */
+export const show = ["/robot/perception/image/compressed"];
+
 export interface Piece {
   body: RigidBody;
   kind: Kind;
 }
 
 /**
- * Builds the chess desk into `scene`: lighting, desk, robot and a board, drawn at random from the
- * episode's seed, and returns what the steps' evaluators build on.
+ * Builds the chess desk into `scene` with `arm`, the loaded robot, on it: lighting, desk and a
+ * board, drawn at random from the episode's seed. Returns what the steps' evaluators build on.
  */
-export async function environment(scene: Scene) {
-  // The viewer shows the controller's annotated wrist image beside the robot.
-  getROS2().show.push("/robot/perception/image/compressed");
-
+export async function environment(scene: Scene, arm: Object3D) {
   // Every run draws a new world; SEED=<n> replays one.
   const seed = Number(process.env.SEED ?? Math.floor(Math.random() * 2 ** 31));
   const random = seeded(seed);
@@ -136,8 +136,10 @@ export async function environment(scene: Scene) {
       leg.position.set(x, -deskHeight / 2, z);
       desk.add(leg);
     }
-  const robot = await arm(deskHeight);
-  scene.add(desk, robot);
+  // The robot is an asset of its own, here on the desk; any arm its controller can drive fits.
+  arm.position.y = deskHeight;
+  scene.add(desk, arm);
+  const robot = findRobot(scene);
 
   // A travel set sized for the arm: squares of 22 to 25 mm, every one within reach.
   let placement: Board | undefined;

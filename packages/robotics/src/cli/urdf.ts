@@ -3,8 +3,6 @@ import { createHash } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { OfflineConnection } from "../connections/offline.js";
-import { ROS2 } from "../runtime.js";
 import { exportURDF } from "../urdf/export.js";
 import { sceneLoader } from "./scene.js";
 
@@ -17,7 +15,6 @@ const EMBEDDED = /data:model\/stl;base64,([A-Za-z0-9+/=]+)/g;
 export const urdf = new Command("urdf")
   .description("print or write the URDF of the scene's robot")
   .argument("<scene>", "the .glts scene")
-  .option("--namespace <ns>", "topic namespace", "/robot")
   .option("--robot <name>", "the robot, if the scene has several")
   .option("-o, --output <file>", "write the URDF to a file instead of stdout")
   .option(
@@ -28,7 +25,6 @@ export const urdf = new Command("urdf")
     this: Command,
     scene: string,
     options: {
-      namespace: string;
       robot?: string;
       output?: string;
       separate?: boolean;
@@ -36,18 +32,13 @@ export const urdf = new Command("urdf")
   ) {
     if (options.separate && !options.output)
       this.error("error: --separate writes files beside --output; give one");
+    const url = pathToFileURL(resolve(scene));
+    const loader = sceneLoader(url);
     let xml: string;
-    {
-      using resources = new DisposableStack();
-      const ros = new ROS2(new OfflineConnection(), {
-        namespace: options.namespace,
-      });
-      resources.defer(() => ros.dispose());
-      const url = pathToFileURL(resolve(scene));
-      const loader = sceneLoader(url);
-      resources.defer(() => loader.dispose());
-      await loader.loadAsync(url);
-      xml = exportURDF({ ros, name: options.robot });
+    try {
+      xml = exportURDF(await loader.loadAsync(url), options.robot);
+    } finally {
+      loader.dispose();
     }
     if (!options.output) {
       process.stdout.write(xml);

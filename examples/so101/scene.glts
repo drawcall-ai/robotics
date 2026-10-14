@@ -1,14 +1,14 @@
 // One piece lies on its side somewhere within reach; the robot must stand it on its square,
 // a knight facing the far side of the board.
-import { scene } from "@drawcall/glts";
+import { gltsLoader, scene } from "@drawcall/glts";
 import { Evaluator } from "@drawcall/robotics";
 import { Quaternion, Vector3 } from "three";
 import { kinds, type Kind } from "./pieces.ts";
-import { environment } from "./environment.ts";
+import { environment, show } from "./environment.ts";
 import { deskHeight } from "./task.ts";
 
 const { boardMoved, boardPeak, placed, random, scatter, touching } =
-  await environment(scene);
+  await environment(scene, await gltsLoader.loadAsync("./robot.glts"));
 
 const kind = (process.env.PIECE ??
   kinds[Math.floor(random() * kinds.length)]) as Kind;
@@ -19,39 +19,42 @@ const { body } = piece;
 // Where it came to rest, and when.
 let rest:
   { since: number; position: Vector3; rotation: Quaternion } | undefined;
-new Evaluator({
-  timeout: 600,
-  metrics: {
-    peakBoardDisplacement: () => boardPeak.displacement,
-  },
-  failure: {
-    boardMoved,
-    pieceDropped: () => body.position.y < deskHeight - 0.04,
-  },
-  success: {
-    // Upright on its square, facing the right way, let go of and still there a second later.
-    // Rest is judged by pose, not velocity: contact solvers keep bodies trembling by fractions
-    // of a millimetre.
-    piecePlaced: ({ elapsed }) => {
-      const free = (touching.get(body)?.size ?? 0) === 0;
-      if (!free || !placed(piece)) {
-        rest = undefined;
-        return false;
-      }
-      if (
-        !rest ||
-        rest.position.distanceTo(body.position) > 0.001 ||
-        rest.rotation.angleTo(body.quaternion) > Math.PI / 90
-      ) {
-        rest = {
-          since: elapsed,
-          position: body.position.clone(),
-          rotation: body.quaternion.clone(),
-        };
-        return false;
-      }
-      return elapsed - rest.since >= 1;
+scene.add(
+  new Evaluator({
+    show,
+    timeout: 600,
+    metrics: {
+      peakBoardDisplacement: () => boardPeak.displacement,
     },
-  },
-  score: ({ status }) => (status === "success" ? 100 : 0),
-});
+    failure: {
+      boardMoved,
+      pieceDropped: () => body.position.y < deskHeight - 0.04,
+    },
+    success: {
+      // Upright on its square, facing the right way, let go of and still there a second later.
+      // Rest is judged by pose, not velocity: contact solvers keep bodies trembling by fractions
+      // of a millimetre.
+      piecePlaced: ({ elapsed }) => {
+        const free = (touching.get(body)?.size ?? 0) === 0;
+        if (!free || !placed(piece)) {
+          rest = undefined;
+          return false;
+        }
+        if (
+          !rest ||
+          rest.position.distanceTo(body.position) > 0.001 ||
+          rest.rotation.angleTo(body.quaternion) > Math.PI / 90
+        ) {
+          rest = {
+            since: elapsed,
+            position: body.position.clone(),
+            rotation: body.quaternion.clone(),
+          };
+          return false;
+        }
+        return elapsed - rest.since >= 1;
+      },
+    },
+    score: ({ status }) => (status === "success" ? 100 : 0),
+  }),
+);
